@@ -1,0 +1,18 @@
+# Entornos virtuales
+venv/
+env/
+
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Base de datos local por defecto de Django
+db.sqlite3
+
+# Variables de entorno
+.env
+
+# Archivos estáticos y multimedia (opcional según tu configuración)
+/static/
+/media/
