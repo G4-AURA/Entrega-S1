@@ -1,5 +1,9 @@
 Django==5.2.11
 psycopg[binary]==3.3.3
 python-dotenv==1.0.1
+requests==2.32.5
 celery==5.4.0
 redis==5.0.3
+pgvector==0.3.2
+langgraph==1.0.9
+ortools==9.15.6755

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h2 class="mb-3">Mapa Interactivo</h2>
+        <h2 class="mb-3">Mapa Interactivo con Mapbox</h2>
         <p class="text-muted">Vista del guía turístico para Puntos de Interés (POIs).</p>
         
         <div id="mi-mapa" class="map-container"></div>
@@ -15,19 +15,21 @@
 
 {% block extra_js %}
 <script>
-    // 1. Inicializar el mapa centrado en unas coordenadas (ej: Madrid) y con un nivel de zoom
-    var map = L.map('mi-mapa').setView([40.4168, -3.7038], 13);
+    // Tu Token de Mapbox (Idealmente inyectado desde Django context, aquí puesto directo para la prueba)
+    const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
 
-    // 2. Añadir la capa base de azulejos (Tiles) de OpenStreetMap
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // 1. Inicializar el mapa
+    var map = L.map('mi-mapa').setView([37.3891, -5.9845], 13);
+
+    // 2. Añadir la capa de Mapbox usando la API de Static Tiles
+    // Puedes cambiar 'streets-v12' por 'light-v11', 'dark-v11', 'outdoors-v12' o tu propio estilo personalizado
+    L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=' + mapboxToken, {
         maxZoom: 19,
-        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
-    // 3. Añadir un marcador de ejemplo (Punto de Interés)
-    var marker = L.marker([40.4168, -3.7038]).addTo(map);
-    
-    // 4. Añadir un popup al marcador
+    // 3. Añadir marcadores
+    var marker = L.marker([37.3891, -5.9845]).addTo(map);
     marker.bindPopup("<b>¡Hola Guía!</b><br>Este es el punto de encuentro.").openPopup();
 </script>
 {% endblock %}

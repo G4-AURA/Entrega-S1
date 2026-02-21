@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.db
+    container_name: aura_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-mi_db_espacial}
+      POSTGRES_USER: ${DB_USER:-mi_usuario}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mi_password_seguro}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Script que se ejecuta en la creación de la DB
+      - ./init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: aura_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

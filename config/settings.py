@@ -32,6 +32,9 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
+MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
+GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -72,6 +75,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'config.context_processors.mapbox_settings',
             ],
         },
     },
