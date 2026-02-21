@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Mapa de Rutas{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-3">Mapa Interactivo</h2>
+        <p class="text-muted">Vista del guía turístico para Puntos de Interés (POIs).</p>
+        
+        <div id="mi-mapa" class="map-container"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 1. Inicializar el mapa centrado en unas coordenadas (ej: Madrid) y con un nivel de zoom
+    var map = L.map('mi-mapa').setView([40.4168, -3.7038], 13);
+
+    // 2. Añadir la capa base de azulejos (Tiles) de OpenStreetMap
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // 3. Añadir un marcador de ejemplo (Punto de Interés)
+    var marker = L.marker([40.4168, -3.7038]).addTo(map);
+    
+    // 4. Añadir un popup al marcador
+    marker.bindPopup("<b>¡Hola Guía!</b><br>Este es el punto de encuentro.").openPopup();
+</script>
+{% endblock %}
