@@ -9,18 +9,28 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+if os.name == 'nt':
+    GDAL_LIBRARY_PATH = os.getenv('GDAL_LIBRARY_PATH', 'C:\\OSGeo4W64\\bin\\gdal304.dll')
+    GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH', 'C:\\OSGeo4W64\\bin\\geos_c.dll')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-!^p7t-p(0dv0kkm-as6bh^4i299y-543t_kn$#93p2p4ahyj7u'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
+
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -37,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.gis',
 ]
 
 MIDDLEWARE = [
@@ -74,11 +85,14 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.contrib.gis.db.backends.postgis', # Mantenemos el motor espacial
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST', 'localhost'), # localhost por defecto
+        'PORT': os.getenv('DB_PORT', '5432'),      # 5432 por defecto
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
