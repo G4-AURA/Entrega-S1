@@ -23,4 +23,5 @@ urlpatterns = [
     # Ruta temporal para probar el mapa en la página de inicio
     path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
     path('api/rutas/', include('creacion.urls')),
+    path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
 ]

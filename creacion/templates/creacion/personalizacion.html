@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Personalización de Ruta{% endblock %}
+
+{% block extra_css %}
+<style>
+    .personalizacion-wrapper {
+        max-width: 960px;
+        margin: 0 auto;
+    }
+
+    .gradient-card {
+        border: 0;
+        border-radius: 1rem;
+        background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%);
+    }
+
+    .form-label {
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="personalizacion-wrapper py-2 py-md-4">
+    <div class="card gradient-card shadow-sm">
+        <div class="card-body p-4 p-md-5">
+            <div class="mb-4">
+                <h2 class="h3 mb-2">Personalización de Ruta</h2>
+                <p class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
+            </div>
+
+            <div id="estado-respuesta" class="alert d-none" role="alert"></div>
+
+            <form id="form-personalizacion-ruta" class="row g-3 g-md-4">
+                <div class="col-12 col-md-6">
+                    <label for="duracion" class="form-label">Duración</label>
+                    <select id="duracion" name="duracion" class="form-select form-select-lg" required>
+                        <option value="" selected disabled>Selecciona duración</option>
+                        <option value="1">1 hora</option>
+                        <option value="2">2 horas</option>
+                        <option value="3">3 horas</option>
+                        <option value="4">4 horas</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-6">
+                    <label for="personas" class="form-label">Personas</label>
+                    <select id="personas" name="personas" class="form-select form-select-lg" required>
+                        <option value="" selected disabled>Selecciona grupo</option>
+                        <option value="1-2">1 a 2 personas</option>
+                        <option value="3-5">3 a 5 personas</option>
+                        <option value="6-10">6 a 10 personas</option>
+                        <option value="10+">Más de 10 personas</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-6">
+                    <label for="exigencia" class="form-label">Exigencia</label>
+                    <select id="exigencia" name="exigencia" class="form-select form-select-lg" required>
+                        <option value="" selected disabled>Selecciona nivel</option>
+                        <option value="baja">Baja</option>
+                        <option value="media">Media</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-6">
+                    <label for="mood" class="form-label">Mood</label>
+                    <select id="mood" name="mood" class="form-select form-select-lg" required>
+                        <option value="" selected disabled>Selecciona mood</option>
+                        <option value="cultural">Cultural</option>
+                        <option value="relax">Relax</option>
+                        <option value="aventura">Aventura</option>
+                        <option value="gastronomico">Gastronómico</option>
+                    </select>
+                </div>
+
+                <div class="col-12 d-grid d-md-flex justify-content-md-end pt-2">
+                    <button id="btn-generar-ruta" type="submit" class="btn btn-primary btn-lg px-4">
+                        Generar la ruta
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const form = document.getElementById('form-personalizacion-ruta');
+    const boton = document.getElementById('btn-generar-ruta');
+    const estado = document.getElementById('estado-respuesta');
+
+    function mostrarMensaje(tipo, texto) {
+        estado.className = `alert alert-${tipo}`;
+        estado.textContent = texto;
+        estado.classList.remove('d-none');
+    }
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const payload = {
+            duracion: form.duracion.value,
+            personas: form.personas.value,
+            exigencia: form.exigencia.value,
+            mood: form.mood.value,
+        };
+
+        boton.disabled = true;
+        boton.textContent = 'Generando...';
+        estado.classList.add('d-none');
+
+        try {
+            const response = await fetch('/api/rutas/generar/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                mostrarMensaje('danger', data.mensaje || 'No se pudo generar la ruta.');
+            } else {
+                mostrarMensaje('success', data.mensaje || 'Ruta generada correctamente.');
+            }
+        } catch (error) {
+            mostrarMensaje('danger', 'Error de conexión con el backend. Inténtalo de nuevo.');
+        } finally {
+            boton.disabled = false;
+            boton.textContent = 'Generar la ruta';
+        }
+    });
+</script>
+{% endblock %}
