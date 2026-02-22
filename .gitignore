@@ -16,3 +16,8 @@ db.sqlite3
 # Archivos estáticos y multimedia (opcional según tu configuración)
 /static/
 /media/
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
