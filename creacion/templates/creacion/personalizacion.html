@@ -18,6 +18,32 @@
     .form-label {
         font-weight: 600;
     }
+
+    .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        z-index: 1080;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(2px);
+    }
+
+    .loading-overlay.show {
+        display: flex;
+    }
+
+    .loading-overlay__card {
+        width: min(92vw, 420px);
+        border-radius: 1rem;
+    }
+
+    .loading-overlay__spinner {
+        width: 3.5rem;
+        height: 3.5rem;
+    }
+
 </style>
 {% endblock %}
 
@@ -85,6 +111,13 @@
         </div>
     </div>
 </section>
+<div id="pantalla-carga" class="loading-overlay" role="status" aria-live="polite" aria-hidden="true">
+    <div class="loading-overlay__card card shadow-sm border-0 text-center p-4 p-md-5">
+        <div class="spinner-border text-primary loading-overlay__spinner mx-auto" aria-hidden="true"></div>
+        <h3 class="h5 mt-4 mb-2">Generando tu ruta personalizada</h3>
+        <p class="text-muted mb-0">La IA está procesando la información. Esto puede tardar unos segundos.</p>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -92,6 +125,13 @@
     const form = document.getElementById('form-personalizacion-ruta');
     const boton = document.getElementById('btn-generar-ruta');
     const estado = document.getElementById('estado-respuesta');
+    const pantallaCarga = document.getElementById('pantalla-carga');
+
+    function setCargando(estaCargando) {
+        pantallaCarga.classList.toggle('show', estaCargando);
+        pantallaCarga.setAttribute('aria-hidden', String(!estaCargando));
+        document.body.classList.toggle('overflow-hidden', estaCargando);
+    }
 
     function mostrarMensaje(tipo, texto) {
         estado.className = `alert alert-${tipo}`;
@@ -112,7 +152,9 @@
         boton.disabled = true;
         boton.textContent = 'Generando...';
         estado.classList.add('d-none');
-
+        setCargando(true);
+        // DEBUG: fuerza 1.5s para ver el overlay. Se quita cuando el api funciona correctamente
+        await new Promise(r => setTimeout(r, 1500));
         try {
             const response = await fetch('/api/rutas/generar/', {
                 method: 'POST',
@@ -134,6 +176,7 @@
         } finally {
             boton.disabled = false;
             boton.textContent = 'Generar la ruta';
+            setCargando(false);
         }
     });
 </script>
