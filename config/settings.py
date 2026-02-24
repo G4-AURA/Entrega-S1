@@ -34,6 +34,7 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
