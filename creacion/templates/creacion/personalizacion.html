@@ -19,6 +19,18 @@
         font-weight: 600;
     }
 
+    .map-container-ruta {
+        height: 500px;
+        width: 100%;
+        border-radius: 1rem;
+        border: 1px solid #dee2e6;
+    }
+
+    .list-paradas-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
     .loading-overlay {
         position: fixed;
         inset: 0;
@@ -86,6 +98,7 @@
         <div class="card-body p-4 p-md-5">
             <div class="mb-4">
                 <h2 class="h3 mb-2">Personalización de Ruta</h2>
+                <p id="ruta-meta" class="text-muted mb-3 d-none"></p>
                 <p class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
             </div>
 
@@ -164,6 +177,20 @@
             </form>
         </div>
     </div>
+
+    <div id="seccion-resultados" class="row d-none mt-4">
+        <div class="col-12 col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="mapa-ruta" class="map-container-ruta"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4 mt-3 mt-lg-0">
+            <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
+            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm"></div>
+        </div>
+    </div>
 </section>
 <div id="pantalla-carga" class="loading-overlay" role="status" aria-live="polite" aria-hidden="true">
     <div class="loading-overlay__card card shadow-sm border-0 text-center p-4 p-md-5">
@@ -181,6 +208,8 @@
     const estado = document.getElementById('estado-respuesta');
     const pantallaCarga = document.getElementById('pantalla-carga');
 
+    let leafletMap = null;
+
     function setCargando(estaCargando) {
         pantallaCarga.classList.toggle('show', estaCargando);
         pantallaCarga.setAttribute('aria-hidden', String(!estaCargando));
@@ -193,6 +222,52 @@
         estado.classList.remove('d-none');
     }
 
+    function renderizarRuta(datos) {
+        document.getElementById('seccion-resultados').classList.remove('d-none');
+        const lista = document.getElementById('lista-paradas');
+        const rutaMeta = document.getElementById('ruta-meta');
+        lista.innerHTML = '';
+
+        rutaMeta.classList.remove('d-none');
+        rutaMeta.textContent = `${datos.titulo || 'Ruta generada'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Exigencia ${datos.nivel_exigencia || '-'}`;
+
+        if (leafletMap) {
+            leafletMap.remove();
+        }
+
+        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}";
+        const primeraParada = (datos.paradas && datos.paradas[0]) || null;
+        const coordenadaInicial = (primeraParada && (primeraParada.coordenadas || primeraParada.coords)) || [40.4167, -3.7037];
+
+        leafletMap = L.map('mapa-ruta').setView(coordenadaInicial, 14);
+
+        L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
+            attribution: '© Mapbox'
+        }).addTo(leafletMap);
+
+        const puntos = [];
+        (datos.paradas || []).forEach((p, idx) => {
+            const coords = p.coordenadas || p.coords;
+            if (!coords) return;
+            puntos.push(coords);
+
+            L.marker(coords).addTo(leafletMap)
+                .bindPopup(`<b>${p.orden || idx + 1}. ${p.nombre || 'Parada'}</b>`);
+
+            lista.innerHTML += `
+                <div class="list-group-item border-start border-primary border-4">
+                    <div class="fw-bold">${p.orden || idx + 1}. ${p.nombre || 'Parada'}</div>
+                    <div class="small text-muted">${p.descripcion || p.desc || ''}</div>
+                </div>`;
+        });
+    
+
+        if (puntos.length > 1) {
+            L.polyline(puntos, { color: '#0d6efd', weight: 4, opacity: 0.5 }).addTo(leafletMap);
+            leafletMap.fitBounds(puntos, { padding: [50, 50] });
+        }
+    }
+
     // Manejar la activación visual de los botones de mood
     document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
@@ -203,7 +278,6 @@
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
 
-        // Obtener los valores de mood seleccionados
         const moodSeleccionados = Array.from(form.querySelectorAll('input[name="mood"]:checked'))
             .map(checkbox => checkbox.value);
 
@@ -218,8 +292,6 @@
         boton.textContent = 'Generando...';
         estado.classList.add('d-none');
         setCargando(true);
-        // DEBUG: fuerza 1.5s para ver el overlay. Se quita cuando el api funciona correctamente
-        await new Promise(r => setTimeout(r, 1500));
         try {
             const response = await fetch('/api/rutas/generar/', {
                 method: 'POST',
@@ -234,6 +306,7 @@
             if (!response.ok) {
                 mostrarMensaje('danger', data.mensaje || 'No se pudo generar la ruta.');
             } else {
+                renderizarRuta(data.datos_ruta || {});
                 mostrarMensaje('success', data.mensaje || 'Ruta generada correctamente.');
             }
         } catch (error) {
