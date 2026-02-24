@@ -44,6 +44,39 @@
         height: 3.5rem;
     }
 
+    .mood-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .mood-btn {
+        padding: 0.5rem 1rem;
+        border: 2px solid #dee2e6;
+        border-radius: 2rem;
+        background: white;
+        color: #6c757d;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.95rem;
+        user-select: none;
+    }
+
+    .mood-btn:hover {
+        border-color: #0d6efd;
+        color: #0d6efd;
+    }
+
+    .mood-btn.active {
+        background: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+    }
+
+    .mood-btn input[type="checkbox"] {
+        display: none;
+    }
+
 </style>
 {% endblock %}
 
@@ -60,25 +93,15 @@
 
             <form id="form-personalizacion-ruta" class="row g-3 g-md-4">
                 <div class="col-12 col-md-6">
-                    <label for="duracion" class="form-label">Duración</label>
-                    <select id="duracion" name="duracion" class="form-select form-select-lg" required>
-                        <option value="" selected disabled>Selecciona duración</option>
-                        <option value="1">1 hora</option>
-                        <option value="2">2 horas</option>
-                        <option value="3">3 horas</option>
-                        <option value="4">4 horas</option>
-                    </select>
+                    <label for="duracion" class="form-label">Duración (horas)</label>
+                    <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" 
+                           min="1" max="24" step="1" placeholder="Ej: 2" required>
                 </div>
 
                 <div class="col-12 col-md-6">
-                    <label for="personas" class="form-label">Personas</label>
-                    <select id="personas" name="personas" class="form-select form-select-lg" required>
-                        <option value="" selected disabled>Selecciona grupo</option>
-                        <option value="1-2">1 a 2 personas</option>
-                        <option value="3-5">3 a 5 personas</option>
-                        <option value="6-10">6 a 10 personas</option>
-                        <option value="10+">Más de 10 personas</option>
-                    </select>
+                    <label for="personas" class="form-label">Número de Personas</label>
+                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" 
+                           min="1" max="100" step="1" placeholder="Ej: 4" required>
                 </div>
 
                 <div class="col-12 col-md-6">
@@ -91,15 +114,46 @@
                     </select>
                 </div>
 
-                <div class="col-12 col-md-6">
-                    <label for="mood" class="form-label">Mood</label>
-                    <select id="mood" name="mood" class="form-select form-select-lg" required>
-                        <option value="" selected disabled>Selecciona mood</option>
-                        <option value="cultural">Cultural</option>
-                        <option value="relax">Relax</option>
-                        <option value="aventura">Aventura</option>
-                        <option value="gastronomico">Gastronómico</option>
-                    </select>
+                <div class="col-12">
+                    <label class="form-label">Tipo de Itinerario (selecciona uno o varios)</label>
+                    <div class="mood-buttons">
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="misterio-leyendas">
+                            <span>Misterio y Leyendas</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="local">
+                            <span>Local</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="cine-series">
+                            <span>Cine y Series</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="religioso-espiritual">
+                            <span>Religioso y Espiritual</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="arquitectura-diseno">
+                            <span>Arquitectura y Diseño</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="historia">
+                            <span>Historia</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="gastronomia">
+                            <span>Gastronomía</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="naturaleza">
+                            <span>Naturaleza</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="ocio-cultural">
+                            <span>Ocio/Cultural</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="col-12 d-grid d-md-flex justify-content-md-end pt-2">
@@ -139,14 +193,25 @@
         estado.classList.remove('d-none');
     }
 
+    // Manejar la activación visual de los botones de mood
+    document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            this.closest('.mood-btn').classList.toggle('active', this.checked);
+        });
+    });
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
 
+        // Obtener los valores de mood seleccionados
+        const moodSeleccionados = Array.from(form.querySelectorAll('input[name="mood"]:checked'))
+            .map(checkbox => checkbox.value);
+
         const payload = {
-            duracion: form.duracion.value,
-            personas: form.personas.value,
+            duracion: parseInt(form.duracion.value),
+            personas: parseInt(form.personas.value),
             exigencia: form.exigencia.value,
-            mood: form.mood.value,
+            mood: moodSeleccionados,
         };
 
         boton.disabled = true;
