@@ -3,30 +3,27 @@ from django.contrib.auth.models import User
 from django.contrib.gis.db import models as gis_models
 from django.contrib.postgres.fields import ArrayField
 
-class AUTH_USER(models.Model):
-    username = models.CharField(max_length=150, unique=True)
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=128)
-
+class AuthUser(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='auth_profile')
     def __str__(self):
-        return self.username
+        return self.user.username
 
-class GUIA(models.Model):
+class Guia(models.Model):
     class Suscripcion(models.TextChoices):
         FREEMIUM = 'Freemium', 'Freemium'
         PREMIUM = 'Premium', 'Premium'
     tipo_suscripcion = models.CharField(max_length=50, choices=Suscripcion.choices, default=Suscripcion.FREEMIUM)
 
-    user = models.OneToOneField(AUTH_USER, on_delete=models.CASCADE, related_name='guia', null=True, blank=True,)
+    user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, related_name='guia', null=True, blank=True,)
 
     def __str__(self):
-        return f"{self.user.username} ({self.tipo_suscripcion})"
+        return f"{self.user.user.username} ({self.tipo_suscripcion})"
 
-class RUTA(models.Model):
+class Ruta(models.Model):
     titulo = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True)
-    duracion_horas = models.FloatField()
-    num_personas = models.IntegerField()
+    duracion_horas = models.FloatField(min_value=0.1)
+    num_personas = models.IntegerField(min_value=1)
     class Exigencia(models.TextChoices):
         BAJA = 'Baja', 'Baja'
         MEDIA = 'Media', 'Media'
@@ -43,21 +40,20 @@ class RUTA(models.Model):
         ARQUITECTURA_Y_DISEÑO = 'Arquitectura y Diseño', 'Arquitectura y Diseño'
         OCIO_CULTURAL = 'Ocio/Cultural', 'Ocio/Cultural'
     mood = ArrayField(
-        models.CharField(max_length=20, choices=Mood.choices),
+        models.CharField(max_length=25, choices=Mood.choices),
         default=list
     )
     es_generada_ia = models.BooleanField(default=False)
-    guia = models.ForeignKey(GUIA, on_delete=models.CASCADE)
+    guia = models.ForeignKey(Guia, on_delete=models.CASCADE, related_name='rutas')
 
 
     def __str__(self):
         return self.titulo
 
-class PARADA(models.Model):
-    orden = models.IntegerField()
+class Parada(models.Model):
+    orden = models.IntegerField(min_value=1)
     nombre = models.CharField(max_length=255)
     coordenadas = gis_models.PointField()
-    ruta = models.ForeignKey(RUTA, on_delete=models.CASCADE)
-
+    ruta = models.ForeignKey(Ruta, on_delete=models.CASCADE, related_name='paradas')
     def __str__(self):
         return f"{self.nombre} (Orden: {self.orden})"
