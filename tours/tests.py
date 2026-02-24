@@ -3,7 +3,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import RUTA, SESION_TOUR, TURISTA
+from .models import RUTA, SESION_TOUR, TURISTA, UBICACION_VIVO
 
 
 class SessionLogicEndpointsTests(TestCase):
@@ -103,6 +103,71 @@ class SessionLogicEndpointsTests(TestCase):
         response = client.post(
             reverse('tours:unirse_tour'),
             data='{"codigo_acceso": "TMP001"}',
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+
+class TrackingEndpointsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='track_user', password='1234')
+        self.ruta = RUTA.objects.create(nombre='Ruta Tracking', descripcion='Tracking test')
+        self.sesion = SESION_TOUR.objects.create(
+            codigo_acceso='TRK001',
+            estado='en_curso',
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+
+    def test_registrar_ubicacion_crea_registro(self):
+        client = Client()
+        client.force_login(self.user)
+
+        response = client.post(
+            '/api/ubicacion/',
+            data='{"sesion_id": %d, "latitud": 37.3891, "longitud": -5.9845}' % self.sesion.id,
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(UBICACION_VIVO.objects.count(), 1)
+        ubicacion = UBICACION_VIVO.objects.first()
+        self.assertEqual(ubicacion.sesion_tour_id, self.sesion.id)
+        self.assertEqual(ubicacion.usuario_id, self.user.id)
+        self.assertAlmostEqual(ubicacion.coordenadas.y, 37.3891, places=4)
+        self.assertAlmostEqual(ubicacion.coordenadas.x, -5.9845, places=4)
+
+    def test_registrar_ubicacion_requiere_autenticacion(self):
+        client = Client()
+
+        response = client.post(
+            '/api/ubicacion/',
+            data='{"sesion_id": %d, "latitud": 37.3891, "longitud": -5.9845}' % self.sesion.id,
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_registrar_ubicacion_valida_campos_obligatorios(self):
+        client = Client()
+        client.force_login(self.user)
+
+        response = client.post(
+            '/api/ubicacion/',
+            data='{"latitud": 37.3891, "longitud": -5.9845}',
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_registrar_ubicacion_valida_rango(self):
+        client = Client()
+        client.force_login(self.user)
+
+        response = client.post(
+            '/api/ubicacion/',
+            data='{"sesion_id": %d, "latitud": 120.0, "longitud": -5.9845}' % self.sesion.id,
             content_type='application/json',
         )
 

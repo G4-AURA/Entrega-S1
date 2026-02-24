@@ -2,11 +2,12 @@ import json
 import secrets
 import string
 
+from django.contrib.gis.geos import Point
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import SESION_TOUR, TURISTA
+from .models import SESION_TOUR, TURISTA, UBICACION_VIVO
 
 
 def _is_authenticated(request):
@@ -86,6 +87,60 @@ def unirse_tour(request):
 			'codigo_acceso': sesion.codigo_acceso,
 		},
 		status=200,
+	)
+
+
+@require_POST
+def registrar_ubicacion(request):
+	if not _is_authenticated(request):
+		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
+
+	try:
+		body = json.loads(request.body or '{}')
+	except json.JSONDecodeError:
+		return JsonResponse({'error': 'JSON inválido.'}, status=400)
+
+	latitud = body.get('latitud')
+	longitud = body.get('longitud')
+	sesion_id = body.get('sesion_id')
+
+	if latitud is None or longitud is None or sesion_id is None:
+		return JsonResponse(
+			{'error': 'Los campos sesion_id, latitud y longitud son obligatorios.'},
+			status=400,
+		)
+
+	try:
+		latitud = float(latitud)
+		longitud = float(longitud)
+	except (TypeError, ValueError):
+		return JsonResponse({'error': 'Latitud/longitud deben ser numéricas.'}, status=400)
+
+	if not (-90 <= latitud <= 90) or not (-180 <= longitud <= 180):
+		return JsonResponse({'error': 'Coordenadas fuera de rango válido.'}, status=400)
+
+	try:
+		sesion = SESION_TOUR.objects.get(id=sesion_id)
+	except SESION_TOUR.DoesNotExist:
+		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	ubicacion = UBICACION_VIVO.objects.create(
+		coordenadas=Point(longitud, latitud, srid=4326),
+		timestamp=timezone.now(),
+		sesion_tour=sesion,
+		usuario=request.user,
+	)
+
+	return JsonResponse(
+		{
+			'message': 'Ubicación registrada correctamente.',
+			'ubicacion_id': ubicacion.id,
+			'sesion_id': sesion.id,
+			'latitud': latitud,
+			'longitud': longitud,
+			'timestamp': ubicacion.timestamp.isoformat(),
+		},
+		status=201,
 	)
 
 
