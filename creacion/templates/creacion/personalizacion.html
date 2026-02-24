@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Personalización de Ruta{% endblock %}
+
+{% block extra_css %}
+<style>
+    .personalizacion-wrapper { max-width: 1100px; margin: 0 auto; }
+    .gradient-card { border: 0; border-radius: 1rem; background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%); }
+    .form-label { font-weight: 600; }
+    
+    .map-container-ruta { height: 500px; width: 100%; border-radius: 1rem; border: 1px solid #dee2e6; }
+    .list-paradas-container { max-height: 500px; overflow-y: auto; }
+    
+    .loading-overlay {
+        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
+        z-index: 1080; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px);
+    }
+    .loading-overlay.show { display: flex; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="personalizacion-wrapper py-2 py-md-4">
+    <div class="card gradient-card shadow-sm mb-4">
+        <div class="card-body p-4 p-md-5">
+            <h2 class="h3 mb-2">Personalización de Ruta</h2>
+            
+            <div id="estado-respuesta" class="alert d-none" role="alert"></div>
+
+            <form id="form-personalizacion-ruta" class="row g-3 g-md-4">
+                <div class="col-12">
+                    <label for="ciudad" class="form-label">¿Qué ciudad quieres recorrer?</label>
+                    <input type="text" id="ciudad" name="ciudad" class="form-control form-control-lg" required>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">Duración</label>
+                    <select id="duracion" name="duracion" class="form-select" required>
+                        <option value="1">1 hora</option>
+                        <option value="2">2 horas</option>
+                        <option value="3" selected>3 horas</option>
+                        <option value="4">4 horas</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">Personas</label>
+                    <select id="personas" name="personas" class="form-select" required>
+                        <option value="1-2">1 a 2 personas</option>
+                        <option value="3-5" selected>3 a 5 personas</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">Exigencia</label>
+                    <select id="exigencia" name="exigencia" class="form-select" required>
+                        <option value="baja">Baja</option>
+                        <option value="media" selected>Media</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">Mood</label>
+                    <select id="mood" name="mood" class="form-select" required>
+                        <option value="cultural">Cultural</option>
+                        <option value="historia" selected>Historia</option>
+                    </select>
+                </div>
+                <div class="col-12 d-flex justify-content-end">
+                    <button id="btn-generar-ruta" type="submit" class="btn btn-primary px-5">Generar la ruta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="seccion-resultados" class="row d-none">
+        <div class="col-12 col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="mapa-ruta" class="map-container-ruta"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
+            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
+                </div>
+        </div>
+    </div>
+</section>
+
+<div id="pantalla-carga" class="loading-overlay">
+    <div class="card p-5 text-center shadow-lg border-0" style="max-width: 400px;">
+        <div class="spinner-border text-primary mx-auto mb-4" style="width: 3rem; height: 3rem;"></div>
+        <h5>Generando...</h5>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const form = document.getElementById('form-personalizacion-ruta');
+    const boton = document.getElementById('btn-generar-ruta');
+    const estado = document.getElementById('estado-respuesta');
+    const pantallaCarga = document.getElementById('pantalla-carga');
+    
+    let leafletMap = null;
+
+    function setCargando(estaCargando) {
+        pantallaCarga.classList.toggle('show', estaCargando);
+        boton.disabled = estaCargando;
+    }
+
+    function renderizarRuta(datos) {
+        document.getElementById('seccion-resultados').classList.remove('d-none');
+        const lista = document.getElementById('lista-paradas');
+        lista.innerHTML = '';
+
+        // 1. Reiniciar Mapa si ya existe
+        if (leafletMap) { leafletMap.remove(); }
+        
+        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}"; 
+        
+        // 2. Crear Mapa centrado en la primera parada
+        leafletMap = L.map('mapa-ruta').setView(datos.paradas[0].coordenadas, 14);
+        
+        L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
+            attribution: '© Mapbox'
+        }).addTo(leafletMap);
+
+        const puntos = [];
+        
+        // 3. Dibujar paradas
+        datos.paradas.forEach((p) => {
+            puntos.push(p.coordenadas);
+            
+            // Marcador
+            L.marker(p.coordenadas).addTo(leafletMap)
+                .bindPopup(`<b>${p.orden}. ${p.nombre}</b>`);
+
+            // Elemento de lista
+            lista.innerHTML += `
+                <div class="list-group-item border-start border-primary border-4">
+                    <div class="fw-bold">${p.orden}. ${p.nombre}</div>
+                    <div class="small text-muted">${p.descripcion}</div>
+                </div>`;
+        });
+
+        // 4. Dibujar línea de conexión y ajustar vista
+        L.polyline(puntos, {color: '#0d6efd', weight: 4, opacity: 0.5}).addTo(leafletMap);
+        leafletMap.fitBounds(puntos, {padding: [50, 50]});
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setCargando(true);
+        estado.classList.add('d-none');
+
+        const payload = {
+            ciudad: form.ciudad.value,
+            duracion: form.duracion.value,
+            personas: form.personas.value,
+            exigencia: form.exigencia.value,
+            mood: form.mood.value,
+        };
+
+        try {
+            const response = await fetch('/api/rutas/generar/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                renderizarRuta(data.datos_ruta);
+                estado.className = "alert alert-success";
+                estado.textContent = data.mensaje;
+            } else {
+                estado.className = "alert alert-danger";
+                estado.textContent = data.mensaje || "Error al generar";
+            }
+            estado.classList.remove('d-none');
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setCargando(false);
+        }
+    });
+</script>
+{% endblock %}
