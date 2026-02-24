@@ -1,0 +1,43 @@
+{
+  "titulo": "Sabores de Sevilla: Un Viaje Gastronómico de Tapas",
+  "descripcion": "Descubre la vibrante escena culinaria de Sevilla en esta ruta de tapas de 3 horas. Exploraremos mercados tradicionales y tabernas con encanto, degustando lo mejor de la gastronomía sevillana, desde el Triana más auténtico hasta el corazón histórico.",
+  "duracion_horas": 3.0,
+  "num_personas": 5,
+  "nivel_exigencia": "medio",
+  "mood": "gastronomia",
+  "es_generada_ia": true,
+  "paradas": [
+    {
+      "orden": 1,
+      "nombre": "Mercado de Triana",
+      "coordenadas": {
+        "lat": 37.3918,
+        "lon": -6.0008
+      }
+    },
+    {
+      "orden": 2,
+      "nombre": "Cervecería Bar Santa Ana (Triana)",
+      "coordenadas": {
+        "lat": 37.3889,
+        "lon": -6.0011
+      }
+    },
+    {
+      "orden": 3,
+      "nombre": "Bodeguita Romero (El Arenal)",
+      "coordenadas": {
+        "lat": 37.3865,
+        "lon": -5.9969
+      }
+    },
+    {
+      "orden": 4,
+      "nombre": "Giralda Bar (Barrio Santa Cruz)",
+      "coordenadas": {
+        "lat": 37.3865,
+        "lon": -5.9936
+      }
+    }
+  ]
+}
