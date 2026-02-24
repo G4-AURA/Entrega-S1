@@ -16,13 +16,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from django.views.generic import TemplateView
+from config import views
 from tours import views as tours_views
+
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/ubicacion/', tours_views.registrar_ubicacion, name='api_ubicacion'),
     path('tours/', include('tours.urls')),
-    # Ruta temporal para probar el mapa en la página de inicio
-    path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
+    path('', views.home_router, name='home'),
 ]

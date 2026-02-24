@@ -6,6 +6,8 @@ from django.contrib.gis.geos import Point
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django.shortcuts import redirect, render, get_object_or_404
+from django.contrib.auth.decorators import login_required
 
 from .models import SESION_TOUR, TURISTA, UBICACION_VIVO
 
@@ -21,6 +23,48 @@ def _generate_unique_access_code(length=6):
 		if not SESION_TOUR.objects.filter(codigo_acceso=code).exists():
 			return code
 
+@login_required
+def pantalla_unirse_tour(request):
+
+	try:
+		# 1. Buscamos el perfil de turista del usuario logueado
+		turista = TURISTA.objects.get(user=request.user)
+		
+		# 2. Buscamos todas las sesiones en las que este turista esté incluido
+		# Las ordenamos para que las más recientes salgan primero
+		mis_tours = SESION_TOUR.objects.filter(turistas=turista).order_by('-fecha_inicio')
+		
+	except TURISTA.DoesNotExist:
+		turista = None
+		mis_tours = []
+
+	# Le pasamos los datos reales a la plantilla HTML
+	context = {
+		'turista': turista,
+		'mis_tours': mis_tours
+	}
+	
+	return render(request, 'inicio_turista.html', context)
+
+@login_required
+def mapa_turista(request, sesion_id):
+    """
+    Vista inmersiva del mapa para un turista dentro de una sesión específica.
+    """
+    # 1. Buscamos la sesión por su ID. Si no existe, devuelve un error 404 seguro.
+    sesion = get_object_or_404(SESION_TOUR, id=sesion_id)
+    
+    # 2. Seguridad extra: Comprobamos que este turista realmente pertenece a esta sesión
+    if not hasattr(request.user, 'turista') or request.user.turista not in sesion.turistas.all():
+        return redirect('tours:pantalla_unirse') # Si intenta colarse, lo devolvemos a su panel
+    
+    # 3. Preparamos los datos para enviarlos al HTML
+    context = {
+        'sesion': sesion,
+        #'ruta': sesion.ruta,
+    }
+    
+    return render(request, 'turista_mapa.html', context)
 
 @require_POST
 def iniciar_tour(request, sesion_id):
@@ -74,9 +118,6 @@ def unirse_tour(request):
 		sesion = SESION_TOUR.objects.get(codigo_acceso=codigo_acceso)
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Código de acceso inválido.'}, status=404)
-
-	if sesion.estado != 'en_curso':
-		return JsonResponse({'error': 'La sesión no está activa para unirse.'}, status=400)
 
 	sesion.turistas.add(turista)
 

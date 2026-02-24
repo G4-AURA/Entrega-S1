@@ -11,14 +11,6 @@ class TURISTA(models.Model):
         return self.alias
 
 
-class RUTA(models.Model):
-    nombre = models.CharField(max_length=255)
-    descripcion = models.TextField(blank=True)
-
-    def __str__(self):
-        return self.nombre
-
-
 class SESION_TOUR(models.Model):
     ESTADO_CHOICES = [
         ('pendiente', 'Pendiente'),
@@ -29,11 +21,13 @@ class SESION_TOUR(models.Model):
     codigo_acceso = models.CharField(max_length=50, unique=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
     fecha_inicio = models.DateTimeField()
-    ruta = models.ForeignKey(RUTA, on_delete=models.CASCADE)
-    turistas = models.ManyToManyField(TURISTA)
+    # ruta = models.ForeignKey(RUTA, on_delete=models.CASCADE)
+    turistas = models.ManyToManyField(TURISTA, blank=True)
 
     def __str__(self):
-        return f"{self.ruta.nombre} - {self.codigo_acceso}"
+        return f"{self.codigo_acceso}"
+    #{self.ruta.nombre} - 
+    
 
 
 class UBICACION_VIVO(models.Model):

@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block extra_js %}
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<script src="{% static 'js/unirse.js' %}"></script>
+{% endblock %}
+
+{% block title %}AURA - Mis Tours{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+
+<div class="container py-4 py-md-5">
+    
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-5 gap-3">
+        <div>
+            <p class="text-muted mb-1 fs-5">Hola, {{ turista.alias|default:"Viajero" }} 👋</p>
+            <h1 class="fw-bold mb-0 text-dark display-6">Mis Tours</h1>
+        </div>
+        
+        <button class="btn btn-brand btn-lg rounded-pill px-4 fw-bold shadow-sm d-flex align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#joinModal">
+            <span class="material-icons-round me-2">qr_code_scanner</span>
+            Unirse a un Tour
+        </button>
+    </div>
+
+    <h5 class="text-muted text-uppercase fs-6 fw-bold mb-4" style="letter-spacing: 1px;">Compartidos conmigo</h5>
+    
+    <div class="row g-4">
+        
+        {% for tour in mis_tours %}
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="card h-100 border-0 shadow-sm rounded-4 overflow-hidden tour-card">
+                <div class="tour-image position-relative" style="background-image: url('https://images.unsplash.com/photo-1550355291-bbee04a92027?auto=format&fit=crop&w=600&q=80');">
+                    <span class="badge bg-white text-dark position-absolute top-0 end-0 m-3 px-3 py-2 rounded-pill fw-bold shadow-sm" style="color: var(--brand-color) !important;">
+                        {{ tour.get_estado_display|upper }}
+                    </span>
+                </div>
+                <div class="card-body p-4">
+                    <!--<h4 class="fw-bold mb-3">{{ tour.ruta.nombre }}</h4>-->
+                    <h4 class="fw-bold mb-3">{{ tour.codigo_acceso }}</h4>
+                    <div class="text-muted d-flex flex-column gap-2 mb-4">
+                        <span class="d-flex align-items-center gap-2">
+                            <span class="material-icons-round text-secondary" style="font-size:18px">event</span> 
+                            {{ tour.fecha_inicio|date:"d M, Y" }}
+                        </span>
+                        <span class="d-flex align-items-center gap-2">
+                            <span class="material-icons-round text-secondary" style="font-size:18px">access_time</span> 
+                            {{ tour.fecha_inicio|time:"H:i" }}
+                        </span>
+                    </div>
+
+                    <a href="{% url 'tours:mapa_turista' tour.id %}" class="btn btn-outline-primary w-100 rounded-pill fw-bold" style="border-color: var(--brand-color); color: var(--brand-color);">
+                        Ir al mapa
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        {% empty %}
+        <div class="col-12 text-center py-5 my-5">
+            <div class="text-muted mb-3">
+                <span class="material-icons-round" style="font-size: 64px; opacity: 0.3;">explore_off</span>
+            </div>
+            <h3 class="fw-bold text-secondary">Aún no tienes tours</h3>
+            <p class="text-muted">Utiliza el botón de arriba para introducir el código de tu guía y comenzar tu aventura.</p>
+        </div>
+        {% endfor %}
+        
+    </div>
+</div>
+
+<div class="modal fade" id="joinModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow-lg text-center p-4 p-md-5">
+            <div class="modal-body p-0">
+                
+                <div class="bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style="width: 70px; height: 70px; background-color: #EEF2FF; color: var(--brand-color);">
+                    <span class="material-icons-round" style="font-size:36px">add_location_alt</span>
+                </div>
+                
+                <h3 class="fw-bold mb-2">Nuevo Tour</h3>
+                <p class="text-muted mb-4">Escanea el código QR de tu guía o escríbelo manualmente.</p>
+                
+                <div id="qr-reader" class="mb-4" style="display: none; width: 100%;"></div>
+
+                <button id="btn-start-scan" class="btn btn-outline-dark btn-lg w-100 rounded-pill fw-bold mb-4 d-flex align-items-center justify-content-center">
+                    <span class="material-icons-round me-2">qr_code_scanner</span>
+                    Escanear Código QR
+                </button>
+
+                <div class="d-flex align-items-center mb-4">
+                    <hr class="flex-grow-1 text-muted">
+                    <span class="px-3 text-muted small fw-bold">O ESCRIBE EL CÓDIGO</span>
+                    <hr class="flex-grow-1 text-muted">
+                </div>
+
+                <input type="text" id="codigo-input" class="form-control form-control-lg text-center input-code fw-bold mb-4 bg-light border-0 py-3" placeholder="ABC-123" maxlength="10">
+                
+                <div id="mensaje-resultado" class="alert d-none small text-start mb-4 rounded-3" role="alert"></div>
+
+                <div class="d-grid gap-2">
+                    <button id="btn-unirse" class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3">
+                        Verificar y Unirse
+                    </button>
+                    <button class="btn btn-link text-muted text-decoration-none fw-semibold mt-2" data-bs-dismiss="modal">
+                        Cancelar
+                    </button>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
