@@ -22,12 +22,21 @@ class RutaAdmin(admin.ModelAdmin):
 		"duracion_horas",
 		"num_personas",
 		"nivel_exigencia",
-		"mood",
+			"mood_display",
 		"es_generada_ia",
 		"guia",
 	)
 	search_fields = ("titulo", "descripcion", "guia__user__user__username")
+	def mood_display(self, obj):
+		"""
+		Return a human-readable representation of the mood list.
+		"""
+		if not obj.mood:
+			return ""
+		# Ensure all elements are strings before joining
+		return ", ".join(str(m) for m in obj.mood)
 
+	mood_display.short_description = "Mood"
 
 @admin.register(Parada)
 class ParadaAdmin(admin.ModelAdmin):
