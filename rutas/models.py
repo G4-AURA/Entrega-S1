@@ -17,8 +17,10 @@ class GUIA(models.Model):
         PREMIUM = 'Premium', 'Premium'
     tipo_suscripcion = models.CharField(max_length=50, choices=Suscripcion.choices, default=Suscripcion.FREEMIUM)
 
+    user = models.OneToOneField(AUTH_USER, on_delete=models.CASCADE, related_name='guia', null=True, blank=True,)
+
     def __str__(self):
-        return self.tipo_suscripcion
+        return f"{self.user.username} ({self.tipo_suscripcion})"
 
 class RUTA(models.Model):
     titulo = models.CharField(max_length=255)
