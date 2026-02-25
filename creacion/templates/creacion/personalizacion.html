@@ -4,18 +4,81 @@
 
 {% block extra_css %}
 <style>
-    .personalizacion-wrapper { max-width: 1100px; margin: 0 auto; }
-    .gradient-card { border: 0; border-radius: 1rem; background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%); }
-    .form-label { font-weight: 600; }
-    
-    .map-container-ruta { height: 500px; width: 100%; border-radius: 1rem; border: 1px solid #dee2e6; }
-    .list-paradas-container { max-height: 500px; overflow-y: auto; }
-    
+    .personalizacion-wrapper {
+        max-width: 960px;
+        margin: 0 auto;
+    }
+
+    .gradient-card {
+        border: 0;
+        border-radius: 1rem;
+        background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%);
+    }
+
+    .form-label {
+        font-weight: 600;
+    }
+
+    .map-container-ruta {
+        height: 500px;
+        width: 100%;
+        border-radius: 1rem;
+        border: 1px solid #dee2e6;
+    }
+
+    .list-paradas-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
     .loading-overlay {
         position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
         z-index: 1080; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px);
     }
-    .loading-overlay.show { display: flex; }
+
+    .loading-overlay__card {
+        width: min(92vw, 420px);
+        border-radius: 1rem;
+    }
+
+    .loading-overlay__spinner {
+        width: 3.5rem;
+        height: 3.5rem;
+    }
+
+    .mood-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .mood-btn {
+        padding: 0.5rem 1rem;
+        border: 2px solid #dee2e6;
+        border-radius: 2rem;
+        background: white;
+        color: #6c757d;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.95rem;
+        user-select: none;
+    }
+
+    .mood-btn:hover {
+        border-color: #0d6efd;
+        color: #0d6efd;
+    }
+
+    .mood-btn.active {
+        background: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+    }
+
+    .mood-btn input[type="checkbox"] {
+        display: none;
+    }
+
 </style>
 {% endblock %}
 
@@ -23,8 +86,12 @@
 <section class="personalizacion-wrapper py-2 py-md-4">
     <div class="card gradient-card shadow-sm mb-4">
         <div class="card-body p-4 p-md-5">
-            <h2 class="h3 mb-2">Personalización de Ruta</h2>
-            
+            <div class="mb-4">
+                <h2 class="h3 mb-2">Personalización de Ruta</h2>
+                <p id="ruta-meta" class="text-muted mb-3 d-none"></p>
+                <p class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
+            </div>
+
             <div id="estado-respuesta" class="alert d-none" role="alert"></div>
 
             <form id="form-personalizacion-ruta" class="row g-3 g-md-4">
@@ -33,20 +100,14 @@
                     <input type="text" id="ciudad" name="ciudad" class="form-control form-control-lg" required>
                 </div>
                 <div class="col-12 col-md-6">
-                    <label class="form-label">Duración</label>
-                    <select id="duracion" name="duracion" class="form-select" required>
-                        <option value="1">1 hora</option>
-                        <option value="2">2 horas</option>
-                        <option value="3" selected>3 horas</option>
-                        <option value="4">4 horas</option>
-                    </select>
+                    <label for="duracion" class="form-label">Duración (horas)</label>
+                    <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" 
+                           min="1" max="24" step="1" placeholder="Ej: 2" required>
                 </div>
                 <div class="col-12 col-md-6">
-                    <label class="form-label">Personas</label>
-                    <select id="personas" name="personas" class="form-select" required>
-                        <option value="1-2">1 a 2 personas</option>
-                        <option value="3-5" selected>3 a 5 personas</option>
-                    </select>
+                    <label for="personas" class="form-label">Número de Personas</label>
+                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" 
+                           min="1" max="100" step="1" placeholder="Ej: 4" required>
                 </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label">Exigencia</label>
@@ -56,12 +117,47 @@
                         <option value="alta">Alta</option>
                     </select>
                 </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label">Mood</label>
-                    <select id="mood" name="mood" class="form-select" required>
-                        <option value="cultural">Cultural</option>
-                        <option value="historia" selected>Historia</option>
-                    </select>
+
+                <div class="col-12">
+                    <label class="form-label">Tipo de Itinerario (selecciona uno o varios)</label>
+                    <div class="mood-buttons">
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="misterio-leyendas">
+                            <span>Misterio y Leyendas</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="local">
+                            <span>Local</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="cine-series">
+                            <span>Cine y Series</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="religioso-espiritual">
+                            <span>Religioso y Espiritual</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="arquitectura-diseno">
+                            <span>Arquitectura y Diseño</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="historia">
+                            <span>Historia</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="gastronomia">
+                            <span>Gastronomía</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="naturaleza">
+                            <span>Naturaleza</span>
+                        </label>
+                        <label class="mood-btn">
+                            <input type="checkbox" name="mood" value="ocio-cultural">
+                            <span>Ocio/Cultural</span>
+                        </label>
+                    </div>
                 </div>
                 <div class="col-12 d-flex justify-content-end">
                     <button id="btn-generar-ruta" type="submit" class="btn btn-primary px-5">Generar la ruta</button>
@@ -101,6 +197,8 @@
     const estado = document.getElementById('estado-respuesta');
     const pantallaCarga = document.getElementById('pantalla-carga');
     
+    let leafletMap = null;
+
     let leafletMap = null;
 
     function setCargando(estaCargando) {
@@ -148,19 +246,81 @@
         leafletMap.fitBounds(puntos, {padding: [50, 50]});
     }
 
+    function renderizarRuta(datos) {
+        document.getElementById('seccion-resultados').classList.remove('d-none');
+        const lista = document.getElementById('lista-paradas');
+        const rutaMeta = document.getElementById('ruta-meta');
+        lista.innerHTML = '';
+
+        rutaMeta.classList.remove('d-none');
+        rutaMeta.textContent = `${datos.titulo || 'Ruta generada'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Exigencia ${datos.nivel_exigencia || '-'}`;
+
+        if (leafletMap) {
+            leafletMap.remove();
+        }
+
+        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}";
+        const primeraParada = (datos.paradas && datos.paradas[0]) || null;
+        const coordenadaInicial = (primeraParada && (primeraParada.coordenadas || primeraParada.coords)) || [40.4167, -3.7037];
+
+        leafletMap = L.map('mapa-ruta').setView(coordenadaInicial, 14);
+
+        L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
+            attribution: '© Mapbox'
+        }).addTo(leafletMap);
+
+        const puntos = [];
+        (datos.paradas || []).forEach((p, idx) => {
+            const coords = p.coordenadas || p.coords;
+            if (!coords) return;
+            puntos.push(coords);
+
+            L.marker(coords).addTo(leafletMap)
+                .bindPopup(`<b>${p.orden || idx + 1}. ${p.nombre || 'Parada'}</b>`);
+
+            lista.innerHTML += `
+                <div class="list-group-item border-start border-primary border-4">
+                    <div class="fw-bold">${p.orden || idx + 1}. ${p.nombre || 'Parada'}</div>
+                    <div class="small text-muted">${p.descripcion || p.desc || ''}</div>
+                </div>`;
+        });
+    
+
+        if (puntos.length > 1) {
+            L.polyline(puntos, { color: '#0d6efd', weight: 4, opacity: 0.5 }).addTo(leafletMap);
+            leafletMap.fitBounds(puntos, { padding: [50, 50] });
+        }
+    }
+
+    // Manejar la activación visual de los botones de mood
+    document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            this.closest('.mood-btn').classList.toggle('active', this.checked);
+        });
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         setCargando(true);
         estado.classList.add('d-none');
+
+        const moodSeleccionados = Array.from(form.querySelectorAll('input[name="mood"]:checked'))
+            .map(checkbox => checkbox.value);
 
         const payload = {
             ciudad: form.ciudad.value,
             duracion: form.duracion.value,
             personas: form.personas.value,
             exigencia: form.exigencia.value,
-            mood: form.mood.value,
+            mood: moodSeleccionados,
         };
 
+        boton.disabled = true;
+        boton.textContent = 'Generando...';
+        estado.classList.add('d-none');
+        setCargando(true);
         try {
             const response = await fetch('/api/rutas/generar/', {
                 method: 'POST',
