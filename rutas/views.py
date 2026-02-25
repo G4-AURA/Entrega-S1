@@ -30,7 +30,6 @@ def rutas_catalogo(request):
     if offset < 0:
         offset = 0
     
-    # Simplificar la consulta para evitar problemas con campos nullable
     rutas = (
         Ruta.objects.select_related("guia")
         .prefetch_related(
@@ -44,14 +43,12 @@ def rutas_catalogo(request):
         guia_username = None
         guia_id = None
         
-        # Manejar correctamente los casos donde guia o user pueden ser NULL
         try:
             if ruta.guia:
                 guia_id = ruta.guia.id
                 if ruta.guia.user:
                     guia_username = ruta.guia.user.user.username
         except Exception:
-            # Si hay algún problema con las relaciones, simplemente dejamos los valores como None
             pass
 
         paradas_data = []
@@ -90,7 +87,9 @@ def rutas_catalogo(request):
             }
         )
 
-    return JsonResponse(data, safe=False)
+    response = JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
+    response['Content-Type'] = 'application/json; charset=utf-8'
+    return response
 
 
 @require_GET
