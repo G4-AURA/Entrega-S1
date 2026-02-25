@@ -3,6 +3,7 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from django.contrib.gis.db import models as gis_models
 from django.contrib.postgres.fields import ArrayField
+from django.core.validators import MinValueValidator
 
 class AuthUser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='auth_profile')
