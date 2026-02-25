@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import path, include
 from django.views.generic import TemplateView
 
 urlpatterns = [
@@ -23,4 +23,6 @@ urlpatterns = [
     # Ruta temporal para probar el mapa en la página de inicio
     path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
     path('', include('rutas.urls')),
+    path('api/rutas/', include('creacion.urls')),
+    path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
 ]
