@@ -17,7 +17,7 @@ class State(TypedDict):
 ### --- FUNCIONES AUXILIARES --- ###
 def llamar_gemini_bypass(prompt, api_key):
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     data = {
         "contents": [{
@@ -29,24 +29,34 @@ def llamar_gemini_bypass(prompt, api_key):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=data, timeout=20)
         response.raise_for_status()
-        
+
         resultado = response.json()
         texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
         return json.loads(texto_json)
+    except requests.HTTPError as e:
+        status_code = e.response.status_code if e.response is not None else "desconocido"
+        print(f"ERROR HTTP al llamar a Gemini (status={status_code}): {e}")
+    except requests.RequestException as e:
+        print(f"ERROR de conexión al llamar a Gemini: {e}")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
+        print(f"ERROR procesando la respuesta de Gemini: {e}")
     except Exception as e:
-        print(f" ERROR al llamar a la API: {e}")
+        print(f"ERROR inesperado al llamar a la API: {e}")
+
+    # Si se llega aquí, devolvemos datos de fallback.
+    # Nota: un 429 (Too Many Requests) entra en requests.HTTPError y dispara este retorno.
         """
         Datos de prueba por si la conexión a la IA falla.
         """
-        return [
-                {"nombre": f"Centro Histórico", "coords": [40.4167, -3.7037], "desc": "Punto de interés principal recomendado."},
-                {"nombre": "Parque Principal", "coords": [40.4233, -3.6827], "desc": "Zona verde ideal para el descanso del grupo."},
-                {"nombre": "Museo de Arte", "coords": [40.4137, -3.6921], "desc": "Parada cultural imprescindible."},
-                {"nombre": "Mirador de la Ciudad", "coords": [40.4070, -3.7115], "desc": "Las mejores vistas para fotografías."},
-                {"nombre": "Zona Gastronómica", "coords": [40.4150, -3.7070], "desc": "Lugar perfecto para degustar platos locales."}
-            ]
+    return [
+            {"nombre": f"Centro Histórico", "coords": [40.4167, -3.7037], "desc": "Punto de interés principal recomendado."},
+            {"nombre": "Parque Principal", "coords": [40.4233, -3.6827], "desc": "Zona verde ideal para el descanso del grupo."},
+            {"nombre": "Museo de Arte", "coords": [40.4137, -3.6921], "desc": "Parada cultural imprescindible."},
+            {"nombre": "Mirador de la Ciudad", "coords": [40.4070, -3.7115], "desc": "Las mejores vistas para fotografías."},
+            {"nombre": "Zona Gastronómica", "coords": [40.4150, -3.7070], "desc": "Lugar perfecto para degustar platos locales."}
+        ]
 
 def calcular_distancia(coord1, coord2):
     """Calcula distancia euclidiana entre dos puntos [lat, lon]"""
