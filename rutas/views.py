@@ -1,5 +1,6 @@
 from django.db.models import Prefetch
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from .models import Ruta, Parada
@@ -30,7 +31,7 @@ def rutas_catalogo(request):
         offset = 0
     
     rutas = (
-        Ruta.objects.select_related("guia", "guia__user", "guia__user__user")
+        Ruta.objects.select_related("guia")
         .prefetch_related(
             Prefetch('paradas', queryset=Parada.objects.order_by('orden'))
         )
@@ -40,9 +41,15 @@ def rutas_catalogo(request):
     data = []
     for ruta in rutas:
         guia_username = None
-        guia_id = ruta.guia_id
-        if ruta.guia and ruta.guia.user and ruta.guia.user.user:
-            guia_username = ruta.guia.user.user.username
+        guia_id = None
+        
+        try:
+            if ruta.guia:
+                guia_id = ruta.guia.id
+                if ruta.guia.user:
+                    guia_username = ruta.guia.user.user.username
+        except Exception:
+            pass
 
         paradas_data = []
         for parada in ruta.paradas.all():
@@ -80,4 +87,12 @@ def rutas_catalogo(request):
             }
         )
 
-    return JsonResponse(data, safe=False)
+    response = JsonResponse(data, safe=False, json_dumps_params={'ensure_ascii': False})
+    response['Content-Type'] = 'application/json; charset=utf-8'
+    return response
+
+
+@require_GET
+def catalogo_view(request):
+    """Vista que renderiza la página del catálogo de rutas"""
+    return render(request, 'rutas/catalogo.html')

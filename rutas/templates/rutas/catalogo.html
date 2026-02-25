@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Catálogo de Rutas{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2 fw-bold mb-3">Catálogo de Rutas</h1>
+            <p class="text-muted">Explora todas las rutas disponibles</p>
+        </div>
+    </div>
+
+    <!-- Spinner de carga -->
+    <div id="loading" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando rutas...</span>
+        </div>
+        <p class="mt-3 text-muted">Cargando rutas...</p>
+    </div>
+
+    <!-- Contenedor de tarjetas de rutas -->
+    <div id="rutas-container" class="row g-4" style="display: none;">
+        <!-- Las tarjetas se generarán dinámicamente con JavaScript -->
+    </div>
+
+    <!-- Mensaje de error -->
+    <div id="error-message" class="alert alert-danger" role="alert" style="display: none;">
+        <strong>Error:</strong> No se pudieron cargar las rutas. Por favor, intenta de nuevo más tarde.
+    </div>
+
+    <!-- Mensaje sin rutas -->
+    <div id="no-rutas-message" class="alert alert-info" role="alert" style="display: none;">
+        No hay rutas disponibles en este momento.
+    </div>
+</div>
+
+<style>
+    .ruta-card {
+        background-color: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .ruta-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+
+    .ruta-card-body {
+        padding: 1.5rem;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .ruta-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1F2937;
+        margin-bottom: 0.75rem;
+        line-height: 1.3;
+    }
+
+    .ruta-description {
+        color: #6B7280;
+        font-size: 0.95rem;
+        margin-bottom: 1rem;
+        flex-grow: 1;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .ruta-info {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: auto;
+    }
+
+    .info-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        color: #4B5563;
+    }
+
+    .info-icon {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+    }
+
+    .badge-exigencia {
+        display: inline-block;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .exigencia-baja {
+        background-color: #D1FAE5;
+        color: #065F46;
+    }
+
+    .exigencia-media {
+        background-color: #FEF3C7;
+        color: #92400E;
+    }
+
+    .exigencia-alta {
+        background-color: #FEE2E2;
+        color: #991B1B;
+    }
+
+    .mood-tags {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+
+    .mood-tag {
+        background-color: #EEF2FF;
+        color: #4F46E5;
+        padding: 0.25rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .guia-info {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #E5E7EB;
+        font-size: 0.875rem;
+        color: #6B7280;
+    }
+</style>
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        const loadingEl = document.getElementById('loading');
+        const containerEl = document.getElementById('rutas-container');
+        const errorEl = document.getElementById('error-message');
+        const noRutasEl = document.getElementById('no-rutas-message');
+
+        try {
+            console.log('Cargando rutas desde /api/rutas/...');
+            const response = await fetch('/api/rutas/');
+            
+            console.log('Response status:', response.status);
+            console.log('Response ok:', response.ok);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const rutas = await response.json();
+            console.log('Rutas recibidas:', rutas.length, rutas);
+
+            loadingEl.style.display = 'none';
+
+            if (rutas.length === 0) {
+                noRutasEl.style.display = 'block';
+                return;
+            }
+
+            containerEl.style.display = 'flex';
+            rutas.forEach(ruta => {
+                const card = createRutaCard(ruta);
+                containerEl.appendChild(card);
+            });
+
+        } catch (error) {
+            console.error('Error al cargar rutas:', error);
+            console.error('Error stack:', error.stack);
+            loadingEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            errorEl.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        }
+    });
+
+    function createRutaCard(ruta) {
+        const col = document.createElement('div');
+        col.className = 'col-12 col-md-6 col-lg-4';
+
+        const exigenciaClass = `exigencia-${ruta.nivel_exigencia.toLowerCase()}`;
+        
+        let moodTags = '';
+        if (ruta.mood && ruta.mood.length > 0) {
+            moodTags = '<div class="mood-tags">';
+            ruta.mood.forEach(mood => {
+                moodTags += `<span class="mood-tag">${mood}</span>`;
+            });
+            moodTags += '</div>';
+        }
+
+        let guiaInfo = '';
+        if (ruta.guia && ruta.guia.username) {
+            guiaInfo = `
+                <div class="guia-info">
+                    <strong>Guía:</strong> ${ruta.guia.username}
+                </div>
+            `;
+        }
+
+        col.innerHTML = `
+            <div class="ruta-card">
+                <div class="ruta-card-body">
+                    <h3 class="ruta-title">${ruta.titulo}</h3>
+                    <p class="ruta-description">${ruta.descripcion || 'Sin descripción disponible'}</p>
+                    
+                    <div class="ruta-info">
+                        <div class="info-item">
+                            <svg class="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>${ruta.duracion_horas}h</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <svg class="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            <span>${ruta.num_personas} personas</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span class="badge-exigencia ${exigenciaClass}">${ruta.nivel_exigencia}</span>
+                        </div>
+                    </div>
+                    
+                    ${moodTags}
+                    ${guiaInfo}
+                </div>
+            </div>
+        `;
+
+        return col;
+    }
+</script>
+{% endblock %}
+
+{% endblock %}

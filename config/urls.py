@@ -24,10 +24,13 @@ from django.views.generic import TemplateView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Ruta temporal para probar el mapa en la página de inicio
+    path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
+    # URLs de la app de creación de rutas
+    path('crear-ruta/', include('creacion.urls')),
     path('api/ubicacion/', tours_views.registrar_ubicacion, name='api_ubicacion'),
     path('tours/', include('tours.urls')),
     path('', views.home_router, name='home'),
     path('', include('rutas.urls')),
-    path('api/rutas/', include('creacion.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
 ]

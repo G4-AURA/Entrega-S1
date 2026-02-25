@@ -1,0 +1,529 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Crear Ruta Manual{% endblock %}
+
+{% block content %}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA - Crear Tour Manual</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-dark: #3730A3;
+            --secondary: #EC4899;
+            --bg-app: #F3F4F6;
+            --surface: #FFFFFF;
+            --text-main: #1F2937;
+            --text-sec: #6B7280;
+            --border: #E5E7EB;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-app);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background-color: var(--surface);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .btn-back {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            margin-right: 16px;
+            border-radius: 8px;
+            color: var(--text-main);
+            transition: background 0.2s;
+        }
+
+        .btn-back:hover {
+            background-color: var(--bg-app);
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .main-card {
+            background-color: var(--surface);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 24px;
+        }
+
+        .form-group { 
+            margin-bottom: 24px; 
+        }
+
+        .input-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 8px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 15px;
+            background: var(--surface);
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        textarea.input-field { 
+            resize: vertical; 
+            min-height: 100px; 
+            font-family: inherit;
+        }
+
+        .divider {
+            border: 0; 
+            border-top: 1px solid var(--border); 
+            margin: 32px 0;
+        }
+
+        /* --- Controlador de Paradas --- */
+        .stops-controller {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 20px 24px;
+            border-radius: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+
+        .stops-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stops-label {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            opacity: 0.9;
+        }
+
+        .counter-number { 
+            font-size: 28px; 
+            font-weight: 800; 
+        }
+        
+        .btn-counter {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-counter:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .counter-actions { 
+            display: flex; 
+            gap: 12px; 
+        }
+
+        /* --- ESTILOS TARJETA DE PARADA --- */
+        #stops-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+            margin-bottom: 100px;
+        }
+
+        .stop-card {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+        }
+
+        .stop-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .stop-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .stop-number-badge {
+            background: var(--primary);
+            color: white;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Área de carga de imagen */
+        .image-upload-area {
+            width: 100%;
+            height: 180px;
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            background-color: var(--bg-app);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-sec);
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: all 0.2s;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .image-upload-area:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background-color: #EEF2FF;
+        }
+
+        .image-upload-area .material-icons-round {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+
+        .image-upload-text {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Wrapper para Ubicación y Mapa */
+        .location-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn-map {
+            width: 52px;
+            height: 52px;
+            background: var(--secondary);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(236, 72, 153, 0.3);
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-map:hover {
+            background: #DB2777;
+            box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4);
+        }
+
+        /* --- Footer --- */
+        .footer-action {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            background: linear-gradient(to top, var(--surface) 90%, rgba(255,255,255,0));
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+        }
+
+        .footer-content {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .btn-save {
+            width: 100%;
+            padding: 16px 32px;
+            background-color: var(--text-main);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+        }
+
+        .btn-save:hover {
+            background-color: #111827;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 12px;
+            }
+
+            .main-card {
+                padding: 20px;
+            }
+
+            #stops-container {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .stop-card {
+                padding: 16px;
+            }
+
+            .header-title {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <header class="header">
+            <button class="btn-back" onclick="window.location.href='/crear-ruta/'">
+                <span class="material-icons-round">arrow_back</span>
+            </button>
+            <div class="header-title">Crear Ruta Manual</div>
+        </header>
+
+            
+            <div class="form-group">
+                <label class="input-label">Título del Tour</label>
+                <input type="text" class="input-field" value="Ruta Histórica Centro">
+            </div>
+
+            <div class="form-group">
+                <label class="input-label">Descripción</label>
+                <textarea class="input-field">Un recorrido por los monumentos más emblemáticos de la ciudad antigua...</textarea>
+            </div>
+
+        </div>
+
+        <div class="stops-controller">
+            <div class="stops-info">
+                <span class="stops-label">Paradas</span>
+                <span class="counter-number" id="counter-display">2</span>
+            </div>
+            <div class="counter-actions">
+                <button class="btn-counter" onclick="removeStop()">
+                    <span class="material-icons-round">remove</span>
+                </button>
+                <button class="btn-counter" onclick="addStop()">
+                    <span class="material-icons-round">add</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="stops-container">
+
+            <div class="stop-card" id="stop-1">
+                <div class="stop-header">
+                    <span class="stop-number-badge">PARADA 1</span>
+                    <span class="material-icons-round" style="color: var(--text-sec); cursor: grab;">drag_handle</span>
+                </div>
+
+                <div class="image-upload-area" id="img-area-1" onclick="document.getElementById('file-1').click()">
+                    <span class="material-icons-round">add_photo_alternate</span>
+                    <span class="image-upload-text">Cargar Imagen</span>
+                </div>
+                <input type="file" id="file-1" hidden accept="image/*" onchange="previewImage(this, 1)">
+
+                    <div class="form-group">
+                        <label class="input-label">Nombre del Lugar</label>
+                        <input type="text" class="input-field" placeholder="Ej: Catedral">
+                    </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="input-label">Ubicación</label>
+                    <div class="location-group">
+                        <input type="text" class="input-field" placeholder="Dirección...">
+                        <button class="btn-map">
+                            <span class="material-icons-round">map</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stop-card" id="stop-2">
+                <div class="stop-header">
+                    <span class="stop-number-badge">PARADA 2</span>
+                    <span class="material-icons-round" style="color: var(--text-sec); cursor: grab;">drag_handle</span>
+                </div>
+
+                <div class="image-upload-area" id="img-area-2" onclick="document.getElementById('file-2').click()">
+                    <span class="material-icons-round">add_photo_alternate</span>
+                    <span class="image-upload-text">Cargar Imagen</span>
+                </div>
+                <input type="file" id="file-2" hidden accept="image/*" onchange="previewImage(this, 2)">
+
+                    <div class="form-group">
+                        <label class="input-label">Nombre del Lugar</label>
+                        <input type="text" class="input-field" placeholder="Ej: Plaza Mayor">
+                    </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="input-label">Ubicación</label>
+                    <div class="location-group">
+                        <input type="text" class="input-field" placeholder="Dirección...">
+                        <button class="btn-map">
+                            <span class="material-icons-round">map</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="footer-action">
+        <div class="footer-content">
+            <button class="btn-save">
+                <span class="material-icons-round">save</span>
+                Guardar Tour
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let stopCount = 2;
+        const container = document.getElementById('stops-container');
+        const display = document.getElementById('counter-display');
+
+        function updateDisplay() {
+            display.innerText = stopCount;
+        }
+
+        function previewImage(input, id) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const area = document.getElementById(`img-area-${id}`);
+                    area.style.backgroundImage = `url(${e.target.result})`;
+                    area.innerHTML = '';
+                    area.style.border = 'none';
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function addStop() {
+            stopCount++;
+            updateDisplay();
+
+            const div = document.createElement('div');
+            div.className = 'stop-card';
+            div.id = `stop-${stopCount}`;
+            div.innerHTML = `
+                <div class="stop-header">
+                    <span class="stop-number-badge">PARADA ${stopCount}</span>
+                    <span class="material-icons-round" style="color: var(--text-sec); cursor: grab;">drag_handle</span>
+                </div>
+
+                <div class="image-upload-area" id="img-area-${stopCount}" onclick="document.getElementById('file-${stopCount}').click()">
+                    <span class="material-icons-round">add_photo_alternate</span>
+                    <span class="image-upload-text">Cargar Imagen</span>
+                </div>
+                <input type="file" id="file-${stopCount}" hidden accept="image/*" onchange="previewImage(this, ${stopCount})">
+
+                <div class="form-group">
+                    <label class="input-label">Nombre del Lugar</label>
+                    <input type="text" class="input-field" placeholder="Nombre...">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="input-label">Ubicación</label>
+                    <div class="location-group">
+                        <input type="text" class="input-field" placeholder="Dirección...">
+                        <button class="btn-map">
+                            <span class="material-icons-round">map</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+            
+            setTimeout(() => {
+                div.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }
+
+        function removeStop() {
+            if (stopCount > 1) {
+                const el = document.getElementById(`stop-${stopCount}`);
+                if (el) el.remove();
+                stopCount--;
+                updateDisplay();
+            }
+        }
+    </script>
+</body>
+</html>
+
+{% endblock %}
