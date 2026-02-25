@@ -1,3 +1,9 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Crear Ruta Manual{% endblock %}
+
+{% block content %}
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -509,7 +515,7 @@
         }
 
         function removeStop() {
-            if (stopCount > 0) {
+            if (stopCount > 1) {
                 const el = document.getElementById(`stop-${stopCount}`);
                 if (el) el.remove();
                 stopCount--;
