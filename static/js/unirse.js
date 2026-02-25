@@ -93,8 +93,8 @@ if (btnUnirse) {
                 mensajeDiv.classList.add('alert-success');
                 
                 // Redirección suave al mapa
-                setTimeout(() => { 
-                    window.location.href = '/tours/'; 
+                setTimeout(() => {
+                    window.location.href = '/tours/turista';
                 }, 1500);
             } else {
                 // Error de validación del backend
