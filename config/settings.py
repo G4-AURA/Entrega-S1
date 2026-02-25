@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'django.contrib.gis',
     'tours',
     'creacion',
+    'rutas',
 ]
 
 MIDDLEWARE = [
