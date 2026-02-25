@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import User
 from django.contrib.gis.db import models as gis_models
 from django.contrib.postgres.fields import ArrayField
@@ -22,8 +23,8 @@ class Guia(models.Model):
 class Ruta(models.Model):
     titulo = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True)
-    duracion_horas = models.FloatField(min_value=0.1)
-    num_personas = models.IntegerField(min_value=1)
+    duracion_horas = models.FloatField()
+    num_personas = models.PositiveIntegerField()
     class Exigencia(models.TextChoices):
         BAJA = 'Baja', 'Baja'
         MEDIA = 'Media', 'Media'
@@ -45,13 +46,21 @@ class Ruta(models.Model):
     )
     es_generada_ia = models.BooleanField(default=False)
     guia = models.ForeignKey(Guia, on_delete=models.CASCADE, related_name='rutas')
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(duracion_horas__gte=0.0), # gte significa "Greater Than or Equal" (Mayor o igual)
+                name='duracion_horas_positiva'
+            )
+        ]
 
 
     def __str__(self):
         return self.titulo
+    
 
 class Parada(models.Model):
-    orden = models.IntegerField(min_value=1)
+    orden = models.PositiveIntegerField()
     nombre = models.CharField(max_length=255)
     coordenadas = gis_models.PointField()
     ruta = models.ForeignKey(Ruta, on_delete=models.CASCADE, related_name='paradas')

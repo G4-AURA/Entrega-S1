@@ -14,7 +14,6 @@ db.sqlite3
 .env
 
 # Archivos estáticos y multimedia (opcional según tu configuración)
-/static/
 /media/
 
 # Celery
