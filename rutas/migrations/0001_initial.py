@@ -59,4 +59,8 @@ class Migration(migrations.Migration):
                 'ordering': ['orden'],
             },
         ),
+        migrations.AddConstraint(
+            model_name='ruta',
+            constraint=models.CheckConstraint(condition=models.Q(('duracion_horas__gte', 0.0)), name='duracion_horas_positiva'),
+        ),
     ]

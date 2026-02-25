@@ -1,6 +1,7 @@
 # Entornos virtuales
 venv/
 env/
+.venv*
 
 # Archivos compilados de Python
 __pycache__/
@@ -14,7 +15,6 @@ db.sqlite3
 .env
 
 # Archivos estáticos y multimedia (opcional según tu configuración)
-/static/
 /media/
 
 # Celery
