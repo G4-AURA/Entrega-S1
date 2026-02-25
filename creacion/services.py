@@ -77,7 +77,7 @@ def crear_matriz_datos(pois):
 def nodo_seleccion_sitios(state: State):
     print("--- NODO 1: GENERACIÓN DE RUTA ---")
     datos = state['usuario_input']
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
 
     prompt = f"""
     Eres un guía experto en {datos.get('ciudad')}. El usuario quiere una ruta de {datos.get('duracion')} horas.

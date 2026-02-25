@@ -196,99 +196,81 @@
     const boton = document.getElementById('btn-generar-ruta');
     const estado = document.getElementById('estado-respuesta');
     const pantallaCarga = document.getElementById('pantalla-carga');
+    const rutaMeta = document.getElementById('ruta-meta');
     
     let leafletMap = null;
 
-    let leafletMap = null;
-
     function setCargando(estaCargando) {
-        pantallaCarga.classList.toggle('show', estaCargando);
-        boton.disabled = estaCargando;
+        if (estaCargando) {
+            pantallaCarga.style.display = 'flex';
+            boton.disabled = true;
+            boton.textContent = 'Generando...';
+        } else {
+            pantallaCarga.style.display = 'none';
+            boton.disabled = false;
+            boton.textContent = 'Generar la ruta';
+        }
     }
 
     function renderizarRuta(datos) {
         document.getElementById('seccion-resultados').classList.remove('d-none');
         const lista = document.getElementById('lista-paradas');
+        
+        // Limpiar lista anterior
         lista.innerHTML = '';
 
-        // 1. Reiniciar Mapa si ya existe
-        if (leafletMap) { leafletMap.remove(); }
-        
-        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}"; 
-        
-        // 2. Crear Mapa centrado en la primera parada
-        leafletMap = L.map('mapa-ruta').setView(datos.paradas[0].coordenadas, 14);
-        
-        L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
-            attribution: '© Mapbox'
-        }).addTo(leafletMap);
-
-        const puntos = [];
-        
-        // 3. Dibujar paradas
-        datos.paradas.forEach((p) => {
-            puntos.push(p.coordenadas);
-            
-            // Marcador
-            L.marker(p.coordenadas).addTo(leafletMap)
-                .bindPopup(`<b>${p.orden}. ${p.nombre}</b>`);
-
-            // Elemento de lista
-            lista.innerHTML += `
-                <div class="list-group-item border-start border-primary border-4">
-                    <div class="fw-bold">${p.orden}. ${p.nombre}</div>
-                    <div class="small text-muted">${p.descripcion}</div>
-                </div>`;
-        });
-
-        // 4. Dibujar línea de conexión y ajustar vista
-        L.polyline(puntos, {color: '#0d6efd', weight: 4, opacity: 0.5}).addTo(leafletMap);
-        leafletMap.fitBounds(puntos, {padding: [50, 50]});
-    }
-
-    function renderizarRuta(datos) {
-        document.getElementById('seccion-resultados').classList.remove('d-none');
-        const lista = document.getElementById('lista-paradas');
-        const rutaMeta = document.getElementById('ruta-meta');
-        lista.innerHTML = '';
-
+        // Mostrar metadatos de la ruta
         rutaMeta.classList.remove('d-none');
         rutaMeta.textContent = `${datos.titulo || 'Ruta generada'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Exigencia ${datos.nivel_exigencia || '-'}`;
 
+        // Reiniciar Mapa si ya existe para evitar errores de instancias múltiples
         if (leafletMap) {
             leafletMap.remove();
         }
 
-        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}";
+        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}"; 
+        
+        // Determinar centro del mapa
         const primeraParada = (datos.paradas && datos.paradas[0]) || null;
-        const coordenadaInicial = (primeraParada && (primeraParada.coordenadas || primeraParada.coords)) || [40.4167, -3.7037];
+        const coordenadaInicial = (primeraParada && (primeraParada.coordenadas || primeraParada.coords)) 
+                                  ? (primeraParada.coordenadas || primeraParada.coords) 
+                                  : [40.4167, -3.7037]; // Default si falla
 
+        // Crear mapa
         leafletMap = L.map('mapa-ruta').setView(coordenadaInicial, 14);
-
+        
         L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
             attribution: '© Mapbox'
         }).addTo(leafletMap);
 
         const puntos = [];
-        (datos.paradas || []).forEach((p, idx) => {
-            const coords = p.coordenadas || p.coords;
-            if (!coords) return;
-            puntos.push(coords);
+        
+        // Dibujar paradas
+        if (datos.paradas && datos.paradas.length > 0) {
+            datos.paradas.forEach((p, idx) => {
+                // Normalizar coordenadas (pueden venir como 'coords' o 'coordenadas')
+                const coords = p.coordenadas || p.coords;
+                if(!coords) return;
 
-            L.marker(coords).addTo(leafletMap)
-                .bindPopup(`<b>${p.orden || idx + 1}. ${p.nombre || 'Parada'}</b>`);
+                puntos.push(coords);
+                
+                // Marcador en el mapa
+                L.marker(coords).addTo(leafletMap)
+                    .bindPopup(`<b>${p.orden || idx + 1}. ${p.nombre}</b>`);
 
-            lista.innerHTML += `
-                <div class="list-group-item border-start border-primary border-4">
-                    <div class="fw-bold">${p.orden || idx + 1}. ${p.nombre || 'Parada'}</div>
-                    <div class="small text-muted">${p.descripcion || p.desc || ''}</div>
-                </div>`;
-        });
-    
+                // Elemento en la lista lateral
+                lista.innerHTML += `
+                    <div class="list-group-item border-start border-primary border-4 mb-2">
+                        <div class="fw-bold text-primary">Parada ${p.orden || idx + 1}: ${p.nombre}</div>
+                        <div class="small text-muted">${p.descripcion || p.desc || 'Sin descripción'}</div>
+                    </div>`;
+            });
 
-        if (puntos.length > 1) {
-            L.polyline(puntos, { color: '#0d6efd', weight: 4, opacity: 0.5 }).addTo(leafletMap);
-            leafletMap.fitBounds(puntos, { padding: [50, 50] });
+            // Dibujar línea de conexión y ajustar vista
+            if (puntos.length > 1) {
+                L.polyline(puntos, {color: '#0d6efd', weight: 4, opacity: 0.7}).addTo(leafletMap);
+                leafletMap.fitBounds(puntos, {padding: [50, 50]});
+            }
         }
     }
 
@@ -299,48 +281,49 @@
         });
     });
 
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        setCargando(true);
+        
+        // Limpiar estados anteriores
         estado.classList.add('d-none');
+        setCargando(true);
 
         const moodSeleccionados = Array.from(form.querySelectorAll('input[name="mood"]:checked'))
             .map(checkbox => checkbox.value);
 
         const payload = {
-            ciudad: form.ciudad.value,
-            duracion: form.duracion.value,
-            personas: form.personas.value,
-            exigencia: form.exigencia.value,
+            ciudad: document.getElementById('ciudad').value,
+            duracion: document.getElementById('duracion').value,
+            personas: document.getElementById('personas').value,
+            exigencia: document.getElementById('exigencia').value,
             mood: moodSeleccionados,
         };
 
-        boton.disabled = true;
-        boton.textContent = 'Generando...';
-        estado.classList.add('d-none');
-        setCargando(true);
         try {
             const response = await fetch('/api/rutas/generar/', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
                 body: JSON.stringify(payload),
             });
 
             const data = await response.json();
 
-            if (response.ok) {
+            if (response.ok && data.status === "OK") {
                 renderizarRuta(data.datos_ruta);
-                estado.className = "alert alert-success";
+                estado.className = "alert alert-success mt-3";
                 estado.textContent = data.mensaje;
+                estado.classList.remove('d-none');
             } else {
-                estado.className = "alert alert-danger";
-                estado.textContent = data.mensaje || "Error al generar";
+                throw new Error(data.mensaje || "Error desconocido al generar la ruta");
             }
-            estado.classList.remove('d-none');
         } catch (error) {
             console.error(error);
+            estado.className = "alert alert-danger mt-3";
+            estado.textContent = "Error: " + error.message;
+            estado.classList.remove('d-none');
         } finally {
             setCargando(false);
         }
