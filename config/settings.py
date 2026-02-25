@@ -20,8 +20,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 if os.name == 'nt':
-    GDAL_LIBRARY_PATH = os.getenv('GDAL_LIBRARY_PATH', 'C:\\OSGeo4W64\\bin\\gdal304.dll')
-    GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH', 'C:\\OSGeo4W64\\bin\\geos_c.dll')
+    gdal_path = os.getenv('GDAL_LIBRARY_PATH')
+    geos_path = os.getenv('GEOS_LIBRARY_PATH')
+    if gdal_path:
+        GDAL_LIBRARY_PATH = gdal_path
+    if geos_path:
+        GEOS_LIBRARY_PATH = geos_path
 
 
 # Quick-start development settings - unsuitable for production
@@ -41,6 +45,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+STATIC_URL = 'static/'
+
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
 
 # Application definition
 
@@ -52,7 +62,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',
+    'tours',
     'creacion',
+    'rutas',
 ]
 
 MIDDLEWARE = [

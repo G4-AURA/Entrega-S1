@@ -4,39 +4,30 @@ y bloques para contenido específico de cada página. Este template es solo de d
 y puede ser modificado según las necesidades del proyecto. Las páginas específicas 
 (como mapa.html) extenderán este template y llenarán los bloques definidos aquí. */
 -->
-<!DOCTYPE html>
+{% load static %} <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}AURA - Copiloto para Guías{% endblock %}</title>
 
-    <!-- Enlaces a CSS de Bootstrap y Leaflet para estilos y mapas interactivos -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 
-    <style>
-        /* Un mapa debe tener una altura definida para que Leaflet pueda renderizarlo */
-        .map-container {
-            height: 600px;
-            width: 100%;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-    </style>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+
     {% block extra_css %}{% endblock %}
 </head>
 <body class="bg-light">
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand" href="#">AURA</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <a class="navbar-brand fw-bold" style="letter-spacing: 1px;" href="/">AURA</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link active" href="{% url 'home' %}">Mapa Principal</a>
                     </li>
@@ -44,6 +35,21 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
                         <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}">Crear Ruta</a>
                     </li>
                 </ul>
+                <a href="#" class="text-decoration-none" title="Ir a mi perfil">
+                    {% if user.is_authenticated %}
+                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm" 
+                             style="width: 42px; height: 42px; background-color: #4F46E5; border: 2px solid #4B5563;">
+                            {{ user.username|make_list|first|upper }}
+                        </div>
+                    {% else %}
+                        <div class="rounded-circle d-flex align-items-center justify-content-center text-secondary shadow-sm" 
+                             style="width: 42px; height: 42px; background-color: #374151; border: 2px solid #4B5563;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-person-fill" viewBox="0 0 16 16">
+                                <path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3Zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+                            </svg>
+                        </div>
+                    {% endif %}
+                </a>
             </div>
         </div>
     </nav>

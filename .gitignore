@@ -19,5 +19,6 @@ db.sqlite3
 
 # Celery
 celerybeat-schedule
+celerybeat-schedule*
 celerybeat-schedule.*
 celerybeat.pid
