@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.gis',
     'creacion',
+    'rutas',
 ]
 
 MIDDLEWARE = [

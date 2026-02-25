@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.gis.db import models as gis_models
 from django.contrib.postgres.fields import ArrayField
+from django.core.validators import MinValueValidator
 
 class AuthUser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='auth_profile')
@@ -22,8 +23,8 @@ class Guia(models.Model):
 class Ruta(models.Model):
     titulo = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True)
-    duracion_horas = models.FloatField(min_value=0.1)
-    num_personas = models.IntegerField(min_value=1)
+    duracion_horas = models.FloatField(validators=[MinValueValidator(0.1)])
+    num_personas = models.IntegerField(validators=[MinValueValidator(1)])
     class Exigencia(models.TextChoices):
         BAJA = 'Baja', 'Baja'
         MEDIA = 'Media', 'Media'
@@ -51,7 +52,7 @@ class Ruta(models.Model):
         return self.titulo
 
 class Parada(models.Model):
-    orden = models.IntegerField(min_value=1)
+    orden = models.IntegerField(validators=[MinValueValidator(1)])
     nombre = models.CharField(max_length=255)
     coordenadas = gis_models.PointField()
     ruta = models.ForeignKey(Ruta, on_delete=models.CASCADE, related_name='paradas')
