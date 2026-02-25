@@ -12,6 +12,19 @@ from creacion.services import consultar_langgraph
 
 logger = logging.getLogger(__name__)
 
+def seleccion_tipo_ruta(request):
+    """Vista para la selección del tipo de ruta (Manual o IA)"""
+    return render(request, 'seleccion_tipo_ruta.html')
+
+
+def creacion_manual(request):
+    """Vista para la creación manual de rutas"""
+    return render(request, 'creacion_manual.html')
+
+def generar_ruta(request):
+    """Vista para la generacion con ia de rutas"""
+    return render(request, './creacion/personalizacion.html')
+
 @csrf_exempt
 @require_POST
 def generar_ruta_ia(request):

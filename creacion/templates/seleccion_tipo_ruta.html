@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Seleccionar tipo de ruta{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+    :root {
+        --primary: #4F46E5;
+        --primary-light: #EEF2FF;
+        --ai-color: #7C3AED;
+        --ai-light: #F5F3FF;
+        --bg-app: #F9FAFB;
+        --text-main: #111827;
+        --text-sec: #6B7280;
+        --surface: #FFFFFF;
+    }
+
+    .route-selection-wrapper {
+        width: 100%;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 12px 0 28px;
+        overflow-x: clip;
+    }
+
+    .content {
+        text-align: center;
+    }
+
+    .instruction {
+        font-size: 20px;
+        color: var(--text-sec);
+        margin-bottom: 40px;
+    }
+
+    .section-title {
+        color: var(--text-main);
+        font-size: clamp(1.8rem, 3vw, 2.3rem);
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+
+    .section-subtitle {
+        font-size: 1rem;
+        color: var(--text-sec);
+        margin-bottom: 36px;
+    }
+
+    .options-container {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+        max-width: 900px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    .option-card {
+        background-color: var(--surface);
+        border-radius: 20px;
+        padding: 40px 28px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 3px solid transparent;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        position: relative;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        min-height: 290px;
+        width: 100%;
+    }
+
+    .option-card:hover,
+    .option-card:focus-visible {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .option-card:focus-visible {
+        outline: 3px solid rgba(79, 70, 229, 0.35);
+        outline-offset: 4px;
+    }
+
+    .option-manual:hover,
+    .option-manual:focus-visible {
+        border-color: var(--primary);
+        background-color: var(--primary-light);
+    }
+
+    .option-manual .icon-container {
+        background-color: var(--primary-light);
+        color: var(--primary);
+    }
+
+    .option-ai {
+        border-color: rgba(124, 58, 237, 0.2);
+    }
+
+    .option-ai:hover,
+    .option-ai:focus-visible {
+        border-color: var(--ai-color);
+        background-color: var(--ai-light);
+    }
+
+    .option-ai .icon-container {
+        background-color: var(--ai-light);
+        color: var(--ai-color);
+    }
+
+    .icon-container {
+        width: 80px;
+        height: 80px;
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px auto;
+        transition: all 0.3s ease;
+    }
+
+    .material-icons-round {
+        font-size: 40px;
+    }
+
+    .card-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 12px;
+        display: block;
+    }
+
+    .card-desc {
+        font-size: 16px;
+        color: var(--text-sec);
+        line-height: 1.6;
+        display: block;
+    }
+
+    .badge-recommended {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: linear-gradient(135deg, #7C3AED, #4F46E5);
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 6px 14px;
+        border-radius: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    @media (max-width: 992px) {
+        .options-container {
+            grid-template-columns: 1fr;
+            max-width: 600px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .route-selection-wrapper {
+            padding-top: 4px;
+        }
+
+        .section-subtitle {
+            margin-bottom: 24px;
+            padding: 0 4px;
+        }
+
+        .instruction {
+            font-size: 18px;
+            margin-bottom: 28px;
+        }
+
+        .option-card {
+            min-height: auto;
+            padding: 28px 20px;
+            border-radius: 16px;
+        }
+
+        .icon-container {
+            width: 68px;
+            height: 68px;
+            border-radius: 20px;
+            margin-bottom: 18px;
+        }
+
+        .material-icons-round {
+            font-size: 34px;
+        }
+
+        .card-title {
+            font-size: 21px;
+        }
+
+        .card-desc {
+            font-size: 15px;
+        }
+    }
+
+    @media (max-width: 420px) {
+        .badge-recommended {
+            top: 10px;
+            right: 10px;
+            font-size: 10px;
+            padding: 5px 10px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% url 'creacion:generar_ruta' as ia_url %}
+{% url 'creacion:creacion_manual' as manual_url %}
+
+<div class="route-selection-wrapper">
+    <section class="content" aria-labelledby="route-selection-title">
+        <h1 id="route-selection-title" class="section-title">Elige cómo crear tu ruta</h1>
+        <p class="section-subtitle">Selecciona la modalidad que mejor se adapte al grupo y al tiempo disponible.</p>
+        <p class="instruction">¿Cómo quieres diseñar esta experiencia?</p>
+
+        <div class="options-container">
+            <a class="option-card option-manual" href="{{ manual_url }}">
+                <div class="icon-container">
+                    <span class="material-icons-round">edit_road</span>
+                </div>
+                <span class="card-title">Diseño manual</span>
+                <span class="card-desc">Crea un itinerario estandarizado punto por punto. Tú tienes el control total de la ruta.</span>
+            </a>
+
+            <a class="option-card option-ai" href="{{ ia_url }}">
+                <div class="badge-recommended">Recomendado</div>
+                <div class="icon-container">
+                    <span class="material-icons-round">auto_awesome</span>
+                </div>
+                <span class="card-title">Generar con IA</span>
+                <span class="card-desc">Introduce los intereses de tu grupo y deja que AURA cree una ruta optimizada al instante.</span>
+            </a>
+        </div>
+    </section>
+</div>
+{% endblock %}
