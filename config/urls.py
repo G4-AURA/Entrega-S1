@@ -26,4 +26,7 @@ urlpatterns = [
     path('api/ubicacion/', tours_views.registrar_ubicacion, name='api_ubicacion'),
     path('tours/', include('tours.urls')),
     path('', views.home_router, name='home'),
+    path('', include('rutas.urls')),
+    path('api/rutas/', include('creacion.urls')),
+    path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
 ]
