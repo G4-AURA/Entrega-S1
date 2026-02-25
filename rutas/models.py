@@ -55,5 +55,9 @@ class Parada(models.Model):
     nombre = models.CharField(max_length=255)
     coordenadas = gis_models.PointField()
     ruta = models.ForeignKey(Ruta, on_delete=models.CASCADE, related_name='paradas')
+    
+    class Meta:
+        ordering = ['orden']
+    
     def __str__(self):
         return f"{self.nombre} (Orden: {self.orden})"

@@ -22,7 +22,7 @@ class RutaAdmin(admin.ModelAdmin):
 		"duracion_horas",
 		"num_personas",
 		"nivel_exigencia",
-			"mood_display",
+		"mood_display",
 		"es_generada_ia",
 		"guia",
 	)
