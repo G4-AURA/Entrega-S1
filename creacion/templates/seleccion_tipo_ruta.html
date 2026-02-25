@@ -200,11 +200,11 @@
     </style>
 </head>
 <body>
-    {% url 'home' as home_url %}
+    {% url 'creacion:generar_ruta' as ia_url %}
     {% url 'creacion:creacion_manual' as manual_url %}
     <div class="container">
         <header class="header">
-            <button class="btn-back" onclick="window.location.href='{{ home_url }}'">
+            <button class="btn-back" onclick="window.location.href='{{ ia_url }}'">
                 <span class="material-icons-round">arrow_back</span>
             </button>
             <div class="header-title">Crear nueva ruta turística</div>
@@ -222,7 +222,7 @@
                     <span class="card-desc">Crea un itinerario estandarizado punto por punto. Tú tienes el control total de la ruta.</span>
                 </div>
 
-                <div class="option-card option-ai" onclick="window.location.href='{{ home_url }}'">
+                <div class="option-card option-ai" onclick="window.location.href='{{ ia_url }}'">
                     <div class="badge-recommended">Recomendado</div>
                     <div class="icon-container">
                         <span class="material-icons-round">auto_awesome</span>
