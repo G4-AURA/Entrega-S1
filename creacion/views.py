@@ -144,10 +144,20 @@ def generar_ruta(request):
     return render(request, './creacion/personalizacion.html')
 
 
-#@login_required
+@login_required
 @csrf_exempt
 @require_POST
 def generar_ruta_ia(request):
+    """
+    Endpoint para generar rutas mediante IA y guardarlas en BD.
+    
+    Requisitos:
+    - Usuario debe estar autenticado (por @login_required)
+    - Usuario debe ser guía (no turista)
+    - Se requiere un perfil de Guía para crear la ruta
+    """
+    
+    # Validar que el usuario es guía (no turista)
     if hasattr(request.user, 'turista'):
         return JsonResponse(
             {
@@ -174,21 +184,26 @@ def generar_ruta_ia(request):
                 "mensaje": "Faltan parámetros obligatorios en la petición."
             }, status=400)
         
+        # Generar la ruta con IA
         ruta_generada = consultar_langgraph(datos)
+        
+        # Obtener o crear perfil de guía para el usuario autenticado
         guia = _obtener_guia_para_usuario(request.user)
         if not guia:
             return JsonResponse(
                 {
                     'status': 'ERROR',
-                    'mensaje': 'No se pudo encontrar un perfil de guía para este usuario.',
+                    'mensaje': 'No se pudo encontrar o crear un perfil de guía para este usuario.',
                 },
-                status=403,
+                status=500,
             )
 
+        # Guardar la ruta y sus paradas en BD
         ruta_guardada = _guardar_ruta_ia_en_bd(guia=guia, payload=datos, ruta_generada=ruta_generada)
 
         advertencias = []
 
+        # Guardar historial de generación IA (opcional, no bloquea)
         try:
             Historial_ia.objects.create(
                 prompt=json.dumps(datos),
@@ -213,8 +228,17 @@ def generar_ruta_ia(request):
 
         return JsonResponse(response_data, status=200)
 
-    except Exception as e:
+    except ValueError as e:
+        # Errores de validación de datos
+        logger.warning("Error de validación en generar_ruta_ia: %s", e)
         return JsonResponse({
             "status": "ERROR",
-            "mensaje": f"Error interno: {str(e)}"
+            "mensaje": f"Error en los datos: {str(e)}"
+        }, status=400)
+    except Exception as e:
+        # Errores internos
+        logger.exception("Error interno en generar_ruta_ia")
+        return JsonResponse({
+            "status": "ERROR",
+            "mensaje": f"Error interno del servidor: {str(e)}"
         }, status=500)
