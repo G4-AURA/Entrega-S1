@@ -7,11 +7,10 @@
     <div class="row mb-4">
         <div class="col">
             <h1 class="h2 fw-bold mb-3">Catálogo de Rutas</h1>
-            <p class="text-muted">Explora todas las rutas disponibles</p>
+            <p class="text-muted">Explora todas las rutas disponibles y descubre los tours creados con IA.</p>
         </div>
     </div>
 
-    <!-- Spinner de carga -->
     <div id="loading" class="text-center py-5">
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Cargando rutas...</span>
@@ -19,17 +18,26 @@
         <p class="mt-3 text-muted">Cargando rutas...</p>
     </div>
 
-    <!-- Contenedor de tarjetas de rutas -->
-    <div id="rutas-container" class="row g-4" style="display: none;">
-        <!-- Las tarjetas se generarán dinámicamente con JavaScript -->
-    </div>
+    <section id="rutas-catalogo-section" style="display: none;" class="mb-5">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h4 fw-bold mb-0">Rutas del catálogo</h2>
+            <span id="rutas-catalogo-count" class="text-muted small"></span>
+        </div>
+        <div id="rutas-container" class="row g-4"></div>
+    </section>
 
-    <!-- Mensaje de error -->
+    <section id="rutas-ia-section" style="display: none;">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h4 fw-bold mb-0">AI Generated Tours</h2>
+            <span id="rutas-ia-count" class="text-muted small"></span>
+        </div>
+        <div id="rutas-ia-container" class="row g-4"></div>
+    </section>
+
     <div id="error-message" class="alert alert-danger" role="alert" style="display: none;">
         <strong>Error:</strong> No se pudieron cargar las rutas. Por favor, intenta de nuevo más tarde.
     </div>
 
-    <!-- Mensaje sin rutas -->
     <div id="no-rutas-message" class="alert alert-info" role="alert" style="display: none;">
         No hay rutas disponibles en este momento.
     </div>
@@ -147,58 +155,79 @@
         font-size: 0.875rem;
         color: #6B7280;
     }
+
+    .badge-ia {
+        display: inline-block;
+        margin-top: 0.75rem;
+        background-color: #ede9fe;
+        color: #6d28d9;
+        font-weight: 700;
+        font-size: 0.75rem;
+        border-radius: 999px;
+        padding: 0.3rem 0.75rem;
+    }
 </style>
 
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         const loadingEl = document.getElementById('loading');
-        const containerEl = document.getElementById('rutas-container');
+        const rutasCatalogoEl = document.getElementById('rutas-container');
+        const rutasIaEl = document.getElementById('rutas-ia-container');
+        const rutasCatalogoSectionEl = document.getElementById('rutas-catalogo-section');
+        const rutasIaSectionEl = document.getElementById('rutas-ia-section');
+        const rutasCatalogoCountEl = document.getElementById('rutas-catalogo-count');
+        const rutasIaCountEl = document.getElementById('rutas-ia-count');
         const errorEl = document.getElementById('error-message');
         const noRutasEl = document.getElementById('no-rutas-message');
 
         try {
-            console.log('Cargando rutas desde /api/rutas/...');
-            const response = await fetch('/api/rutas/');
-            
-            console.log('Response status:', response.status);
-            console.log('Response ok:', response.ok);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            const [responseCatalogo, responseIa] = await Promise.all([
+                fetch('/api/rutas/'),
+                fetch('/api/rutas/?solo_ia=1')
+            ]);
+
+            if (!responseCatalogo.ok || !responseIa.ok) {
+                throw new Error(`Error cargando catálogo (${responseCatalogo.status}) o IA (${responseIa.status})`);
             }
 
-            const rutas = await response.json();
-            console.log('Rutas recibidas:', rutas.length, rutas);
+            const rutas = await responseCatalogo.json();
+            const rutasIa = await responseIa.json();
 
             loadingEl.style.display = 'none';
 
-            if (rutas.length === 0) {
+            if (rutas.length === 0 && rutasIa.length === 0) {
                 noRutasEl.style.display = 'block';
                 return;
             }
 
-            containerEl.style.display = 'flex';
-            rutas.forEach(ruta => {
-                const card = createRutaCard(ruta);
-                containerEl.appendChild(card);
-            });
+            if (rutas.length > 0) {
+                rutasCatalogoSectionEl.style.display = 'block';
+                rutasCatalogoCountEl.textContent = `${rutas.length} rutas`;
+                rutas.forEach(ruta => rutasCatalogoEl.appendChild(createRutaCard(ruta)));
+            }
+
+            if (rutasIa.length > 0) {
+                rutasIaSectionEl.style.display = 'block';
+                rutasIaCountEl.textContent = `${rutasIa.length} tours IA`;
+                rutasIa.forEach(ruta => rutasIaEl.appendChild(createRutaCard(ruta, true)));
+            }
 
         } catch (error) {
             console.error('Error al cargar rutas:', error);
-            console.error('Error stack:', error.stack);
             loadingEl.style.display = 'none';
             errorEl.style.display = 'block';
             errorEl.innerHTML = `<strong>Error:</strong> ${error.message}`;
         }
     });
 
-    function createRutaCard(ruta) {
+    function createRutaCard(ruta, destacarIa = false) {
         const col = document.createElement('div');
         col.className = 'col-12 col-md-6 col-lg-4';
 
-        const exigenciaClass = `exigencia-${ruta.nivel_exigencia.toLowerCase()}`;
-        
+        const exigenciaClass = `exigencia-${String(ruta.nivel_exigencia || '').toLowerCase()}`;
+        const isIa = Boolean(ruta.es_generada_ia);
+
         let moodTags = '';
         if (ruta.mood && ruta.mood.length > 0) {
             moodTags = '<div class="mood-tags">';
@@ -217,12 +246,14 @@
             `;
         }
 
+        const iaBadge = (isIa || destacarIa) ? '<span class="badge-ia">AI Generated Tour</span>' : '';
+
         col.innerHTML = `
             <div class="ruta-card">
                 <div class="ruta-card-body">
                     <h3 class="ruta-title">${ruta.titulo}</h3>
                     <p class="ruta-description">${ruta.descripcion || 'Sin descripción disponible'}</p>
-                    
+
                     <div class="ruta-info">
                         <div class="info-item">
                             <svg class="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -230,20 +261,21 @@
                             </svg>
                             <span>${ruta.duracion_horas}h</span>
                         </div>
-                        
+
                         <div class="info-item">
                             <svg class="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                             </svg>
                             <span>${ruta.num_personas} personas</span>
                         </div>
-                        
+
                         <div class="info-item">
                             <span class="badge-exigencia ${exigenciaClass}">${ruta.nivel_exigencia}</span>
                         </div>
                     </div>
-                    
+
                     ${moodTags}
+                    ${iaBadge}
                     ${guiaInfo}
                 </div>
             </div>

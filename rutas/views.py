@@ -30,13 +30,20 @@ def rutas_catalogo(request):
     if offset < 0:
         offset = 0
     
-    rutas = (
+    solo_ia = request.GET.get("solo_ia") in {"1", "true", "True"}
+
+    rutas_qs = (
         Ruta.objects.select_related("guia")
         .prefetch_related(
             Prefetch('paradas', queryset=Parada.objects.order_by('orden'))
         )
         .order_by("id")
-    )[offset:offset + limit]
+    )
+
+    if solo_ia:
+        rutas_qs = rutas_qs.filter(es_generada_ia=True)
+
+    rutas = rutas_qs[offset:offset + limit]
 
     data = []
     for ruta in rutas:
