@@ -6,6 +6,7 @@ from django.contrib.gis.geos import Point
 from django.db import DatabaseError, transaction
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 
@@ -74,9 +75,12 @@ def _guardar_ruta_ia_en_bd(guia, payload, ruta_generada):
     )
     moods = _normalizar_moods(ruta_generada.get('mood') or payload.get('mood') or [])
 
+    ciudad = str(payload.get('ciudad') or 'AURA').strip()
+    fecha_creacion = timezone.localtime().strftime('%Y-%m-%d')
+
     with transaction.atomic():
         ruta = Ruta.objects.create(
-            titulo=ruta_generada.get('titulo') or f"Ruta IA por {payload.get('ciudad', 'AURA')}",
+            titulo=f"{ciudad} {fecha_creacion}",
             descripcion=ruta_generada.get('descripcion', ''),
             duracion_horas=float(ruta_generada.get('duracion_horas') or payload.get('duracion') or 1),
             num_personas=int(ruta_generada.get('num_personas') or payload.get('personas') or 1),

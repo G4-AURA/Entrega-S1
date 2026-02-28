@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from rutas.models import Parada, Ruta
 from tours.models import TURISTA
@@ -60,6 +61,7 @@ class GeneracionRutaIATestCase(TestCase):
 
         ruta = Ruta.objects.get(id=payload['ruta_id'])
         self.assertEqual(ruta.guia.user.user, guia_user)
+        self.assertEqual(ruta.titulo, f"Sevilla {timezone.localtime().strftime('%Y-%m-%d')}")
         self.assertTrue(ruta.es_generada_ia)
         self.assertEqual(ruta.paradas.count(), 2)
         self.assertEqual(Parada.objects.filter(ruta=ruta).count(), 2)
@@ -120,3 +122,64 @@ class CatalogoRutasIATestCase(TestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertTrue(data[0]['es_generada_ia'])
+
+
+class CatalogoRutasUsuarioActualTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch('creacion.views.consultar_langgraph')
+    def test_catalogo_solo_muestra_rutas_del_usuario_autenticado(self, mock_consultar):
+        mock_consultar.return_value = {
+            'titulo': 'Ruta IA user',
+            'descripcion': 'Descripción',
+            'duracion_horas': 2,
+            'num_personas': 4,
+            'nivel_exigencia': 'media',
+            'mood': ['historia'],
+            'paradas': [
+                {
+                    'orden': 1,
+                    'nombre': 'Inicio',
+                    'coordenadas': {'lat': 37.38, 'lon': -5.99},
+                }
+            ],
+        }
+
+        User.objects.create_user(username='guia_catalogo_1', password='1234')
+        user_2 = User.objects.create_user(username='guia_catalogo_2', password='1234')
+
+        self.client.login(username='guia_catalogo_1', password='1234')
+        self.client.post(
+            reverse('creacion:generar_ruta_ia'),
+            data=json.dumps({
+                'ciudad': 'Sevilla',
+                'duracion': 2,
+                'personas': 4,
+                'exigencia': 'media',
+                'mood': ['historia'],
+            }),
+            content_type='application/json',
+        )
+        self.client.logout()
+
+        self.client.login(username='guia_catalogo_2', password='1234')
+        self.client.post(
+            reverse('creacion:generar_ruta_ia'),
+            data=json.dumps({
+                'ciudad': 'Granada',
+                'duracion': 2,
+                'personas': 4,
+                'exigencia': 'media',
+                'mood': ['historia'],
+            }),
+            content_type='application/json',
+        )
+
+        response = self.client.get(reverse('rutas-catalogo'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['guia']['username'], user_2.username)
+        self.assertEqual(data[0]['titulo'], f"Granada {timezone.localtime().strftime('%Y-%m-%d')}")

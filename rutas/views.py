@@ -1,3 +1,4 @@
+from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -8,6 +9,7 @@ from .models import Ruta, Parada
 MAX_RUTAS_PAGE_SIZE = 100
 
 @require_GET
+@login_required
 def rutas_catalogo(request):
     try:
         limit = int(request.GET.get("limit", MAX_RUTAS_PAGE_SIZE))
@@ -37,6 +39,7 @@ def rutas_catalogo(request):
         .prefetch_related(
             Prefetch('paradas', queryset=Parada.objects.order_by('orden'))
         )
+        .filter(guia__user__user=request.user)
         .order_by("id")
     )
 

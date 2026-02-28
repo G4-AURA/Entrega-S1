@@ -28,7 +28,7 @@
 
     <section id="rutas-ia-section" style="display: none;">
         <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h4 fw-bold mb-0">AI Generated Tours</h2>
+            <h2 class="h4 fw-bold mb-0">Rutas generadas por IA</h2>
             <span id="rutas-ia-count" class="text-muted small"></span>
         </div>
         <div id="rutas-ia-container" class="row g-4"></div>
@@ -182,34 +182,32 @@
         const noRutasEl = document.getElementById('no-rutas-message');
 
         try {
-            const [responseCatalogo, responseIa] = await Promise.all([
-                fetch('/api/rutas/'),
-                fetch('/api/rutas/?solo_ia=1')
-            ]);
+            const responseRutas = await fetch('/api/rutas/');
 
-            if (!responseCatalogo.ok || !responseIa.ok) {
-                throw new Error(`Error cargando catálogo (${responseCatalogo.status}) o IA (${responseIa.status})`);
+            if (!responseRutas.ok) {
+                throw new Error(`Error cargando catálogo (${responseRutas.status})`);
             }
 
-            const rutas = await responseCatalogo.json();
-            const rutasIa = await responseIa.json();
+            const rutas = await responseRutas.json();
+            const rutasManuales = rutas.filter(ruta => !ruta.es_generada_ia);
+            const rutasIa = rutas.filter(ruta => ruta.es_generada_ia);
 
             loadingEl.style.display = 'none';
 
-            if (rutas.length === 0 && rutasIa.length === 0) {
+            if (rutasManuales.length === 0 && rutasIa.length === 0) {
                 noRutasEl.style.display = 'block';
                 return;
             }
 
-            if (rutas.length > 0) {
+            if (rutasManuales.length > 0) {
                 rutasCatalogoSectionEl.style.display = 'block';
-                rutasCatalogoCountEl.textContent = `${rutas.length} rutas`;
-                rutas.forEach(ruta => rutasCatalogoEl.appendChild(createRutaCard(ruta)));
+                rutasCatalogoCountEl.textContent = `${rutasManuales.length} rutas`;
+                rutasManuales.forEach(ruta => rutasCatalogoEl.appendChild(createRutaCard(ruta)));
             }
 
             if (rutasIa.length > 0) {
                 rutasIaSectionEl.style.display = 'block';
-                rutasIaCountEl.textContent = `${rutasIa.length} tours IA`;
+                rutasIaCountEl.textContent = `${rutasIa.length} rutas IA`;
                 rutasIa.forEach(ruta => rutasIaEl.appendChild(createRutaCard(ruta, true)));
             }
 
@@ -246,7 +244,7 @@
             `;
         }
 
-        const iaBadge = (isIa || destacarIa) ? '<span class="badge-ia">AI Generated Tour</span>' : '';
+        const iaBadge = (isIa || destacarIa) ? '<span class="badge-ia">Ruta generada por IA</span>' : '';
 
         col.innerHTML = `
             <div class="ruta-card">
