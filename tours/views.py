@@ -9,11 +9,7 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import redirect, render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 
-from .models import SESION_TOUR, TURISTA, UBICACION_VIVO
-
-
-def _is_authenticated(request):
-	return request.user.is_authenticated
+from .models import SESION_TOUR, TURISTA, UBICACION_VIVO, TURISTASESION
 
 
 def _generate_unique_access_code(length=6):
@@ -22,6 +18,10 @@ def _generate_unique_access_code(length=6):
 		code = ''.join(secrets.choice(alphabet) for _ in range(length))
 		if not SESION_TOUR.objects.filter(codigo_acceso=code).exists():
 			return code
+
+# =============================================================================
+# VISTAS PARA TURISTAS REGISTRADOS (requieren login)
+# =============================================================================
 
 @login_required
 def pantalla_unirse_tour(request):
@@ -58,19 +58,37 @@ def mapa_turista(request, sesion_id):
     if not hasattr(request.user, 'turista') or request.user.turista not in sesion.turistas.all():
         return redirect('tours:pantalla_unirse') # Si intenta colarse, lo devolvemos a su panel
     
-    # 3. Preparamos los datos para enviarlos al HTML
+    # 3. Obtener paradas de la ruta
+    paradas = sesion.ruta.paradas.all()
+    paradas_json = json.dumps([{
+        'id': p.id,
+        'nombre': p.nombre,
+        'orden': p.orden,
+        'lat': p.coordenadas.y if p.coordenadas else None,
+        'lng': p.coordenadas.x if p.coordenadas else None,
+        'es_actual': sesion.parada_actual_id == p.id if sesion.parada_actual_id else False
+    } for p in paradas])
+    
+    # 4. Preparamos los datos para enviarlos al HTML
     context = {
         'sesion': sesion,
-        #'ruta': sesion.ruta,
+        'paradas_json': paradas_json,
+        'is_anonymous': False,
     }
     
     return render(request, 'turista_mapa.html', context)
 
+
+# =============================================================================
+# VISTAS PARA GUÍAS (requieren login)
+# =============================================================================
+
+@login_required
 @require_POST
 def iniciar_tour(request, sesion_id):
-	if not _is_authenticated(request):
-		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
-
+	"""
+	Vista para que un GUÍA inicie un tour.
+	"""
 	try:
 		sesion = SESION_TOUR.objects.get(id=sesion_id)
 	except SESION_TOUR.DoesNotExist:
@@ -95,11 +113,12 @@ def iniciar_tour(request, sesion_id):
 	)
 
 
+@login_required
 @require_POST
 def unirse_tour(request):
-	if not _is_authenticated(request):
-		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
-
+	"""
+	Vista para que un turista REGISTRADO se una a un tour mediante código de acceso.
+	"""
 	try:
 		body = json.loads(request.body or '{}')
 	except json.JSONDecodeError:
@@ -131,11 +150,12 @@ def unirse_tour(request):
 	)
 
 
+@login_required
 @require_POST
 def registrar_ubicacion(request):
-	if not _is_authenticated(request):
-		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
-
+	"""
+	Vista para registrar la ubicación de un usuario (GUÍA o TURISTA registrado).
+	"""
 	try:
 		body = json.loads(request.body or '{}')
 	except json.JSONDecodeError:
@@ -183,5 +203,185 @@ def registrar_ubicacion(request):
 		},
 		status=201,
 	)
+
+
+# =============================================================================
+# VISTAS PARA TURISTAS ANÓNIMOS (solo requieren token/cookie)
+# =============================================================================
+
+def join_tour(request, token):
+	"""
+	Vista para unirse a un tour mediante token único sin necesidad de registro.
+	GET: Muestra formulario para ingresar alias
+	POST: Crea turista anónimo y lo vincula a la sesión
+	"""
+	# Buscar la sesión por token
+	try:
+		sesion = SESION_TOUR.objects.get(token=token)
+	except SESION_TOUR.DoesNotExist:
+		return render(request, 'tours/join_error.html', {
+			'error': 'Token inválido o sesión no encontrada.'
+		}, status=404)
+	
+	# Si la sesión ya finalizó, no permitir unirse
+	if sesion.estado == 'finalizado':
+		return render(request, 'tours/join_error.html', {
+			'error': 'Esta sesión ya ha finalizado.'
+		}, status=400)
+	
+	# Verificar si el usuario ya tiene cookie y está en esta sesión
+	turista_id_cookie = request.session.get('turista_id')
+	if turista_id_cookie and request.method == 'GET':
+		try:
+			turista = TURISTA.objects.get(id=turista_id_cookie)
+			if TURISTASESION.objects.filter(turista=turista, sesion_tour=sesion, activo=True).exists():
+				# Ya está en la sesión, redirigir al mapa directamente
+				return redirect('tours:mapa_turista_anonimo', token=token)
+		except TURISTA.DoesNotExist:
+			pass
+	
+	if request.method == 'POST':
+		alias = request.POST.get('alias', '').strip()
+		
+		if not alias:
+			return render(request, 'tours/join_tour.html', {
+				'sesion': sesion,
+				'error': 'El alias es obligatorio.'
+			})
+		
+		# Verificar si el usuario ya tiene una cookie de turista
+		turista_id_cookie = request.session.get('turista_id')
+		
+		# Buscar si ya existe un turista ACTIVO con ese alias en esta sesión
+		turista_sesion_existente = TURISTASESION.objects.filter(
+			sesion_tour=sesion, 
+			turista__alias=alias,
+			activo=True  # Solo buscar activos
+		).first()
+		
+		if turista_sesion_existente:
+			# Caso 1: Es el mismo turista volviendo (tiene la cookie correcta)
+			if turista_id_cookie and turista_sesion_existente.turista.id == turista_id_cookie:
+				turista = turista_sesion_existente.turista
+			# Caso 2: El alias está siendo usado activamente pero el usuario no tiene cookie
+			# Esto puede pasar si cerró el navegador o limpió cookies
+			# Desactivamos la sesión anterior como "abandonada" y permitimos continuar
+			elif not turista_id_cookie:
+				turista_sesion_existente.activo = False
+				turista_sesion_existente.save()
+				
+				# Crear nuevo turista con el mismo alias
+				turista = TURISTA.objects.create(
+					alias=alias,
+					user=None
+				)
+				TURISTASESION.objects.create(
+					turista=turista,
+					sesion_tour=sesion,
+					activo=True
+				)
+			# Caso 3: El alias está siendo usado por OTRO usuario con cookie diferente
+			else:
+				return render(request, 'tours/join_tour.html', {
+					'sesion': sesion,
+					'error': f'El alias "{alias}" ya está en uso en este tour. Por favor elige otro nombre.'
+				})
+		else:
+			# No hay nadie activo con ese alias, crear nuevo o reutilizar inactivo
+			turista_inactivo = TURISTASESION.objects.filter(
+				sesion_tour=sesion,
+				turista__alias=alias,
+				activo=False
+			).first()
+			
+			if turista_inactivo and not turista_id_cookie:
+				# Reutilizar el turista inactivo
+				turista_inactivo.activo = True
+				turista_inactivo.save()
+				turista = turista_inactivo.turista
+			else:
+				# Crear nuevo turista
+				turista = TURISTA.objects.create(
+					alias=alias,
+					user=None
+				)
+				TURISTASESION.objects.create(
+					turista=turista,
+					sesion_tour=sesion,
+					activo=True
+				)
+		
+		# Guardar el ID del turista en la sesión (cookie)
+		request.session['turista_id'] = turista.id
+		request.session['turista_alias'] = turista.alias
+		
+		# Redirigir al mapa del tour
+		return redirect('tours:mapa_turista_anonimo', token=token)
+	
+	# GET: Mostrar formulario
+	return render(request, 'tours/join_tour.html', {
+		'sesion': sesion
+	})
+
+
+def mapa_turista_anonimo(request, token):
+	"""
+	Vista del mapa para turistas anónimos (sin cuenta de usuario).
+	"""
+	# Buscar la sesión por token
+	try:
+		sesion = SESION_TOUR.objects.get(token=token)
+	except SESION_TOUR.DoesNotExist:
+		return render(request, 'tours/join_error.html', {
+			'error': 'Token inválido o sesión no encontrada.'
+		}, status=404)
+	
+	# Verificar que el turista esté en la sesión (mediante cookie)
+	turista_id = request.session.get('turista_id')
+	if not turista_id:
+		return redirect('tours:join_tour', token=token)
+	
+	try:
+		turista = TURISTA.objects.get(id=turista_id)
+		# Verificar que el turista esté efectivamente vinculado a esta sesión
+		if not TURISTASESION.objects.filter(turista=turista, sesion_tour=sesion).exists():
+			return redirect('tours:join_tour', token=token)
+	except TURISTA.DoesNotExist:
+		return redirect('tours:join_tour', token=token)
+	
+	# Obtener paradas de la ruta
+	paradas = sesion.ruta.paradas.all()
+	paradas_json = json.dumps([{
+		'id': p.id,
+		'nombre': p.nombre,
+		'orden': p.orden,
+		'lat': p.coordenadas.y if p.coordenadas else None,
+		'lng': p.coordenadas.x if p.coordenadas else None,
+		'es_actual': sesion.parada_actual_id == p.id if sesion.parada_actual_id else False
+	} for p in paradas])
+	
+	context = {
+		'sesion': sesion,
+		'turista': turista,
+		'is_anonymous': True,
+		'paradas_json': paradas_json,
+	}
+	
+	return render(request, 'turista_mapa.html', context)
+
+
+def join_tour_by_code(request, codigo):
+	"""
+	Vista para unirse a un tour mediante código de acceso.
+	Redirige al endpoint con token UUID.
+	"""
+	try:
+		sesion = SESION_TOUR.objects.get(codigo_acceso=codigo.upper())
+		# Redirigir al endpoint con token
+		return redirect('tours:join_tour', token=sesion.token)
+	except SESION_TOUR.DoesNotExist:
+		return render(request, 'tours/join_error.html', {
+			'error': f'Código de acceso "{codigo}" no encontrado. Verifica con tu guía.'
+		}, status=404)
 
 

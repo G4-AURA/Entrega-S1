@@ -11,9 +11,15 @@
 {% endblock %}
 
 {% block content %}
-<a href="/tours/turista" class="btn-back">
-    <span class="material-icons-round">arrow_back</span>
-</a>
+{% if is_anonymous %}
+    <a href="/" class="btn-back">
+        <span class="material-icons-round">arrow_back</span>
+    </a>
+{% else %}
+    <a href="/tours/turista" class="btn-back">
+        <span class="material-icons-round">arrow_back</span>
+    </a>
+{% endif %}
 
 <div id="mapa-tour"></div>
 
@@ -66,6 +72,7 @@
 {% block extra_js %}
 <script>
     const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
+    const paradasData = {{ paradas_json|safe }};
 </script>
 
 <script src="{% static 'js/mapa_turista.js' %}"></script>
