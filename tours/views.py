@@ -220,6 +220,9 @@ def enviar_mensaje(request, sesion_id):
 	# Validar que el usuario pertenece a la sesión (como guía o turista)
 	es_turista = hasattr(request.user, 'turista') and request.user.turista in sesion.turistas.all()
 	# Para permitir que el guía también envíe, verificamos si es el propietario de la ruta
+	es_guia = False
+	if not (es_turista or es_guia):
+		return JsonResponse({'error': 'No tienes permiso para enviar mensajes en esta sesión.'}, status=403)
 	# o simplemente permitimos que cualquier usuario autenticado envíe en una sesión activa
 	
 	if sesion.estado != 'en_curso':
@@ -254,33 +257,46 @@ def obtener_mensajes(request, sesion_id):
 	
 	Parámetros GET:
 	- desde: Timestamp ISO para obtener solo mensajes posteriores (opcional)
+	- limite: Número máximo de mensajes a devolver (default: 50, máximo: 500)
 	
 	Respuesta:
 	- mensajes: Lista de mensajes con remitente, texto, momento e ID
-	- total: Cantidad total de mensajes
+	- total: Cantidad total de mensajes en la sesión
 	"""
 	if not _is_authenticated(request):
 		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
 
 	try:
-		sesion = SESION_TOUR.objects.get(id=sesion_id)
+		sesion = SESION_TOUR.objects.select_related('ruta').prefetch_related('turistas').get(id=sesion_id)
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
 
-	# Validar que el usuario pertenece a la sesión
-	es_turista = hasattr(request.user, 'turista') and request.user.turista in sesion.turistas.all()
+	# Validar que el usuario pertenece a la sesión con una sola consulta
+	turistas = [t.user_id for t in sesion.turistas.all()]
+	es_turista = request.user.id in turistas
 	# Determinar si el usuario es el guía de la ruta de la sesión
 	es_guia = False
-	if hasattr(sesion, 'ruta') and hasattr(sesion.ruta, 'guia'):
-		es_guia = sesion.ruta.guia == request.user
-	elif hasattr(sesion, 'guia'):
-		es_guia = sesion.guia == request.user
+	if hasattr(sesion.ruta, 'guia'):
+		guia = sesion.ruta.guia
+		# Navegar hasta el usuario de Django asociado al guía, si existe
+		if hasattr(guia, 'user') and hasattr(guia.user, 'user'):
+			es_guia = guia.user.user == request.user
 	if not (es_turista or es_guia):
 		return JsonResponse({'error': 'No tienes permiso para ver los mensajes de esta sesión.'}, status=403)	
-	# Obtener parámetro opcional 'desde' para polling eficiente
+	# Obtener parámetros opcionales
 	desde = request.GET.get('desde')
 	
+	# Validar y obtener límite con default de 50 y máximo de 500
+	try:
+		limite = int(request.GET.get('limite', 50))
+		limite = min(max(limite, 1), 500)
+	except (ValueError, TypeError):
+		limite = 50
+	
 	mensajes_query = MENSAJE_CHAT.objects.filter(sesion_tour=sesion).order_by('momento')
+	
+	# Obtener total antes de aplicar el filtro
+	total_mensajes = mensajes_query.count()
 	
 	if desde:
 		try:
@@ -297,13 +313,13 @@ def obtener_mensajes(request, sesion_id):
 		'remitente__username',
 		'texto',
 		'momento'
-	)
+	)[:limite]
 
 	mensajes_list = list(mensajes)
 	return JsonResponse(
 		{
 			'mensajes': mensajes_list,
-			'total': len(mensajes_list),
+			'total': total_mensajes,
 			'sesion_id': sesion.id,
 		},
 		status=200,
