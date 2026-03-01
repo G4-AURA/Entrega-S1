@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from django.contrib.auth import views as auth_views
 from config import views
 from tours import views as tours_views
 from django.views.generic import TemplateView
@@ -33,4 +34,8 @@ urlpatterns = [
     path('', views.home_router, name='home'),
     path('', include('rutas.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
+    
+    # URLs de autenticación
+    path('accounts/login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
+    path('accounts/logout/', auth_views.LogoutView.as_view(next_page='/'), name='logout'),
 ]
