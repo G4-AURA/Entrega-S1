@@ -255,3 +255,65 @@ def generar_ruta_ia(request):
             "status": "ERROR",
             "mensaje": f"Error interno del servidor: {str(e)}"
         }, status=500)
+
+
+@csrf_exempt
+@require_POST
+def guardar_ruta_manual(request):
+    """
+    Endpoint para guardar una ruta creada manualmente.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes iniciar sesión.'}, status=401)
+    
+    if hasattr(request.user, 'turista'):
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Solo los guías pueden crear rutas.'}, status=403)
+        
+    try:
+        data = json.loads(request.body)
+        titulo = data.get('titulo')
+        descripcion = data.get('descripcion')
+        paradas_data = data.get('paradas', [])
+        
+        # Como en el diseño manual aún no tienes estos campos en el HTML, 
+        # asignamos valores por defecto o los requerimos del frontend
+        duracion_horas = data.get('duracion_horas', 2.0) 
+        num_personas = data.get('num_personas', 10)
+        nivel_exigencia = data.get('nivel_exigencia', Ruta.Exigencia.MEDIA)
+        mood = data.get('mood', [])
+        
+        guia = _obtener_guia_para_usuario(request.user)
+        if not guia:
+            return JsonResponse({'status': 'ERROR', 'mensaje': 'Perfil de guía no encontrado.'}, status=500)
+            
+        with transaction.atomic():
+            # 1. Crear la Ruta
+            ruta = Ruta.objects.create(
+                titulo=titulo,
+                descripcion=descripcion,
+                duracion_horas=float(duracion_horas),
+                num_personas=int(num_personas),
+                nivel_exigencia=nivel_exigencia,
+                mood=mood,
+                es_generada_ia=False, # Identificador clave para rutas manuales
+                guia=guia
+            )
+            
+            # 2. Crear las Paradas
+            for idx, p_data in enumerate(paradas_data, start=1):
+                # Por ahora, si no tienes integración con mapa para sacar las coordenadas de la dirección, 
+                # ponemos coordenadas dummy, de lo contrario PostGIS fallará si es nulo.
+                lat = p_data.get('lat', 37.38)
+                lon = p_data.get('lon', -5.99)
+                
+                Parada.objects.create(
+                    ruta=ruta,
+                    orden=idx,
+                    nombre=p_data.get('nombre', f'Parada {idx}'),
+                    coordenadas=Point(float(lon), float(lat), srid=4326)
+                )
+                
+        return JsonResponse({'status': 'OK', 'mensaje': 'Ruta guardada correctamente.', 'ruta_id': ruta.id}, status=200)
+        
+    except Exception as e:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(e)}, status=400)
