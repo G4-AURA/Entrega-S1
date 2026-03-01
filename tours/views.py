@@ -1,6 +1,7 @@
 import json
 import secrets
 import string
+from datetime import datetime
 
 from django.contrib.gis.geos import Point
 from django.http import JsonResponse
@@ -268,7 +269,14 @@ def obtener_mensajes(request, sesion_id):
 
 	# Validar que el usuario pertenece a la sesión
 	es_turista = hasattr(request.user, 'turista') and request.user.turista in sesion.turistas.all()
-	
+	# Determinar si el usuario es el guía de la ruta de la sesión
+	es_guia = False
+	if hasattr(sesion, 'ruta') and hasattr(sesion.ruta, 'guia'):
+		es_guia = sesion.ruta.guia == request.user
+	elif hasattr(sesion, 'guia'):
+		es_guia = sesion.guia == request.user
+	if not (es_turista or es_guia):
+		return JsonResponse({'error': 'No tienes permiso para ver los mensajes de esta sesión.'}, status=403)	
 	# Obtener parámetro opcional 'desde' para polling eficiente
 	desde = request.GET.get('desde')
 	
@@ -276,7 +284,10 @@ def obtener_mensajes(request, sesion_id):
 	
 	if desde:
 		try:
-			desde_datetime = timezone.datetime.fromisoformat(desde)
+			desde_datetime = datetime.fromisoformat(desde)
+			# Hacer timezone-aware si es naive
+			if desde_datetime.tzinfo is None:
+				desde_datetime = timezone.make_aware(desde_datetime)
 			mensajes_query = mensajes_query.filter(momento__gt=desde_datetime)
 		except (ValueError, TypeError):
 			return JsonResponse({'error': 'Formato de fecha inválido. Usa ISO format.'}, status=400)
@@ -288,10 +299,11 @@ def obtener_mensajes(request, sesion_id):
 		'momento'
 	)
 
+	mensajes_list = list(mensajes)
 	return JsonResponse(
 		{
-			'mensajes': list(mensajes),
-			'total': len(mensajes),
+			'mensajes': mensajes_list,
+			'total': len(mensajes_list),
 			'sesion_id': sesion.id,
 		},
 		status=200,
