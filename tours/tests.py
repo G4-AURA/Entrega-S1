@@ -4,7 +4,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import SESION_TOUR, TURISTA, UBICACION_VIVO, MENSAJE_CHAT
-from rutas.models import Ruta, Guia 
+from rutas.models import Ruta, Guia
 from .tasks import barrido_mensajes_efimeros
 
 
@@ -237,3 +237,14 @@ class ChatCeleryTestCase(TestCase):
         barrido_mensajes_efimeros(self.sesion.id)
         
         self.assertEqual(MENSAJE_CHAT.objects.count(), 0)
+    
+    def test_tarea_celery_no_borra_si_activa(self):
+        """Prueba de Seguridad: La tarea ignora el borrado si el tour sigue en curso."""
+        MENSAJE_CHAT.objects.create(
+            sesion_tour=self.sesion, 
+            remitente=self.user_chat, 
+            texto="Este mensaje está a salvo"
+        )
+        resultado = barrido_mensajes_efimeros(self.sesion.id)
+        self.assertEqual(MENSAJE_CHAT.objects.count(), 1)
+        self.assertIn("Operación cancelada", resultado)
