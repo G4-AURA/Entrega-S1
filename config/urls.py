@@ -25,17 +25,17 @@ from django.views.generic import TemplateView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # Ruta temporal para probar el mapa en la página de inicio
-    path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
     # URLs de la app de creación de rutas
     path('crear-ruta/', include('creacion.urls')),
     path('api/ubicacion/', tours_views.registrar_ubicacion, name='api_ubicacion'),
     path('tours/', include('tours.urls')),
-    path('', views.home_router, name='home'),
     path('', include('rutas.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
     
     # URLs de autenticación
     path('accounts/login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
     path('accounts/logout/', auth_views.LogoutView.as_view(next_page='/'), name='logout'),
+    
+    # Home router - debe ir al final para que no intercepte otras rutas
+    path('', views.home_router, name='home'),
 ]
