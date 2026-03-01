@@ -38,3 +38,13 @@ class UBICACION_VIVO(models.Model):
 
     def __str__(self):
         return f"{self.usuario.username} - {self.timestamp}"
+
+
+class MENSAJE_CHAT(models.Model):
+    sesion_tour = models.ForeignKey(SESION_TOUR, on_delete=models.CASCADE, related_name='mensajes')
+    remitente = models.ForeignKey(User, on_delete=models.CASCADE)
+    texto = models.TextField(blank=False, null=False)
+    momento = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.momento.strftime('%H:%M')}] {self.remitente.username}: {self.texto[:20]}"
