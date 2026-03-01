@@ -545,8 +545,8 @@
 
     <div class="footer-action">
         <div class="footer-content">
-            <button class="btn-save">
-                <span class="material-icons-round" id="btn-guardar-tour">save</span>
+            <button class="btn-save" id="btn-guardar-tour">
+                <span class="material-icons-round">save</span>
                 Guardar
             </button>
         </div>
@@ -640,7 +640,7 @@
             }
         }
 
-        document.querySelector('.btn-guardar-tour').addEventListener('click', async function() {
+        document.getElementById('btn-guardar-tour').addEventListener('click', async function() {
             const btnSave = this;
             const originalText = btnSave.innerHTML;
             btnSave.innerHTML = '<span class="material-icons-round">hourglass_empty</span> Guardando...';
