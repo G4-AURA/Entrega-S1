@@ -3,7 +3,9 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import RUTA, SESION_TOUR, TURISTA, UBICACION_VIVO
+from .models import SESION_TOUR, TURISTA, UBICACION_VIVO, MENSAJE_CHAT
+from rutas.models import Ruta, Guia 
+from .tasks import barrido_mensajes_efimeros
 
 
 class SessionLogicEndpointsTests(TestCase):
@@ -11,7 +13,15 @@ class SessionLogicEndpointsTests(TestCase):
         self.guia = User.objects.create_user(username='guia_test', password='1234')
         self.turista_user = User.objects.create_user(username='turista_test', password='1234')
         self.turista = TURISTA.objects.create(user=self.turista_user, alias='turista1')
-        self.ruta = RUTA.objects.create(nombre='Ruta Test', descripcion='Descripción de prueba')
+        
+        self.guia_perfil = Guia.objects.create()
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Test', 
+            duracion_horas=1.0, 
+            num_personas=10,
+            nivel_exigencia='Baja',
+            guia=self.guia_perfil
+        )
 
         self.sesion = SESION_TOUR.objects.create(
             codigo_acceso='TMP001',
@@ -112,7 +122,16 @@ class SessionLogicEndpointsTests(TestCase):
 class TrackingEndpointsTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='track_user', password='1234')
-        self.ruta = RUTA.objects.create(nombre='Ruta Tracking', descripcion='Tracking test')
+        
+        self.guia_perfil = Guia.objects.create()
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Tracking', 
+            duracion_horas=1.0, 
+            num_personas=10,
+            nivel_exigencia='Baja',
+            guia=self.guia_perfil
+        )
+        
         self.sesion = SESION_TOUR.objects.create(
             codigo_acceso='TRK001',
             estado='en_curso',
@@ -172,3 +191,49 @@ class TrackingEndpointsTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class ChatCeleryTestCase(TestCase):
+    def setUp(self):
+        self.guia_perfil = Guia.objects.create()
+        self.user_chat = User.objects.create_user(username='tester_chat', password='123')
+        self.ruta = Ruta.objects.create(
+            titulo="Ruta Test", 
+            duracion_horas=1.0, 
+            num_personas=5,
+            nivel_exigencia="Baja",
+            guia=self.guia_perfil
+        )
+        
+        self.sesion = SESION_TOUR.objects.create(
+            codigo_acceso="UNIT-TEST",
+            ruta=self.ruta,
+            fecha_inicio=timezone.now(),
+            estado="en_curso" 
+        )
+
+    def test_creacion_mensaje_y_asociacion_tour(self):
+        """Prueba Unitaria: Comprueba la correcta creación y asociación a un tour activo."""
+        mensaje = MENSAJE_CHAT.objects.create(
+            sesion_tour=self.sesion,
+            remitente=self.user_chat,
+            texto="Hola, este es un mensaje de prueba"
+        )
+        
+        self.assertEqual(MENSAJE_CHAT.objects.count(), 1)
+        self.assertEqual(mensaje.sesion_tour.id, self.sesion.id)
+        self.assertEqual(mensaje.sesion_tour.estado, 'en_curso') 
+        self.assertEqual(mensaje.remitente.username, 'tester_chat')
+
+    def test_tarea_celery_borrado_efectivo(self):
+        """Prueba de Integración: Asegura que la tarea asíncrona limpia la base de datos."""
+        MENSAJE_CHAT.objects.create(sesion_tour=self.sesion, remitente=self.user_chat, texto="Mensaje 1")
+        MENSAJE_CHAT.objects.create(sesion_tour=self.sesion, remitente=self.user_chat, texto="Mensaje 2")
+        self.assertEqual(MENSAJE_CHAT.objects.count(), 2)
+        
+        self.sesion.estado = "finalizado"
+        self.sesion.save(update_fields=['estado'])
+        
+        barrido_mensajes_efimeros(self.sesion.id)
+        
+        self.assertEqual(MENSAJE_CHAT.objects.count(), 0)
