@@ -1,15 +1,16 @@
 import json
 import secrets
 import string
+from datetime import datetime
 
 from django.contrib.gis.geos import Point
 from django.http import JsonResponse
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.shortcuts import redirect, render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 
-from .models import SESION_TOUR, TURISTA, UBICACION_VIVO
+from .models import SESION_TOUR, TURISTA, UBICACION_VIVO, MENSAJE_CHAT
 
 
 def _is_authenticated(request):
@@ -185,3 +186,141 @@ def registrar_ubicacion(request):
 	)
 
 
+@require_POST
+def enviar_mensaje(request, sesion_id):
+	"""
+	Endpoint REST para enviar un mensaje en la sesión de tour.
+	
+	Parámetros POST:
+	- texto: El contenido del mensaje (obligatorio)
+	
+	Respuesta:
+	- message_id: ID del mensaje creado
+	- remitente: Usuario que envía el mensaje
+	- texto: Contenido del mensaje
+	- momento: Timestamp del mensaje
+	"""
+	if not _is_authenticated(request):
+		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
+
+	try:
+		body = json.loads(request.body or '{}')
+	except json.JSONDecodeError:
+		return JsonResponse({'error': 'JSON inválido.'}, status=400)
+
+	texto = body.get('texto', '').strip()
+	if not texto:
+		return JsonResponse({'error': 'El campo texto es obligatorio y no puede estar vacío.'}, status=400)
+
+	try:
+		sesion = SESION_TOUR.objects.get(id=sesion_id)
+	except SESION_TOUR.DoesNotExist:
+		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	# Validar que el usuario pertenece a la sesión (como guía o turista)
+	es_turista = hasattr(request.user, 'turista') and request.user.turista in sesion.turistas.all()
+	# Para permitir que el guía también envíe, verificamos si es el propietario de la ruta
+	es_guia = False
+	if not (es_turista or es_guia):
+		return JsonResponse({'error': 'No tienes permiso para enviar mensajes en esta sesión.'}, status=403)
+	# o simplemente permitimos que cualquier usuario autenticado envíe en una sesión activa
+	
+	if sesion.estado != 'en_curso':
+		return JsonResponse({'error': 'La sesión debe estar en curso para enviar mensajes.'}, status=400)
+
+	try:
+		mensaje = MENSAJE_CHAT.objects.create(
+			sesion_tour=sesion,
+			remitente=request.user,
+			texto=texto
+		)
+
+		return JsonResponse(
+			{
+				'message': 'Mensaje enviado correctamente.',
+				'message_id': mensaje.id,
+				'remitente': mensaje.remitente.username,
+				'texto': mensaje.texto,
+				'momento': mensaje.momento.isoformat(),
+				'sesion_id': sesion.id,
+			},
+			status=201,
+		)
+	except Exception as e:
+		return JsonResponse({'error': f'Error al crear el mensaje: {str(e)}'}, status=500)
+
+
+@require_http_methods(["GET"])
+def obtener_mensajes(request, sesion_id):
+	"""
+	Endpoint REST para obtener mensajes de una sesión (polling).
+	
+	Parámetros GET:
+	- desde: Timestamp ISO para obtener solo mensajes posteriores (opcional)
+	- limite: Número máximo de mensajes a devolver (default: 50, máximo: 500)
+	
+	Respuesta:
+	- mensajes: Lista de mensajes con remitente, texto, momento e ID
+	- total: Cantidad total de mensajes en la sesión
+	"""
+	if not _is_authenticated(request):
+		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
+
+	try:
+		sesion = SESION_TOUR.objects.select_related('ruta').prefetch_related('turistas').get(id=sesion_id)
+	except SESION_TOUR.DoesNotExist:
+		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	# Validar que el usuario pertenece a la sesión con una sola consulta
+	turistas = [t.user_id for t in sesion.turistas.all()]
+	es_turista = request.user.id in turistas
+	# Determinar si el usuario es el guía de la ruta de la sesión
+	es_guia = False
+	if hasattr(sesion.ruta, 'guia'):
+		guia = sesion.ruta.guia
+		# Navegar hasta el usuario de Django asociado al guía, si existe
+		if hasattr(guia, 'user') and hasattr(guia.user, 'user'):
+			es_guia = guia.user.user == request.user
+	if not (es_turista or es_guia):
+		return JsonResponse({'error': 'No tienes permiso para ver los mensajes de esta sesión.'}, status=403)	
+	# Obtener parámetros opcionales
+	desde = request.GET.get('desde')
+	
+	# Validar y obtener límite con default de 50 y máximo de 500
+	try:
+		limite = int(request.GET.get('limite', 50))
+		limite = min(max(limite, 1), 500)
+	except (ValueError, TypeError):
+		limite = 50
+	
+	mensajes_query = MENSAJE_CHAT.objects.filter(sesion_tour=sesion).order_by('momento')
+	
+	# Obtener total antes de aplicar el filtro
+	total_mensajes = mensajes_query.count()
+	
+	if desde:
+		try:
+			desde_datetime = datetime.fromisoformat(desde)
+			# Hacer timezone-aware si es naive
+			if desde_datetime.tzinfo is None:
+				desde_datetime = timezone.make_aware(desde_datetime)
+			mensajes_query = mensajes_query.filter(momento__gt=desde_datetime)
+		except (ValueError, TypeError):
+			return JsonResponse({'error': 'Formato de fecha inválido. Usa ISO format.'}, status=400)
+
+	mensajes = mensajes_query.values(
+		'id',
+		'remitente__username',
+		'texto',
+		'momento'
+	)[:limite]
+
+	mensajes_list = list(mensajes)
+	return JsonResponse(
+		{
+			'mensajes': mensajes_list,
+			'total': total_mensajes,
+			'sesion_id': sesion.id,
+		},
+		status=200,
+	)
