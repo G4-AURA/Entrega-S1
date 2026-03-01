@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.gis.db import models as gis_models
+from django.conf import settings
 from rutas.models import Ruta
 
 
@@ -42,9 +43,10 @@ class UBICACION_VIVO(models.Model):
 
 class MENSAJE_CHAT(models.Model):
     sesion_tour = models.ForeignKey(SESION_TOUR, on_delete=models.CASCADE, related_name='mensajes')
-    remitente = models.ForeignKey(User, on_delete=models.CASCADE)
-    texto = models.TextField(blank=False, null=False)
+    remitente = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    texto = models.TextField()
     momento = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"[{self.momento.strftime('%H:%M')}] {self.remitente.username}: {self.texto[:20]}"
+        fecha = self.momento.strftime('%H:%M') if self.momento else "S/F"
+        return f"[{fecha}] {self.remitente}: {self.texto[:20]}"
