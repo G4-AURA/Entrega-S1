@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Iniciar Sesión{% endblock %}
+
+{% block extra_css %}
+<style>
+    .auth-wrapper {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+    }
+    .auth-card {
+        width: 100%;
+        max-width: 450px;
+        border: none;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        background-color: #ffffff;
+    }
+    .auth-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .auth-header h2 {
+        font-weight: 700;
+        color: #1F2937;
+    }
+    .auth-header p {
+        color: #6B7280;
+    }
+    .form-control {
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid #D1D5DB;
+    }
+    .form-control:focus {
+        border-color: #4F46E5;
+        box-shadow: 0 0 0 0.25rem rgba(79, 70, 229, 0.25);
+    }
+    .btn-brand {
+        background-color: #4F46E5;
+        border-color: #4F46E5;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-brand:hover {
+        background-color: #3730A3;
+        border-color: #3730A3;
+        color: white;
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="card auth-card p-4 p-md-5">
+        <div class="auth-header">
+            <h2>Bienvenido de nuevo</h2>
+            <p>Inicia sesión en AURA para continuar</p>
+        </div>
+        
+        {% if form.errors %}
+        <div class="alert alert-danger rounded-3" role="alert">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-circle-fill me-2" viewBox="0 0 16 16">
+                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8 4a.905.905 0 0 0-.9.995l.35 3.507a.552.552 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 4zm.002 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>
+            </svg>
+            Usuario o contraseña incorrectos.
+        </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'login' %}" class="needs-validation">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="{{ form.username.id_for_label }}" class="form-label fw-semibold text-secondary">Usuario</label>
+                {{ form.username }}
+            </div>
+            <div class="mb-4">
+                <label for="{{ form.password.id_for_label }}" class="form-label fw-semibold text-secondary">Contraseña</label>
+                {{ form.password }}
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-brand">Entrar a mi cuenta</button>
+            </div>
+        </form>
+
+        <div class="text-center mt-4">
+            <p class="text-muted mb-0">¿No tienes cuenta? <a href="{% url 'registro' %}" class="text-decoration-none" style="color: #4F46E5; font-weight: 600;">Regístrate aquí</a></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const inputs = document.querySelectorAll('.auth-card input:not([type="hidden"])');
+        inputs.forEach(input => {
+            input.classList.add('form-control');
+        });
+    });
+</script>
+{% endblock %}
