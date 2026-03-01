@@ -148,7 +148,6 @@ def generar_ruta(request):
     return render(request, './creacion/personalizacion.html')
 
 
-@login_required
 @csrf_exempt
 @require_POST
 def generar_ruta_ia(request):
@@ -160,6 +159,16 @@ def generar_ruta_ia(request):
     - Usuario debe ser guía (no turista)
     - Se requiere un perfil de Guía para crear la ruta
     """
+
+    
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'Debes iniciar sesión para generar rutas.',
+            },
+            status=401,
+        )
     
     # Validar que el usuario es guía (no turista)
     if hasattr(request.user, 'turista'):
@@ -170,7 +179,7 @@ def generar_ruta_ia(request):
             },
             status=403,
         )
-
+    
     try:
         body_unicode = request.body.decode('utf-8')
         datos = json.loads(body_unicode)
