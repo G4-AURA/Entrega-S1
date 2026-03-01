@@ -18,12 +18,27 @@
         <p class="mt-3 text-muted">Cargando rutas...</p>
     </div>
 
+    <div class="row mb-4 align-items-center">
+        <div class="col-auto">
+            <label for="limite-rutas" class="fw-bold me-2">Mostrar por página:</label>
+            <select id="limite-rutas" class="form-select d-inline-block w-auto">
+                <option value="3" selected>3</option>
+                <option value="6">6</option>
+                <option value="9">9</option>
+            </select>
+        </div>
+    </div>
+
     <section id="rutas-catalogo-section" style="display: none;" class="mb-5">
         <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h4 fw-bold mb-0">Rutas del catálogo</h2>
+            <h2 class="h4 fw-bold mb-0">Rutas creadas manualmente</h2>
             <span id="rutas-catalogo-count" class="text-muted small"></span>
         </div>
-        <div id="rutas-container" class="row g-4"></div>
+        <div id="rutas-container" class="row g-4 mb-3"></div>
+        <div class="d-flex justify-content-between">
+            <button id="btn-prev-manual" class="btn btn-outline-primary" disabled>Anterior</button>
+            <button id="btn-next-manual" class="btn btn-outline-primary" disabled>Siguiente</button>
+        </div>
     </section>
 
     <section id="rutas-ia-section" style="display: none;">
@@ -31,7 +46,11 @@
             <h2 class="h4 fw-bold mb-0">Rutas generadas por IA</h2>
             <span id="rutas-ia-count" class="text-muted small"></span>
         </div>
-        <div id="rutas-ia-container" class="row g-4"></div>
+        <div id="rutas-ia-container" class="row g-4 mb-3"></div>
+        <div class="d-flex justify-content-between">
+            <button id="btn-prev-ia" class="btn btn-outline-primary" disabled>Anterior</button>
+            <button id="btn-next-ia" class="btn btn-outline-primary" disabled>Siguiente</button>
+        </div>
     </section>
 
     <div id="error-message" class="alert alert-danger" role="alert" style="display: none;">
@@ -171,57 +190,85 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', async function() {
+    let currentLimit = 3;
+    let pageManual = 1;
+    let pageIa = 1;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        cargarRutas('manual');
+        cargarRutas('ia');
+
+        document.getElementById('limite-rutas').addEventListener('change', function(e) {
+            currentLimit = parseInt(e.target.value);
+            if (currentLimit > 10) currentLimit = 10; 
+            
+            pageManual = 1;
+            pageIa = 1;
+            
+            cargarRutas('manual');
+            cargarRutas('ia');
+        });
+
+        document.getElementById('btn-prev-manual').addEventListener('click', () => {
+            if (pageManual > 1) { pageManual--; cargarRutas('manual'); }
+        });
+        document.getElementById('btn-next-manual').addEventListener('click', () => {
+            pageManual++; cargarRutas('manual');
+        });
+
+        document.getElementById('btn-prev-ia').addEventListener('click', () => {
+            if (pageIa > 1) { pageIa--; cargarRutas('ia'); }
+        });
+        document.getElementById('btn-next-ia').addEventListener('click', () => {
+            pageIa++; cargarRutas('ia');
+        });
+    });
+
+    async function cargarRutas(tipo) {
         const loadingEl = document.getElementById('loading');
-        const rutasCatalogoEl = document.getElementById('rutas-container');
-        const rutasIaEl = document.getElementById('rutas-ia-container');
-        const rutasCatalogoSectionEl = document.getElementById('rutas-catalogo-section');
-        const rutasIaSectionEl = document.getElementById('rutas-ia-section');
-        const rutasCatalogoCountEl = document.getElementById('rutas-catalogo-count');
-        const rutasIaCountEl = document.getElementById('rutas-ia-count');
         const errorEl = document.getElementById('error-message');
-        const noRutasEl = document.getElementById('no-rutas-message');
-
+        
+        const page = tipo === 'manual' ? pageManual : pageIa;
+        
         try {
-            const responseRutas = await fetch('/api/rutas/');
-
-            if (!responseRutas.ok) {
-                throw new Error(`Error cargando catálogo (${responseRutas.status})`);
-            }
-
-            const rutas = await responseRutas.json();
-            const rutasManuales = rutas.filter(ruta => !ruta.es_generada_ia);
-            const rutasIa = rutas.filter(ruta => ruta.es_generada_ia);
-
+            const response = await fetch(`/api/rutas/?tipo=${tipo}&limit=${currentLimit}&page=${page}`);
+            if (!response.ok) throw new Error(`Error cargando catálogo (${response.status})`);
+            
+            const data = await response.json(); 
+            const rutas = data.results;
+            
             loadingEl.style.display = 'none';
 
-            if (rutasManuales.length === 0 && rutasIa.length === 0) {
-                noRutasEl.style.display = 'block';
-                return;
+            const containerId = tipo === 'manual' ? 'rutas-container' : 'rutas-ia-container';
+            const sectionId = tipo === 'manual' ? 'rutas-catalogo-section' : 'rutas-ia-section';
+            const countId = tipo === 'manual' ? 'rutas-catalogo-count' : 'rutas-ia-count';
+            const prevBtnId = tipo === 'manual' ? 'btn-prev-manual' : 'btn-prev-ia';
+            const nextBtnId = tipo === 'manual' ? 'btn-next-manual' : 'btn-next-ia';
+
+            const container = document.getElementById(containerId);
+            container.innerHTML = ''; 
+
+            if (rutas.length > 0) {
+                document.getElementById(sectionId).style.display = 'block';
+                document.getElementById(countId).textContent = `Página ${data.current_page} de ${data.total_pages} (${data.total_items} rutas en total)`;
+                
+                rutas.forEach(ruta => {
+                    container.appendChild(createRutaCard(ruta, tipo === 'ia'));
+                });
+            } else if (page === 1) {
+                document.getElementById(sectionId).style.display = 'none';
             }
 
-            rutasCatalogoEl.innerHTML = '';
-            rutasIaEl.innerHTML = '';
-
-            if (rutasManuales.length > 0) {
-                rutasCatalogoSectionEl.style.display = 'block';
-                rutasCatalogoCountEl.textContent = `${rutasManuales.length} rutas`;
-                rutasManuales.forEach(ruta => rutasCatalogoEl.appendChild(createRutaCard(ruta)));
-            }
-
-            if (rutasIa.length > 0) {
-                rutasIaSectionEl.style.display = 'block';
-                rutasIaCountEl.textContent = `${rutasIa.length} rutas IA`;
-                rutasIa.forEach(ruta => rutasIaEl.appendChild(createRutaCard(ruta, true)));
-            }
+            document.getElementById(prevBtnId).disabled = data.current_page <= 1;
+            document.getElementById(nextBtnId).disabled = data.current_page >= data.total_pages;
 
         } catch (error) {
-            console.error('Error al cargar rutas:', error);
+            console.error(`Error al cargar rutas ${tipo}:`, error);
             loadingEl.style.display = 'none';
             errorEl.style.display = 'block';
             errorEl.innerHTML = `<strong>Error:</strong> ${error.message}`;
         }
-    });
+    }
 
     function createRutaCard(ruta, destacarIa = false) {
         const col = document.createElement('div');
