@@ -40,6 +40,7 @@ def rutas_catalogo(request):
             Prefetch('paradas', queryset=Parada.objects.order_by('orden'))
         )
         .filter(guia__user__user=request.user)
+        .distinct()
         .order_by("id")
     )
 

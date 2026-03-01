@@ -199,6 +199,9 @@
                 return;
             }
 
+            rutasCatalogoEl.innerHTML = '';
+            rutasIaEl.innerHTML = '';
+
             if (rutasManuales.length > 0) {
                 rutasCatalogoSectionEl.style.display = 'block';
                 rutasCatalogoCountEl.textContent = `${rutasManuales.length} rutas`;
