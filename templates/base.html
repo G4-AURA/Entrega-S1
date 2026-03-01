@@ -39,17 +39,21 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
                     </li>
                 </ul>
                 <a href="#" class="text-decoration-none" title="Ir a mi perfil">
-                    {% if user.is_authenticated %}
-                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold shadow-sm" 
-                             style="width: 42px; height: 42px; background-color: #4F46E5; border: 2px solid #4B5563;">
-                            {{ user.username|make_list|first|upper }}
+                   {% if user.is_authenticated %}
+                        <div class="d-flex align-items-center">
+                            <span class="me-3 text-secondary small">Conectado como <strong>{{ user.username }}</strong></span>
+                            
+                            <form method="post" action="{% url 'logout' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-danger btn-sm px-3 rounded-pill fw-bold">
+                                    <i class="bi bi-box-arrow-right me-1"></i> Salir
+                                </button>
+                            </form>
                         </div>
                     {% else %}
-                        <div class="rounded-circle d-flex align-items-center justify-content-center text-secondary shadow-sm" 
-                             style="width: 42px; height: 42px; background-color: #374151; border: 2px solid #4B5563;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-person-fill" viewBox="0 0 16 16">
-                                <path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3Zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
-                            </svg>
+                        <div class="d-flex gap-2">
+                            <a href="{% url 'login' %}" class="btn btn-outline-primary btn-sm px-3 rounded-pill">Entrar</a>
+                            <a href="{% url 'registro' %}" class="btn btn-primary btn-sm px-3 rounded-pill">Registrarse</a>
                         </div>
                     {% endif %}
                 </a>

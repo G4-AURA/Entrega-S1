@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Crear Cuenta{% endblock %}
+
+{% block extra_css %}
+<style>
+    .auth-wrapper {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+    }
+    .auth-card {
+        width: 100%;
+        max-width: 500px;
+        border: none;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        background-color: #ffffff;
+    }
+    .auth-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .auth-header h2 {
+        font-weight: 700;
+        color: #1F2937;
+    }
+    .auth-header p {
+        color: #6B7280;
+    }
+    
+    /* Estilos para el formulario generado por Django */
+    .django-form p {
+        margin-bottom: 1.25rem;
+    }
+    .django-form label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #4B5563;
+        font-size: 0.9rem;
+    }
+    .django-form .helptext {
+        font-size: 0.8rem;
+        color: #6B7280;
+        display: block;
+        margin-top: 0.25rem;
+    }
+    .django-form ul.errorlist {
+        color: #DC2626;
+        padding-left: 1.5rem;
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+    }
+    
+    .form-control, .form-select {
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid #D1D5DB;
+        width: 100%;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #4F46E5;
+        outline: 0;
+        box-shadow: 0 0 0 0.25rem rgba(79, 70, 229, 0.25);
+    }
+    
+    /* Estilos para los Radio Buttons del tipo de cuenta */
+    .django-form ul {
+        list-style: none;
+        padding-left: 0;
+    }
+    .django-form ul li label {
+        font-weight: normal;
+        display: inline-flex;
+        align-items: center;
+        cursor: pointer;
+    }
+    .django-form input[type="radio"] {
+        margin-right: 0.5rem;
+        cursor: pointer;
+        width: 1.1rem;
+        height: 1.1rem;
+        accent-color: #4F46E5;
+    }
+
+    .btn-brand {
+        background-color: #4F46E5;
+        border-color: #4F46E5;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-brand:hover {
+        background-color: #3730A3;
+        border-color: #3730A3;
+        color: white;
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="card auth-card p-4 p-md-5">
+        <div class="auth-header">
+            <h2>Únete a AURA</h2>
+            <p>Crea tu cuenta como Guía o Turista</p>
+        </div>
+        
+        <form method="post" class="django-form">
+            {% csrf_token %}
+            
+            {{ form.as_p }}
+            
+            <div class="d-grid mt-4">
+                <button type="submit" class="btn btn-brand">Completar registro</button>
+            </div>
+        </form>
+        
+        <div class="text-center mt-4 pt-3 border-top">
+            <p class="text-muted mb-0">¿Ya tienes cuenta? <a href="{% url 'login' %}" class="text-decoration-none" style="color: #4F46E5; font-weight: 600;">Inicia sesión aquí</a></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const inputs = document.querySelectorAll('.django-form input[type="text"], .django-form input[type="password"], .django-form input[type="email"], .django-form input[type="file"]');
+        
+        inputs.forEach(input => {
+            input.classList.add('form-control');
+            
+            if(input.type !== 'file' && !input.placeholder && input.previousElementSibling && input.previousElementSibling.tagName === 'LABEL') {
+                input.placeholder = "Introduce tu " + input.previousElementSibling.innerText.toLowerCase().replace(':', '');
+            }
+        });
+        
+        const selects = document.querySelectorAll('.django-form select');
+        selects.forEach(select => {
+            select.classList.add('form-select');
+        });
+    });
+</script>
+{% endblock %}
