@@ -3,7 +3,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import RUTA, SESION_TOUR, TURISTA, UBICACION_VIVO
+from rutas.models import AuthUser, Guia, Ruta
+from .models import SESION_TOUR, TURISTA, UBICACION_VIVO
 
 
 class SessionLogicEndpointsTests(TestCase):
@@ -11,7 +12,16 @@ class SessionLogicEndpointsTests(TestCase):
         self.guia = User.objects.create_user(username='guia_test', password='1234')
         self.turista_user = User.objects.create_user(username='turista_test', password='1234')
         self.turista = TURISTA.objects.create(user=self.turista_user, alias='turista1')
-        self.ruta = RUTA.objects.create(nombre='Ruta Test', descripcion='Descripción de prueba')
+        auth_guia = AuthUser.objects.create(user=self.guia)
+        guia = Guia.objects.create(user=auth_guia)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Test',
+            descripcion='Descripción de prueba',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
 
         self.sesion = SESION_TOUR.objects.create(
             codigo_acceso='TMP001',
@@ -38,7 +48,7 @@ class SessionLogicEndpointsTests(TestCase):
 
         response = client.post(reverse('tours:iniciar_tour', args=[self.sesion.id]))
 
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 302)
 
     def test_iniciar_tour_finalizado_devuelve_error(self):
         client = Client()
@@ -112,20 +122,33 @@ class SessionLogicEndpointsTests(TestCase):
 class TrackingEndpointsTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='track_user', password='1234')
-        self.ruta = RUTA.objects.create(nombre='Ruta Tracking', descripcion='Tracking test')
+        self.turista = TURISTA.objects.create(user=self.user, alias='track_turista')
+
+        guia_user = User.objects.create_user(username='track_guia', password='1234')
+        auth_guia = AuthUser.objects.create(user=guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Tracking',
+            descripcion='Tracking test',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
         self.sesion = SESION_TOUR.objects.create(
             codigo_acceso='TRK001',
             estado='en_curso',
             fecha_inicio=timezone.now(),
             ruta=self.ruta,
         )
+        self.sesion.turistas.add(self.turista)
 
     def test_registrar_ubicacion_crea_registro(self):
         client = Client()
         client.force_login(self.user)
 
         response = client.post(
-            '/api/ubicacion/',
+            reverse('tours:registrar_ubicacion'),
             data='{"sesion_id": %d, "latitud": 37.3891, "longitud": -5.9845}' % self.sesion.id,
             content_type='application/json',
         )
@@ -142,19 +165,19 @@ class TrackingEndpointsTests(TestCase):
         client = Client()
 
         response = client.post(
-            '/api/ubicacion/',
+            reverse('tours:registrar_ubicacion'),
             data='{"sesion_id": %d, "latitud": 37.3891, "longitud": -5.9845}' % self.sesion.id,
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 302)
 
     def test_registrar_ubicacion_valida_campos_obligatorios(self):
         client = Client()
         client.force_login(self.user)
 
         response = client.post(
-            '/api/ubicacion/',
+            reverse('tours:registrar_ubicacion'),
             data='{"latitud": 37.3891, "longitud": -5.9845}',
             content_type='application/json',
         )
@@ -166,7 +189,7 @@ class TrackingEndpointsTests(TestCase):
         client.force_login(self.user)
 
         response = client.post(
-            '/api/ubicacion/',
+            reverse('tours:registrar_ubicacion'),
             data='{"sesion_id": %d, "latitud": 120.0, "longitud": -5.9845}' % self.sesion.id,
             content_type='application/json',
         )
