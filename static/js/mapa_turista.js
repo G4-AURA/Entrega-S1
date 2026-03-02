@@ -187,8 +187,15 @@ function initChat() {
     function fetchMessages() {
         let url = `/tours/sesiones/${sesionId}/mensajes/`;
         if (lastMessageTime) {
-            // Asegurar que la fecha esté en formato correcto (sin microsegundos si causan problema)
-            const dateStr = lastMessageTime.split('.')[0] + 'Z';
+            // Normalizar la fecha a ISO 8601 para evitar formatos inválidos
+            let dateStr;
+            const parsedDate = new Date(lastMessageTime);
+            if (!isNaN(parsedDate)) {
+                dateStr = parsedDate.toISOString();
+            } else {
+                // Si no se puede parsear, enviar el valor tal cual
+                dateStr = lastMessageTime;
+            }
             url += `?desde=${encodeURIComponent(dateStr)}`;
         }
 
