@@ -1,0 +1,70 @@
+name: Django CI - Flake8 & Tests
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+  push:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Descargar el código
+      uses: actions/checkout@v4
+
+    # --- LEVANTAMOS LA INFRAESTRUCTURA (DB + REDIS) ---
+    - name: Levantar DB (PostGIS + pgvector) y Redis
+      run: |
+        # Usamos vuestro docker-compose.yml oficial
+        docker compose up -d db redis
+        # Damos 15 segundos para asegurar que Postgres arranca y ejecuta init-extensions.sql
+        sleep 15 
+
+    - name: Configurar Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Instalar librerías del sistema (GDAL/GEOS)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y binutils libproj-dev gdal-bin python3-gdal
+
+    - name: Instalar dependencias de Python
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Ejecutar Linter (Flake8)
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Ejecutar Tests Nativos de Django
+      env:
+        # Credenciales de DB mapeadas desde el docker-compose.yml
+        DB_NAME: mi_db_espacial
+        DB_USER: mi_usuario
+        DB_PASSWORD: mi_password_seguro
+        DB_HOST: localhost
+        DB_PORT: 5432
+        
+        # Variables de Celery/Redis mapeadas desde config/settings.py
+        CELERY_BROKER_URL: redis://localhost:6379/0
+        CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        
+        SECRET_KEY: clave_secreta_para_testing_github_actions
+        DEBUG: True
+        
+        # Claves Dummy para simular las APIs (Mocks)
+        MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
+        GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
+        GEMINI_API_KEY: dummy_gemini_key_para_tests_github
+        
+      run: |
+        # Django creará una base de datos temporal llamada "test_mi_db_espacial"
+        python manage.py test
