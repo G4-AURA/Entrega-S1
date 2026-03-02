@@ -8,4 +8,5 @@ urlpatterns = [
     path('manual/', views.creacion_manual, name='creacion_manual'),
     path('generar/', views.generar_ruta, name='generar_ruta'),
     path('api/generar/', views.generar_ruta_ia, name='generar_ruta_ia'),
+    path('api/guardar-manual/', views.guardar_ruta_manual, name='guardar_ruta_manual'),
 ]

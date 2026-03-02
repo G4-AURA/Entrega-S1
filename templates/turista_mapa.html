@@ -11,9 +11,15 @@
 {% endblock %}
 
 {% block content %}
-<a href="/tours/turista" class="btn-back">
-    <span class="material-icons-round">arrow_back</span>
-</a>
+{% if is_anonymous %}
+    <a href="/" class="btn-back">
+        <span class="material-icons-round">arrow_back</span>
+    </a>
+{% else %}
+    <a href="/tours/turista" class="btn-back">
+        <span class="material-icons-round">arrow_back</span>
+    </a>
+{% endif %}
 
 <div id="mapa-tour"></div>
 
@@ -37,11 +43,26 @@
     </div>
     
     <div class="panel-content">
+
         <!-- Tab: Itinerario -->
         <div class="tab-content active" id="tab-itinerario">
             <div class="d-flex justify-content-between align-items-center mb-1">
+                {% if sesion.estado == 'en_curso' %}
                 <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2 fw-bold text-uppercase" style="font-size: 0.7rem;">
                     En Curso
+                </span>
+                {% elif sesion.estado == 'pendiente' %}
+                <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill px-3 py-2 fw-bold text-uppercase" style="font-size: 0.7rem;">
+                    Pendiente
+                </span>
+                {% elif sesion.estado == 'finalizado' %}
+                <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 fw-bold text-uppercase" style="font-size: 0.7rem;">
+                    Finalizado
+                </span>
+                {% endif %}
+                <span class="text-muted small fw-bold d-flex align-items-center">
+                    <span class="material-icons-round me-1" style="font-size: 16px;">schedule</span>
+                    {{ sesion.ruta.duracion_horas }} h
                 </span>
                 <span class="text-muted small fw-bold d-flex align-items-center">
                     <span class="material-icons-round me-1" style="font-size: 16px;">directions_walk</span>
@@ -93,14 +114,34 @@
                 </div>
             </div>
         </div>
+        
+        <h2 class="fw-bold mb-1 text-dark">{{ sesion.ruta.titulo }}</h2>
+        
+        <p class="text-muted mb-4 d-flex align-items-center">
+            <span class="material-icons-round me-2" style="font-size: 18px;">person_pin</span> 
+            Guiado por {{ sesion.ruta.guia.user.user.get_full_name|default:sesion.ruta.guia.user.user.username }}
+        </p>
+
+        <h6 class="text-muted fw-bold text-uppercase mb-0" style="letter-spacing: 1px; font-size: 0.8rem;">Itinerario del Tour</h6>
+        
+        <div class="timeline">
+            {% for parada in paradas %}
+            <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
+                <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">{{ parada.nombre }}</h6>
+                <p class="text-muted small mb-0">Parada {{ parada.orden }} del recorrido</p>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script id="paradas-data" type="application/json">{{ paradas_json|safe }}</script>
 <script>
     const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
     const sesionId = {{ sesion.id }};
+    const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
 </script>
 
 <script src="{% static 'js/mapa_turista.js' %}"></script>

@@ -136,7 +136,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es-es'
 
 TIME_ZONE = 'UTC'
 
@@ -164,7 +164,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Authentication settings
-LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/'  # Usa home_router para redirigir según el rol del usuario
-LOGOUT_REDIRECT_URL = '/'
+
+LOGIN_URL = '/accounts/login/'              # A dónde ir si no tienes sesión
+LOGIN_REDIRECT_URL = '/'                    # A dónde ir tras loguearse con éxito
+LOGOUT_REDIRECT_URL = '/accounts/login/'    # A dónde ir tras cerrar sesión
