@@ -229,6 +229,21 @@ body {
     padding: 2px 6px;
     font-size: 0.7rem;
     font-weight: bold;
+    min-width: 18px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+    }
+    50% {
+        transform: scale(1.1);
+        box-shadow: 0 3px 8px rgba(239, 68, 68, 0.5);
+    }
 }
 
 .tab-content {
