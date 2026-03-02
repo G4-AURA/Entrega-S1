@@ -179,3 +179,210 @@ body {
     text-decoration: none;
     color: #1F2937;
 }
+
+/* =========================================
+   AURA - Tabs del Panel del Turista
+========================================= */
+.panel-tabs {
+    display: flex;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 0 24px;
+}
+
+.tab-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #6B7280;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.tab-btn:hover {
+    color: var(--brand-color);
+}
+
+.tab-btn.active {
+    color: var(--brand-color);
+    border-bottom-color: var(--brand-color);
+}
+
+.tab-btn .material-icons-round {
+    font-size: 20px;
+}
+
+.chat-badge {
+    position: absolute;
+    top: 8px;
+    right: 20%;
+    background-color: #EF4444;
+    color: white;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    font-weight: bold;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* =========================================
+   AURA - Chat Interface
+========================================= */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100% - 10px);
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #9CA3AF;
+    text-align: center;
+}
+
+.chat-empty .material-icons-round {
+    font-size: 48px;
+    margin-bottom: 8px;
+}
+
+.chat-empty p {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.chat-message {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-message.sent {
+    align-self: flex-end;
+}
+
+.chat-message.received {
+    align-self: flex-start;
+}
+
+.chat-message-header {
+    font-size: 0.75rem;
+    color: #6B7280;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-message-sender {
+    font-weight: 600;
+}
+
+.chat-message-time {
+    color: #9CA3AF;
+}
+
+.chat-message-bubble {
+    padding: 10px 14px;
+    border-radius: 16px;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+.chat-message.sent .chat-message-bubble {
+    background-color: var(--brand-color);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-message.received .chat-message-bubble {
+    background-color: #F3F4F6;
+    color: #1F2937;
+    border-bottom-left-radius: 4px;
+}
+
+.chat-input-container {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #E5E7EB;
+}
+
+.chat-input {
+    flex: 1;
+    border: 1px solid #D1D5DB;
+    border-radius: 24px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.chat-input:focus {
+    border-color: var(--brand-color);
+}
+
+.chat-send-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background-color: var(--brand-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.chat-send-btn:hover {
+    background-color: var(--brand-hover);
+}
+
+.chat-send-btn:disabled {
+    background-color: #D1D5DB;
+    cursor: not-allowed;
+}
+
+.chat-send-btn .material-icons-round {
+    font-size: 20px;
+}

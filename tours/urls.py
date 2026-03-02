@@ -13,6 +13,11 @@ urlpatterns = [
     # =======================================================================
     # Rutas para GUÍAS (requieren @login_required)
     # =======================================================================
+    path('sesiones/crear/', views.crear_sesion, name='crear_sesion'),
+    path('sesiones/<int:sesion_id>/guia/', views.guia_sesion, name='guia_sesion'),
+    path('sesiones/<int:sesion_id>/regenerar_codigo/', views.regenerar_codigo, name='regenerar_codigo'),
+    path('sesiones/<int:sesion_id>/cerrar_acceso/', views.cerrar_acceso, name='cerrar_acceso'),
+    path('sesiones/<int:sesion_id>/participantes/', views.participantes_sesion, name='participantes_sesion'),
 	path('sesiones/<int:sesion_id>/iniciar/', views.iniciar_tour, name='iniciar_tour'),
 	path('ubicacion/', views.registrar_ubicacion, name='registrar_ubicacion'),
 	
