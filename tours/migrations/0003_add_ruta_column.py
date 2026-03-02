@@ -4,6 +4,34 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def populate_ruta_for_existing_sessions(apps, schema_editor):
+    """
+    Asigna una ruta a todas las sesiones existentes.
+    Si existe al menos una ruta, usa la primera disponible.
+    """
+    SesionTour = apps.get_model('tours', 'SESION_TOUR')
+    Ruta = apps.get_model('rutas', 'Ruta')
+    
+    # Obtener sesiones sin ruta
+    sesiones_sin_ruta = SesionTour.objects.filter(ruta__isnull=True)
+    
+    if sesiones_sin_ruta.exists():
+        # Usar la primera ruta disponible
+        primera_ruta = Ruta.objects.first()
+        
+        if primera_ruta:
+            sesiones_sin_ruta.update(ruta=primera_ruta)
+        # Si no hay rutas, las sesiones quedarán con ruta=None
+        # y la siguiente operación fallará, lo cual es correcto
+
+
+def reverse_populate(apps, schema_editor):
+    """
+    No se puede revertir de forma segura.
+    """
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,15 +40,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Paso 1: Agregar campo como nullable
         migrations.AddField(
             model_name='sesion_tour',
             name='ruta',
             field=models.ForeignKey(
-                default=1,  # Temporalmente usa ID 1 (ajusta según tu primera ruta)
+                blank=True,
+                null=True,
                 on_delete=django.db.models.deletion.CASCADE,
                 related_name='sesiones',
                 to='rutas.ruta'
             ),
-            preserve_default=False,
+        ),
+        # Paso 2: Poblar datos existentes
+        migrations.RunPython(populate_ruta_for_existing_sessions, reverse_populate),
+        # Paso 3: Hacer el campo requerido
+        migrations.AlterField(
+            model_name='sesion_tour',
+            name='ruta',
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name='sesiones',
+                to='rutas.ruta'
+            ),
         ),
     ]
