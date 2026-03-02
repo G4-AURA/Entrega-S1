@@ -100,6 +100,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (targetTab === 'chat') {
                 const badge = document.getElementById('chat-badge');
                 if (badge) badge.style.display = 'none';
+                
+                // Resetear contador de mensajes no leídos dentro del scope de initChat
+                // Esto se manejará desde initChat
+                const event = new CustomEvent('chatOpened');
+                document.dispatchEvent(event);
             }
         });
     });
@@ -122,6 +127,7 @@ function initChat() {
     const chatMessages = document.getElementById('chat-messages');
     let lastMessageTime = null;
     let isCurrentlyInChat = false;
+    let unreadCount = 0; // Contador de mensajes no leídos
 
     // Detectar si el usuario está viendo el chat
     const observer = new MutationObserver(() => {
@@ -134,6 +140,11 @@ function initChat() {
         observer.observe(chatTab, { attributes: true, attributeFilter: ['class'] });
         isCurrentlyInChat = chatTab.classList.contains('active');
     }
+
+    // Listener para resetear contador cuando se abre el chat
+    document.addEventListener('chatOpened', () => {
+        unreadCount = 0;
+    });
 
     // Función para enviar mensaje
     function sendMessage() {
@@ -208,15 +219,24 @@ function initChat() {
             }
 
             if (data.mensajes && data.mensajes.length > 0) {
+                // Identificar mensajes realmente nuevos (que no existen en el DOM)
+                const currentUser = getCurrentUsername();
+                const newMessagesFromOthers = data.mensajes.filter(msg => {
+                    const isNew = !document.querySelector(`[data-message-id="${msg.id}"]`);
+                    const isFromOther = msg.nombre_remitente !== currentUser;
+                    return isNew && isFromOther;
+                }).length;
+
                 displayMessages(data.mensajes);
                 
                 // Actualizar el timestamp del último mensaje
                 const ultimoMensaje = data.mensajes[data.mensajes.length - 1];
                 lastMessageTime = ultimoMensaje.momento;
 
-                // Si no estamos en el chat, mostrar badge
-                if (!isCurrentlyInChat && data.mensajes.length > 0) {
-                    showChatBadge(data.mensajes.length);
+                // Si no estamos en el chat y hay mensajes nuevos de otros, incrementar contador
+                if (!isCurrentlyInChat && newMessagesFromOthers > 0) {
+                    unreadCount += newMessagesFromOthers;
+                    showChatBadge(unreadCount);
                 }
             }
         })
@@ -243,7 +263,7 @@ function initChat() {
             }
 
             const messageDiv = document.createElement('div');
-            const isSent = mensaje.remitente__username === currentUser;
+            const isSent = mensaje.nombre_remitente === currentUser;
             
             messageDiv.className = `chat-message ${isSent ? 'sent' : 'received'}`;
             messageDiv.setAttribute('data-message-id', mensaje.id);
@@ -254,7 +274,7 @@ function initChat() {
 
             messageDiv.innerHTML = `
                 <div class="chat-message-header">
-                    <span class="chat-message-sender">${mensaje.remitente__username}</span>
+                    <span class="chat-message-sender">${escapeHtml(mensaje.nombre_remitente)}</span>
                     <span class="chat-message-time">${timeStr}</span>
                 </div>
                 <div class="chat-message-bubble">
@@ -280,7 +300,9 @@ function initChat() {
 
     // Función para obtener el username actual
     function getCurrentUsername() {
-        return document.body.getAttribute('data-username') || 'usuario';
+        return (typeof currentUserName !== 'undefined' && currentUserName) ? 
+               currentUserName : 
+               (document.body.getAttribute('data-username') || 'usuario');
     }
 
     // Función helper para escapar HTML

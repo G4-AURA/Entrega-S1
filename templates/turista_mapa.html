@@ -142,6 +142,7 @@
     const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
     const sesionId = {{ sesion.id }};
     const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
+    const currentUserName = '{{ current_user_name|escapejs }}';
 </script>
 
 <script src="{% static 'js/mapa_turista.js' %}"></script>

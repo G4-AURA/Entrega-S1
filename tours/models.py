@@ -59,10 +59,12 @@ class UBICACION_VIVO(models.Model):
 
 class MENSAJE_CHAT(models.Model):
     sesion_tour = models.ForeignKey(SESION_TOUR, on_delete=models.CASCADE, related_name='mensajes')
-    remitente = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    remitente = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
+    turista = models.ForeignKey(TURISTA, on_delete=models.CASCADE, null=True, blank=True, related_name='mensajes_enviados')
+    nombre_remitente = models.CharField(max_length=255, default='Anónimo')
     texto = models.TextField()
     momento = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         fecha = self.momento.strftime('%H:%M') if self.momento else "S/F"
-        return f"[{fecha}] {self.remitente}: {self.texto[:20]}"
+        return f"[{fecha}] {self.nombre_remitente}: {self.texto[:20]}"
