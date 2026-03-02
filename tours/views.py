@@ -121,6 +121,160 @@ def iniciar_tour(request, sesion_id):
 
 
 @login_required
+@require_http_methods(["GET"])
+def crear_sesion(request):
+	"""
+	Crear una nueva SESION_TOUR para la ruta indicada por el parametro id.
+	"""
+	ruta_id = request.GET.get('ruta_id')
+	if not ruta_id:
+		return JsonResponse({'error': 'Parámetro ruta_id requerido.'}, status=400)
+
+	try:
+		from rutas.models import Ruta
+		ruta = Ruta.objects.get(id=ruta_id)
+	except Exception:
+		return JsonResponse({'error': 'Ruta no encontrada.'}, status=404)
+	
+	es_guia = False
+	try:
+		if hasattr(ruta, 'guia') and ruta.guia and hasattr(ruta.guia, 'user') and hasattr(ruta.guia.user, 'user'):
+			es_guia = (ruta.guia.user.user == request.user)
+	except Exception:
+		es_guia = False
+
+	if not es_guia:
+		return JsonResponse({'error': 'No autorizado para crear sesión para esta ruta.'}, status=403)
+
+	try:
+		codigo = _generate_unique_access_code()
+		sesion = SESION_TOUR.objects.create(
+			codigo_acceso=codigo,
+			estado='en_curso',
+			fecha_inicio=timezone.now(),
+			ruta=ruta
+		)
+
+		from django.urls import reverse
+		return redirect(reverse('tours:guia_sesion', args=[sesion.id]))
+
+	except Exception as e:
+		return JsonResponse({'error': f'Error creando sesión: {str(e)}'}, status=500)
+
+
+@login_required
+def guia_sesion(request, sesion_id):
+	"""
+	Panel para el guía que creó la sesión.
+	"""
+	sesion = get_object_or_404(SESION_TOUR, id=sesion_id)
+
+	es_guia = False
+	try:
+		if hasattr(sesion.ruta, 'guia') and sesion.ruta.guia and hasattr(sesion.ruta.guia, 'user') and hasattr(sesion.ruta.guia.user, 'user'):
+			es_guia = (sesion.ruta.guia.user.user == request.user)
+	except Exception:
+		es_guia = False
+
+	if not es_guia:
+		return JsonResponse({'error': 'No autorizado para ver esta página.'}, status=403)
+
+	return render(request, 'tours/guia_sesion.html', {'sesion': sesion})
+
+
+@login_required
+@require_POST
+def regenerar_codigo(request, sesion_id):
+	"""
+	Genera un nuevo codigo_acceso único para la sesión.
+	"""
+	try:
+		sesion = SESION_TOUR.objects.get(id=sesion_id)
+	except SESION_TOUR.DoesNotExist:
+		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	es_guia = False
+	try:
+		if hasattr(sesion.ruta, 'guia') and sesion.ruta.guia and hasattr(sesion.ruta.guia, 'user') and hasattr(sesion.ruta.guia.user, 'user'):
+			es_guia = (sesion.ruta.guia.user.user == request.user)
+	except Exception:
+		es_guia = False
+
+	if not es_guia:
+		return JsonResponse({'error': 'No autorizado.'}, status=403)
+
+	nuevo_codigo = _generate_unique_access_code()
+	sesion.codigo_acceso = nuevo_codigo
+	sesion.save(update_fields=['codigo_acceso'])
+
+	return JsonResponse({'codigo_acceso': nuevo_codigo}, status=200)
+
+
+@login_required
+@require_POST
+def cerrar_acceso(request, sesion_id):
+	"""
+	Cierra el acceso a la sesión.
+	"""
+	try:
+		sesion = SESION_TOUR.objects.get(id=sesion_id)
+	except SESION_TOUR.DoesNotExist:
+		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	es_guia = False
+	try:
+		if hasattr(sesion.ruta, 'guia') and sesion.ruta.guia and hasattr(sesion.ruta.guia, 'user') and hasattr(sesion.ruta.guia.user, 'user'):
+			es_guia = (sesion.ruta.guia.user.user == request.user)
+	except Exception:
+		es_guia = False
+
+	if not es_guia:
+		return JsonResponse({'error': 'No autorizado.'}, status=403)
+
+	sesion.estado = 'finalizado'
+	sesion.save(update_fields=['estado'])
+
+	try:
+		TURISTASESION.objects.filter(sesion_tour=sesion, activo=True).update(activo=False)
+	except Exception:
+		pass
+
+	return JsonResponse({'status': 'cerrado'}, status=200)
+
+
+@login_required
+def participantes_sesion(request, sesion_id):
+	"""
+	Devuelve la lista de turistas activos en la sesión.
+	"""
+	try:
+		sesion = SESION_TOUR.objects.get(id=sesion_id)
+	except SESION_TOUR.DoesNotExist:
+		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	es_guia = False
+	try:
+		if hasattr(sesion.ruta, 'guia') and sesion.ruta.guia and hasattr(sesion.ruta.guia, 'user') and hasattr(sesion.ruta.guia.user, 'user'):
+			es_guia = (sesion.ruta.guia.user.user == request.user)
+	except Exception:
+		es_guia = False
+
+	if not es_guia:
+		return JsonResponse({'error': 'No autorizado.'}, status=403)
+
+	participantes_qs = TURISTASESION.objects.filter(sesion_tour=sesion, activo=True).select_related('turista')
+	participantes = []
+	for ts in participantes_qs:
+		participantes.append({
+			'id': ts.turista.id,
+			'alias': ts.turista.alias,
+			'fecha_union': ts.fecha_union.isoformat(),
+		})
+
+	return JsonResponse({'participantes': participantes}, status=200)
+
+
+@login_required
 @require_POST
 def unirse_tour(request):
 	"""
