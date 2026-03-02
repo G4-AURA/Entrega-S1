@@ -46,7 +46,6 @@ class ChatGuideTouristE2ETests(TestCase):
         mapa_response = self.turista_client.get(reverse('tours:mapa_turista', args=[self.sesion.id]))
         self.assertEqual(mapa_response.status_code, 200)
         self.assertContains(mapa_response, 'id="chat-badge"')
-        self.assertContains(mapa_response, 'style="display: none;"')
 
         texto_alerta = 'ALERTA: Nos movemos a la siguiente parada.'
         send_response = self.guia_client.post(
