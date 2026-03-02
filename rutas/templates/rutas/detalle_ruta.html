@@ -49,17 +49,24 @@
         flex-wrap: wrap;
     }
 
-    .btn-pencil {
+    .btn-edit {
         border: 1px solid #dee2e6;
         background: #fff;
         border-radius: 999px;
-        width: 34px;
-        height: 34px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 1rem;
+        font-size: 0.8rem;
+        font-weight: 600;
         line-height: 1;
+        padding: 0.35rem 0.75rem;
+        color: #4338ca;
+        border-color: #c7d2fe;
+    }
+
+    .btn-edit:hover {
+        background: #eef2ff;
+        color: #3730a3;
     }
 
     .meta-edit-wrap {
@@ -79,8 +86,41 @@
         margin-top: 0.75rem;
     }
 
+    .add-stop-form {
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+        background: #f8fafc;
+    }
+
     .map-edit-hint {
         font-size: 0.875rem;
+    }
+
+    .parada-item {
+        cursor: default;
+    }
+
+    .reorder-active .parada-item {
+        cursor: grab;
+        border-left-width: 6px !important;
+    }
+
+    .reorder-active .parada-actions,
+    .reorder-active .parada-edit-form {
+        display: none !important;
+    }
+
+    .drag-handle {
+        color: #6b7280;
+        font-size: 0.9rem;
+        user-select: none;
+    }
+
+    .parada-item.drag-over {
+        outline: 2px dashed #6366f1;
+        background: #eef2ff;
     }
 </style>
 {% endblock %}
@@ -92,7 +132,7 @@
 
         <div class="titulo-edit-wrap mb-2">
             <h2 class="h3 mb-0">{{ ruta.titulo }}</h2>
-            <button type="button" class="btn-pencil" id="btn-editar-titulo" title="Editar título" aria-label="Editar título">✏️</button>
+            <button type="button" class="btn-edit" id="btn-editar-titulo" title="Editar título" aria-label="Editar título">Editar</button>
         </div>
 
         <form method="post" id="form-editar-titulo" class="row g-2 mb-2 d-none">
@@ -101,8 +141,11 @@
             <div class="col-12 col-md-8">
                 <input type="text" name="titulo" class="form-control" value="{{ ruta.titulo }}" maxlength="255" required>
             </div>
+            <div class="col-12">
+                <textarea name="descripcion" class="form-control" rows="3" placeholder="Descripción de la ruta...">{{ ruta.descripcion }}</textarea>
+            </div>
             <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">Guardar título</button>
+                <button type="submit" class="btn btn-primary btn-sm">Guardar cambios</button>
             </div>
         </form>
 
@@ -122,7 +165,7 @@
             {% if ruta.es_generada_ia %}
             <span class="meta-pill">Ruta generada por IA</span>
             {% endif %}
-            <button type="button" class="btn-pencil" id="btn-editar-meta" title="Editar datos" aria-label="Editar datos">✏️</button>
+            <button type="button" class="btn-edit" id="btn-editar-meta" title="Editar datos" aria-label="Editar datos">Editar</button>
         </div>
 
         <form method="post" id="form-editar-meta" class="row g-2 mb-2 d-none">
@@ -162,7 +205,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center gap-2 mb-3">
                     <h5 class="h6 mb-0">Etiquetas de la ruta</h5>
-                    <button type="button" class="btn-pencil" id="btn-editar-etiquetas" title="Editar etiquetas" aria-label="Editar etiquetas">✏️</button>
+                    <button type="button" class="btn-edit" id="btn-editar-etiquetas" title="Editar etiquetas" aria-label="Editar etiquetas">Editar</button>
                 </div>
 
                 <div id="etiquetas-lectura" class="mb-3">
@@ -207,6 +250,49 @@
 
         <div class="col-12 col-lg-4">
             <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
+            <div class="d-flex gap-2 mb-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-agregar-parada">Agregar parada</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-reordenar-paradas">Editar orden</button>
+            </div>
+
+            <form method="post" id="form-reordenar-paradas" class="d-none mb-2">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="stop_reorder">
+                <input type="hidden" name="stop_order" id="stop-order-input">
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar orden</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-cancelar-reorden">Cancelar</button>
+                </div>
+            </form>
+
+            <form method="post" class="add-stop-form d-none" id="form-agregar-parada">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="stop_add">
+
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Nombre de la parada</label>
+                    <input type="text" name="nombre" class="form-control form-control-sm" placeholder="Ej: Plaza Nueva" required>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label small mb-1">Latitud</label>
+                        <input type="number" step="any" name="lat" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small mb-1">Longitud</label>
+                        <input type="number" step="any" name="lon" class="form-control form-control-sm" required>
+                    </div>
+                </div>
+                <div class="small text-muted mt-2 parada-coords-preview" id="add-stop-coords-preview">Haz clic en el mapa para seleccionar ubicación.</div>
+                <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar nueva parada</button>
+            </form>
+
+            {% if stop_added %}
+            <div class="alert alert-success py-2">Parada añadida correctamente.</div>
+            {% endif %}
+            {% if stop_reordered %}
+            <div class="alert alert-success py-2">Orden de paradas actualizado correctamente.</div>
+            {% endif %}
             {% if stop_updated %}
             <div class="alert alert-success py-2">Parada actualizada correctamente.</div>
             {% endif %}
@@ -218,8 +304,11 @@
             {% endif %}
             <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
                 {% for parada in paradas %}
-                <div class="list-group-item border-start border-primary border-4 mb-2">
-                    <div class="fw-bold text-primary">Parada {{ parada.orden }}: {{ parada.nombre }}</div>
+                <div class="list-group-item parada-item border-start border-primary border-4 mb-2" data-parada-id="{{ parada.id }}" draggable="false">
+                    <div class="fw-bold text-primary d-flex align-items-center justify-content-between">
+                        <span>Parada <span class="parada-order-num">{{ parada.orden }}</span>: {{ parada.nombre }}</span>
+                        <span class="drag-handle d-none">↕ Arrastrar</span>
+                    </div>
                     <div class="small text-muted">
                         {% if parada.coordenadas %}
                         {{ parada.coordenadas.y|floatformat:5 }}, {{ parada.coordenadas.x|floatformat:5 }}
@@ -281,6 +370,13 @@
     const etiquetasLectura = document.getElementById('etiquetas-lectura');
     const formEditarEtiquetas = document.getElementById('form-editar-etiquetas');
     const mapEditHint = document.getElementById('map-edit-hint');
+    const btnAgregarParada = document.getElementById('btn-agregar-parada');
+    const formAgregarParada = document.getElementById('form-agregar-parada');
+    const btnReordenarParadas = document.getElementById('btn-reordenar-paradas');
+    const formReordenarParadas = document.getElementById('form-reordenar-paradas');
+    const btnCancelarReorden = document.getElementById('btn-cancelar-reorden');
+    const stopOrderInput = document.getElementById('stop-order-input');
+    const listaParadas = document.getElementById('lista-paradas');
 
     if (btnEditarTitulo && formEditarTitulo) {
         btnEditarTitulo.addEventListener('click', () => {
@@ -321,6 +417,9 @@
     let activeParadaForm = null;
     let activeParadaButton = null;
     let activeEditMarker = null;
+    let activeMode = null;
+    let reorderMode = false;
+    let draggedItem = null;
 
     paradas.forEach((parada, index) => {
         if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
@@ -359,6 +458,43 @@
             mapEditHint.classList.add('d-none');
             mapEditHint.textContent = 'Selecciona una parada para editar y haz clic en el mapa para elegir su nueva ubicación.';
         }
+
+        activeMode = null;
+    }
+
+    function updateVisualOrderLabels() {
+        const items = listaParadas ? Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]')) : [];
+        items.forEach((item, index) => {
+            const orderEl = item.querySelector('.parada-order-num');
+            if (orderEl) orderEl.textContent = String(index + 1);
+        });
+    }
+
+    function setReorderMode(enabled) {
+        if (!listaParadas || !formReordenarParadas) return;
+
+        reorderMode = enabled;
+        if (enabled) {
+            deactivateParadaEditMode();
+            if (formAgregarParada) formAgregarParada.classList.add('d-none');
+            formReordenarParadas.classList.remove('d-none');
+            listaParadas.classList.add('reorder-active');
+            if (btnReordenarParadas) btnReordenarParadas.textContent = 'Reordenando...';
+        } else {
+            formReordenarParadas.classList.add('d-none');
+            listaParadas.classList.remove('reorder-active');
+            if (btnReordenarParadas) btnReordenarParadas.textContent = 'Editar orden';
+        }
+
+        const items = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'));
+        items.forEach((item) => {
+            item.draggable = enabled;
+            const handle = item.querySelector('.drag-handle');
+            if (handle) handle.classList.toggle('d-none', !enabled);
+            if (!enabled) item.classList.remove('drag-over');
+        });
+
+        updateVisualOrderLabels();
     }
 
     function activateParadaEditMode(paradaId, triggerButton) {
@@ -374,6 +510,7 @@
 
         activeParadaForm = form;
         activeParadaButton = triggerButton;
+        activeMode = 'edit';
         form.classList.remove('d-none');
 
         triggerButton.classList.remove('btn-outline-primary');
@@ -397,12 +534,100 @@
         }
     }
 
+    function activateAddStopMode() {
+        if (!formAgregarParada) return;
+
+        if (activeMode === 'add') {
+            deactivateParadaEditMode();
+            return;
+        }
+
+        deactivateParadaEditMode();
+
+        activeParadaForm = formAgregarParada;
+        activeMode = 'add';
+        formAgregarParada.classList.remove('d-none');
+
+        if (mapEditHint) {
+            mapEditHint.classList.remove('d-none');
+            mapEditHint.textContent = 'Añadiendo parada: haz clic en el mapa para seleccionar la ubicación.';
+        }
+    }
+
+    if (btnAgregarParada && formAgregarParada) {
+        btnAgregarParada.addEventListener('click', () => {
+            activateAddStopMode();
+        });
+    }
+
+    if (btnReordenarParadas) {
+        btnReordenarParadas.addEventListener('click', () => {
+            setReorderMode(!reorderMode);
+        });
+    }
+
+    if (btnCancelarReorden) {
+        btnCancelarReorden.addEventListener('click', () => {
+            setReorderMode(false);
+        });
+    }
+
+    if (formReordenarParadas && stopOrderInput && listaParadas) {
+        formReordenarParadas.addEventListener('submit', () => {
+            const orderedIds = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
+                .map((item) => item.dataset.paradaId)
+                .filter(Boolean);
+            stopOrderInput.value = orderedIds.join(',');
+        });
+    }
+
     document.querySelectorAll('.btn-editar-parada').forEach((button) => {
         button.addEventListener('click', () => {
+            if (reorderMode) return;
             const paradaId = button.dataset.paradaId;
             activateParadaEditMode(paradaId, button);
         });
     });
+
+    if (listaParadas) {
+        listaParadas.querySelectorAll('.parada-item[data-parada-id]').forEach((item) => {
+            item.addEventListener('dragstart', () => {
+                if (!reorderMode) return;
+                draggedItem = item;
+            });
+
+            item.addEventListener('dragover', (event) => {
+                if (!reorderMode) return;
+                event.preventDefault();
+                item.classList.add('drag-over');
+            });
+
+            item.addEventListener('dragleave', () => {
+                item.classList.remove('drag-over');
+            });
+
+            item.addEventListener('drop', (event) => {
+                if (!reorderMode || !draggedItem || draggedItem === item) return;
+                event.preventDefault();
+                const rect = item.getBoundingClientRect();
+                const shouldInsertAfter = (event.clientY - rect.top) > rect.height / 2;
+
+                if (shouldInsertAfter) {
+                    item.after(draggedItem);
+                } else {
+                    item.before(draggedItem);
+                }
+
+                item.classList.remove('drag-over');
+                updateVisualOrderLabels();
+            });
+
+            item.addEventListener('dragend', () => {
+                draggedItem = null;
+                item.classList.remove('drag-over');
+            });
+        });
+    }
 
     mapa.on('click', (event) => {
         if (!activeParadaForm) return;
@@ -426,7 +651,9 @@
         }
 
         if (preview) {
-            preview.textContent = `Nueva ubicación seleccionada: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            preview.textContent = activeMode === 'add'
+                ? `Ubicación seleccionada para nueva parada: ${lat.toFixed(6)}, ${lon.toFixed(6)}`
+                : `Nueva ubicación seleccionada: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
         }
     });
 </script>

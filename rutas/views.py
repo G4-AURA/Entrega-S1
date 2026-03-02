@@ -140,9 +140,11 @@ def ruta_detalle_view(request, ruta_id):
 
         if form_type == "title":
             new_title = (request.POST.get("titulo") or "").strip()
+            new_description = (request.POST.get("descripcion") or "").strip()
             if new_title:
                 ruta.titulo = new_title
-                ruta.save(update_fields=["titulo"])
+                ruta.descripcion = new_description
+                ruta.save(update_fields=["titulo", "descripcion"])
                 return redirect(f"{request.path}?title_updated=1")
             return redirect(f"{request.path}?title_error=1")
 
@@ -202,6 +204,52 @@ def ruta_detalle_view(request, ruta_id):
             parada.save(update_fields=["nombre", "coordenadas"])
             return redirect(f"{request.path}?stop_updated=1")
 
+        if form_type == "stop_add":
+            nombre = (request.POST.get("nombre") or "").strip()
+            lat_raw = (request.POST.get("lat") or "").strip()
+            lon_raw = (request.POST.get("lon") or "").strip()
+
+            if not nombre:
+                return redirect(f"{request.path}?stop_error=1")
+
+            try:
+                lat = float(lat_raw)
+                lon = float(lon_raw)
+            except (TypeError, ValueError):
+                return redirect(f"{request.path}?stop_error=1")
+
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                return redirect(f"{request.path}?stop_error=1")
+
+            ultimo_orden = ruta.paradas.order_by("-orden").values_list("orden", flat=True).first() or 0
+            Parada.objects.create(
+                ruta=ruta,
+                orden=ultimo_orden + 1,
+                nombre=nombre,
+                coordenadas=Point(lon, lat, srid=4326),
+            )
+            return redirect(f"{request.path}?stop_added=1")
+
+        if form_type == "stop_reorder":
+            raw_order = (request.POST.get("stop_order") or "").strip()
+            try:
+                ordered_ids = [int(value) for value in raw_order.split(",") if value.strip()]
+            except ValueError:
+                return redirect(f"{request.path}?stop_error=1")
+
+            current_ids = list(ruta.paradas.values_list("id", flat=True))
+            if len(ordered_ids) != len(current_ids) or set(ordered_ids) != set(current_ids):
+                return redirect(f"{request.path}?stop_error=1")
+
+            paradas_by_id = {parada.id: parada for parada in ruta.paradas.all()}
+            for index, parada_id in enumerate(ordered_ids, start=1):
+                parada = paradas_by_id.get(parada_id)
+                if parada and parada.orden != index:
+                    parada.orden = index
+                    parada.save(update_fields=["orden"])
+
+            return redirect(f"{request.path}?stop_reordered=1")
+
         if form_type == "mood":
             selected_moods = request.POST.getlist("mood")
             cleaned_moods = [mood for mood in selected_moods if mood in allowed_moods]
@@ -241,6 +289,8 @@ def ruta_detalle_view(request, ruta_id):
         "meta_error": request.GET.get("meta_error") == "1",
         "stop_updated": request.GET.get("stop_updated") == "1",
         "stop_deleted": request.GET.get("stop_deleted") == "1",
+        "stop_added": request.GET.get("stop_added") == "1",
+        "stop_reordered": request.GET.get("stop_reordered") == "1",
         "stop_error": request.GET.get("stop_error") == "1",
         "exigencia_choices": Ruta.Exigencia.choices,
     }

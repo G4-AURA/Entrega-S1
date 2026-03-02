@@ -201,20 +201,21 @@
     }
 
     .btn-delete-route {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        border: none;
-        background: #dc3545;
-        color: #fff;
-        font-size: 1rem;
+        border: 1px solid #dc3545;
+        background: #fff;
+        color: #dc3545;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.9rem;
         display: inline-flex;
         align-items: center;
         justify-content: center;
     }
 
     .btn-delete-route:hover {
-        background: #bb2d3b;
+        background: #dc3545;
+        color: #fff;
     }
 
 </style>
@@ -361,7 +362,7 @@
                     </div>
                 </a>
                 <div class="ruta-card-actions">
-                    <button type="button" class="btn-delete-route" data-ruta-id="${ruta.id}" aria-label="Eliminar ruta" title="Eliminar ruta">🗑️</button>
+                    <button type="button" class="btn-delete-route" data-ruta-id="${ruta.id}" aria-label="Eliminar ruta" title="Eliminar ruta">Eliminar</button>
                 </div>
             </div>
         `;
