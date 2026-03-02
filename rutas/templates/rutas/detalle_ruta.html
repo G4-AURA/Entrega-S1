@@ -1,0 +1,433 @@
+{% extends 'base.html' %}
+{% load l10n %}
+
+{% block title %}AURA - Detalle de Ruta{% endblock %}
+
+{% block extra_css %}
+<style>
+    .map-container-ruta {
+        height: 500px;
+        width: 100%;
+        border-radius: 1rem;
+        border: 1px solid #dee2e6;
+    }
+
+    .list-paradas-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+    .meta-pill {
+        display: inline-block;
+        padding: 0.3rem 0.75rem;
+        border-radius: 999px;
+        background-color: #eef2ff;
+        color: #4338ca;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .mood-edit-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .mood-edit-item {
+        border: 1px solid #dee2e6;
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+        background: #fff;
+    }
+
+    .titulo-edit-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .btn-pencil {
+        border: 1px solid #dee2e6;
+        background: #fff;
+        border-radius: 999px;
+        width: 34px;
+        height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        line-height: 1;
+    }
+
+    .meta-edit-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .parada-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .parada-edit-form {
+        margin-top: 0.75rem;
+    }
+
+    .map-edit-hint {
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-2 py-md-4">
+    <div class="mb-4">
+        <a href="{% url 'catalogo' %}" class="btn btn-outline-secondary btn-sm mb-3">← Volver al catálogo</a>
+
+        <div class="titulo-edit-wrap mb-2">
+            <h2 class="h3 mb-0">{{ ruta.titulo }}</h2>
+            <button type="button" class="btn-pencil" id="btn-editar-titulo" title="Editar título" aria-label="Editar título">✏️</button>
+        </div>
+
+        <form method="post" id="form-editar-titulo" class="row g-2 mb-2 d-none">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="title">
+            <div class="col-12 col-md-8">
+                <input type="text" name="titulo" class="form-control" value="{{ ruta.titulo }}" maxlength="255" required>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">Guardar título</button>
+            </div>
+        </form>
+
+        {% if title_updated %}
+        <div class="alert alert-success py-2 mt-2 mb-2">Título actualizado correctamente.</div>
+        {% endif %}
+        {% if title_error %}
+        <div class="alert alert-danger py-2 mt-2 mb-2">El título no puede estar vacío.</div>
+        {% endif %}
+
+        <p class="text-muted mb-3">{{ ruta.descripcion|default:'Sin descripción disponible' }}</p>
+
+        <div class="meta-edit-wrap mb-2">
+            <span class="meta-pill">{{ ruta.duracion_horas }}h</span>
+            <span class="meta-pill">{{ ruta.num_personas }} personas</span>
+            <span class="meta-pill">Exigencia {{ ruta.nivel_exigencia }}</span>
+            {% if ruta.es_generada_ia %}
+            <span class="meta-pill">Ruta generada por IA</span>
+            {% endif %}
+            <button type="button" class="btn-pencil" id="btn-editar-meta" title="Editar datos" aria-label="Editar datos">✏️</button>
+        </div>
+
+        <form method="post" id="form-editar-meta" class="row g-2 mb-2 d-none">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="meta">
+
+            <div class="col-12 col-md-3">
+                <input type="number" step="0.1" min="0.1" name="duracion_horas" class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
+            </div>
+            <div class="col-12 col-md-3">
+                <input type="number" min="1" name="num_personas" class="form-control" value="{{ ruta.num_personas }}" required>
+            </div>
+            <div class="col-12 col-md-3">
+                <select name="nivel_exigencia" class="form-select" required>
+                    {% for value, label in exigencia_choices %}
+                    <option value="{{ value }}" {% if value == ruta.nivel_exigencia %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">Guardar datos</button>
+            </div>
+        </form>
+
+        {% if meta_updated %}
+        <div class="alert alert-success py-2 mt-2 mb-2">Datos de la ruta actualizados correctamente.</div>
+        {% endif %}
+        {% if meta_error %}
+        <div class="alert alert-danger py-2 mt-2 mb-2">Revisa los valores de duración, personas y exigencia.</div>
+        {% endif %}
+
+        {% if mood_updated %}
+        <div class="alert alert-success py-2 mt-3 mb-0">Etiquetas actualizadas correctamente.</div>
+        {% endif %}
+
+        <div class="card shadow-sm border-0 mt-3">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <h5 class="h6 mb-0">Etiquetas de la ruta</h5>
+                    <button type="button" class="btn-pencil" id="btn-editar-etiquetas" title="Editar etiquetas" aria-label="Editar etiquetas">✏️</button>
+                </div>
+
+                <div id="etiquetas-lectura" class="mb-3">
+                    {% if ruta.mood %}
+                        {% for mood in ruta.mood %}
+                        <span class="badge text-bg-light border me-1">{{ mood }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted small">Sin etiquetas</span>
+                    {% endif %}
+                </div>
+
+                <form method="post" id="form-editar-etiquetas" class="d-none">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="mood">
+                    <div class="mood-edit-grid mb-3">
+                        {% for value, label in mood_choices %}
+                        <label class="mood-edit-item">
+                            <input type="checkbox" name="mood" value="{{ value }}" {% if value in ruta.mood %}checked{% endif %}>
+                            <span>{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar etiquetas</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12 col-lg-8 mb-3 mb-lg-0">
+            <div id="map-edit-hint" class="alert alert-info py-2 map-edit-hint d-none">
+                Selecciona una parada para editar y haz clic en el mapa para elegir su nueva ubicación.
+            </div>
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="mapa-ruta" class="map-container-ruta"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
+            {% if stop_updated %}
+            <div class="alert alert-success py-2">Parada actualizada correctamente.</div>
+            {% endif %}
+            {% if stop_deleted %}
+            <div class="alert alert-success py-2">Parada eliminada correctamente.</div>
+            {% endif %}
+            {% if stop_error %}
+            <div class="alert alert-danger py-2">No se pudo actualizar la parada. Revisa nombre y coordenadas.</div>
+            {% endif %}
+            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
+                {% for parada in paradas %}
+                <div class="list-group-item border-start border-primary border-4 mb-2">
+                    <div class="fw-bold text-primary">Parada {{ parada.orden }}: {{ parada.nombre }}</div>
+                    <div class="small text-muted">
+                        {% if parada.coordenadas %}
+                        {{ parada.coordenadas.y|floatformat:5 }}, {{ parada.coordenadas.x|floatformat:5 }}
+                        {% else %}
+                        Sin coordenadas
+                        {% endif %}
+                    </div>
+
+                    <div class="parada-actions">
+                        <button type="button" class="btn btn-outline-primary btn-sm btn-editar-parada" data-parada-id="{{ parada.id }}">Editar</button>
+                        <form method="post" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="stop_delete">
+                            <input type="hidden" name="parada_id" value="{{ parada.id }}">
+                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('¿Seguro que quieres eliminar esta parada?');">Eliminar</button>
+                        </form>
+                    </div>
+
+                    <form method="post" class="parada-edit-form d-none" id="form-editar-parada-{{ parada.id }}">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_type" value="stop_edit">
+                        <input type="hidden" name="parada_id" value="{{ parada.id }}">
+
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Nombre</label>
+                            <input type="text" name="nombre" class="form-control form-control-sm" value="{{ parada.nombre }}" required>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small mb-1">Latitud</label>
+                                <input type="number" step="any" name="lat" class="form-control form-control-sm" value="{{ parada.coordenadas.y|unlocalize }}" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small mb-1">Longitud</label>
+                                <input type="number" step="any" name="lon" class="form-control form-control-sm" value="{{ parada.coordenadas.x|unlocalize }}" required>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-2 parada-coords-preview">Coordenadas actuales: {{ parada.coordenadas.y|floatformat:6 }}, {{ parada.coordenadas.x|floatformat:6 }}</div>
+                        <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar parada</button>
+                    </form>
+                </div>
+                {% empty %}
+                <div class="list-group-item">Esta ruta no tiene paradas.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+{{ paradas_json|json_script:"paradas-json" }}
+<script>
+    const btnEditarTitulo = document.getElementById('btn-editar-titulo');
+    const formEditarTitulo = document.getElementById('form-editar-titulo');
+    const btnEditarMeta = document.getElementById('btn-editar-meta');
+    const formEditarMeta = document.getElementById('form-editar-meta');
+    const btnEditarEtiquetas = document.getElementById('btn-editar-etiquetas');
+    const etiquetasLectura = document.getElementById('etiquetas-lectura');
+    const formEditarEtiquetas = document.getElementById('form-editar-etiquetas');
+    const mapEditHint = document.getElementById('map-edit-hint');
+
+    if (btnEditarTitulo && formEditarTitulo) {
+        btnEditarTitulo.addEventListener('click', () => {
+            formEditarTitulo.classList.toggle('d-none');
+        });
+    }
+
+    if (btnEditarMeta && formEditarMeta) {
+        btnEditarMeta.addEventListener('click', () => {
+            formEditarMeta.classList.toggle('d-none');
+        });
+    }
+
+    if (btnEditarEtiquetas && etiquetasLectura && formEditarEtiquetas) {
+        btnEditarEtiquetas.addEventListener('click', () => {
+            etiquetasLectura.classList.toggle('d-none');
+            formEditarEtiquetas.classList.toggle('d-none');
+        });
+    }
+
+    const paradas = JSON.parse(document.getElementById('paradas-json').textContent || '[]');
+    const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
+
+    const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
+    const centroInicial = primeraConCoords ? primeraConCoords.coordenadas : [40.4167, -3.7037];
+
+    const mapa = L.map('mapa-ruta').setView(centroInicial, 14);
+
+    const tileUrl = mapboxToken
+        ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    L.tileLayer(tileUrl, {
+        attribution: mapboxToken ? '© Mapbox' : '© OpenStreetMap contributors'
+    }).addTo(mapa);
+
+    const puntos = [];
+    let activeParadaForm = null;
+    let activeParadaButton = null;
+    let activeEditMarker = null;
+
+    paradas.forEach((parada, index) => {
+        if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
+
+        const coords = parada.coordenadas;
+        puntos.push(coords);
+
+        L.marker(coords).addTo(mapa)
+            .bindPopup(`<b>${parada.orden || index + 1}. ${parada.nombre}</b>`);
+    });
+
+    if (puntos.length > 1) {
+        L.polyline(puntos, { color: '#0d6efd', weight: 4, opacity: 0.7 }).addTo(mapa);
+        mapa.fitBounds(puntos, { padding: [50, 50] });
+    }
+
+    function deactivateParadaEditMode() {
+        if (activeParadaForm) {
+            activeParadaForm.classList.add('d-none');
+            activeParadaForm = null;
+        }
+
+        if (activeParadaButton) {
+            activeParadaButton.classList.remove('btn-primary');
+            activeParadaButton.classList.add('btn-outline-primary');
+            activeParadaButton.textContent = 'Editar';
+            activeParadaButton = null;
+        }
+
+        if (activeEditMarker) {
+            mapa.removeLayer(activeEditMarker);
+            activeEditMarker = null;
+        }
+
+        if (mapEditHint) {
+            mapEditHint.classList.add('d-none');
+            mapEditHint.textContent = 'Selecciona una parada para editar y haz clic en el mapa para elegir su nueva ubicación.';
+        }
+    }
+
+    function activateParadaEditMode(paradaId, triggerButton) {
+        const form = document.getElementById(`form-editar-parada-${paradaId}`);
+        if (!form) return;
+
+        if (activeParadaForm === form) {
+            deactivateParadaEditMode();
+            return;
+        }
+
+        deactivateParadaEditMode();
+
+        activeParadaForm = form;
+        activeParadaButton = triggerButton;
+        form.classList.remove('d-none');
+
+        triggerButton.classList.remove('btn-outline-primary');
+        triggerButton.classList.add('btn-primary');
+        triggerButton.textContent = 'Editando...';
+
+        const nombreInput = form.querySelector('input[name="nombre"]');
+        const latInput = form.querySelector('input[name="lat"]');
+        const lonInput = form.querySelector('input[name="lon"]');
+
+        const lat = parseFloat(latInput?.value);
+        const lon = parseFloat(lonInput?.value);
+        if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+            activeEditMarker = L.marker([lat, lon]).addTo(mapa);
+            mapa.setView([lat, lon], Math.max(mapa.getZoom(), 14));
+        }
+
+        if (mapEditHint) {
+            mapEditHint.classList.remove('d-none');
+            mapEditHint.textContent = `Editando "${nombreInput?.value || 'Parada'}": haz clic en el mapa para seleccionar la nueva ubicación.`;
+        }
+    }
+
+    document.querySelectorAll('.btn-editar-parada').forEach((button) => {
+        button.addEventListener('click', () => {
+            const paradaId = button.dataset.paradaId;
+            activateParadaEditMode(paradaId, button);
+        });
+    });
+
+    mapa.on('click', (event) => {
+        if (!activeParadaForm) return;
+
+        const latInput = activeParadaForm.querySelector('input[name="lat"]');
+        const lonInput = activeParadaForm.querySelector('input[name="lon"]');
+        const preview = activeParadaForm.querySelector('.parada-coords-preview');
+
+        if (!latInput || !lonInput) return;
+
+        const lat = event.latlng.lat;
+        const lon = event.latlng.lng;
+
+        latInput.value = lat.toFixed(6);
+        lonInput.value = lon.toFixed(6);
+
+        if (!activeEditMarker) {
+            activeEditMarker = L.marker([lat, lon]).addTo(mapa);
+        } else {
+            activeEditMarker.setLatLng([lat, lon]);
+        }
+
+        if (preview) {
+            preview.textContent = `Nueva ubicación seleccionada: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+        }
+    });
+</script>
+{% endblock %}

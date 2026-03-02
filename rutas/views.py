@@ -1,8 +1,9 @@
 from django.contrib.auth.decorators import login_required
+from django.contrib.gis.geos import Point
 from django.db.models import Prefetch
 from django.http import JsonResponse
-from django.shortcuts import render
-from django.views.decorators.http import require_GET
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_GET, require_http_methods
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 from .models import Ruta, Parada
@@ -110,3 +111,137 @@ def rutas_catalogo(request):
 def catalogo_view(request):
     """Vista que renderiza la página del catálogo de rutas"""
     return render(request, 'rutas/catalogo.html')
+
+
+@login_required
+@require_http_methods(["POST"])
+def eliminar_ruta_view(request, ruta_id):
+    ruta = get_object_or_404(
+        Ruta,
+        id=ruta_id,
+        guia__user__user=request.user,
+    )
+    ruta.delete()
+    return JsonResponse({"status": "ok"})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def ruta_detalle_view(request, ruta_id):
+    ruta = get_object_or_404(
+        Ruta.objects.select_related("guia").prefetch_related("paradas"),
+        id=ruta_id,
+        guia__user__user=request.user,
+    )
+
+    allowed_moods = {value for value, _ in Ruta.Mood.choices}
+    if request.method == "POST":
+        form_type = request.POST.get("form_type")
+
+        if form_type == "title":
+            new_title = (request.POST.get("titulo") or "").strip()
+            if new_title:
+                ruta.titulo = new_title
+                ruta.save(update_fields=["titulo"])
+                return redirect(f"{request.path}?title_updated=1")
+            return redirect(f"{request.path}?title_error=1")
+
+        if form_type == "meta":
+            try:
+                duracion_horas = float((request.POST.get("duracion_horas") or "").strip())
+                num_personas = int((request.POST.get("num_personas") or "").strip())
+            except (TypeError, ValueError):
+                return redirect(f"{request.path}?meta_error=1")
+
+            nivel_exigencia = (request.POST.get("nivel_exigencia") or "").strip()
+            exigencias_validas = {value for value, _ in Ruta.Exigencia.choices}
+
+            if duracion_horas <= 0 or num_personas <= 0 or nivel_exigencia not in exigencias_validas:
+                return redirect(f"{request.path}?meta_error=1")
+
+            ruta.duracion_horas = duracion_horas
+            ruta.num_personas = num_personas
+            ruta.nivel_exigencia = nivel_exigencia
+            ruta.save(update_fields=["duracion_horas", "num_personas", "nivel_exigencia"])
+            return redirect(f"{request.path}?meta_updated=1")
+
+        if form_type == "stop_delete":
+            parada_id = request.POST.get("parada_id")
+            parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
+            parada.delete()
+
+            for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
+                if parada_restante.orden != index:
+                    parada_restante.orden = index
+                    parada_restante.save(update_fields=["orden"])
+
+            return redirect(f"{request.path}?stop_deleted=1")
+
+        if form_type == "stop_edit":
+            parada_id = request.POST.get("parada_id")
+            parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
+
+            nombre = (request.POST.get("nombre") or "").strip()
+            lat_raw = (request.POST.get("lat") or "").strip()
+            lon_raw = (request.POST.get("lon") or "").strip()
+
+            if not nombre:
+                return redirect(f"{request.path}?stop_error=1")
+
+            try:
+                lat = float(lat_raw)
+                lon = float(lon_raw)
+            except (TypeError, ValueError):
+                return redirect(f"{request.path}?stop_error=1")
+
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                return redirect(f"{request.path}?stop_error=1")
+
+            parada.nombre = nombre
+            parada.coordenadas = Point(lon, lat, srid=4326)
+            parada.save(update_fields=["nombre", "coordenadas"])
+            return redirect(f"{request.path}?stop_updated=1")
+
+        if form_type == "mood":
+            selected_moods = request.POST.getlist("mood")
+            cleaned_moods = [mood for mood in selected_moods if mood in allowed_moods]
+            ruta.mood = cleaned_moods
+            ruta.save(update_fields=["mood"])
+            return redirect(f"{request.path}?mood_updated=1")
+
+        return redirect(request.path)
+
+    paradas = sorted(ruta.paradas.all(), key=lambda parada: parada.orden)
+
+    paradas_json = []
+    for parada in paradas:
+        if parada.coordenadas:
+            coordenadas = [parada.coordenadas.y, parada.coordenadas.x]
+        else:
+            coordenadas = None
+
+        paradas_json.append(
+            {
+                "id": parada.id,
+                "orden": parada.orden,
+                "nombre": parada.nombre,
+                "coordenadas": coordenadas,
+            }
+        )
+
+    context = {
+        "ruta": ruta,
+        "paradas": paradas,
+        "paradas_json": paradas_json,
+        "mood_choices": Ruta.Mood.choices,
+        "mood_updated": request.GET.get("mood_updated") == "1",
+        "title_updated": request.GET.get("title_updated") == "1",
+        "title_error": request.GET.get("title_error") == "1",
+        "meta_updated": request.GET.get("meta_updated") == "1",
+        "meta_error": request.GET.get("meta_error") == "1",
+        "stop_updated": request.GET.get("stop_updated") == "1",
+        "stop_deleted": request.GET.get("stop_deleted") == "1",
+        "stop_error": request.GET.get("stop_error") == "1",
+        "exigencia_choices": Ruta.Exigencia.choices,
+    }
+    return render(request, "rutas/detalle_ruta.html", context)
