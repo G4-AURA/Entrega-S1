@@ -223,7 +223,7 @@ function initChat() {
                 const currentUser = getCurrentUsername();
                 const newMessagesFromOthers = data.mensajes.filter(msg => {
                     const isNew = !document.querySelector(`[data-message-id="${msg.id}"]`);
-                    const isFromOther = msg.remitente__username !== currentUser;
+                    const isFromOther = msg.nombre_remitente !== currentUser;
                     return isNew && isFromOther;
                 }).length;
 
@@ -263,7 +263,7 @@ function initChat() {
             }
 
             const messageDiv = document.createElement('div');
-            const isSent = mensaje.remitente__username === currentUser;
+            const isSent = mensaje.nombre_remitente === currentUser;
             
             messageDiv.className = `chat-message ${isSent ? 'sent' : 'received'}`;
             messageDiv.setAttribute('data-message-id', mensaje.id);
@@ -274,7 +274,7 @@ function initChat() {
 
             messageDiv.innerHTML = `
                 <div class="chat-message-header">
-                    <span class="chat-message-sender">${mensaje.remitente__username}</span>
+                    <span class="chat-message-sender">${escapeHtml(mensaje.nombre_remitente)}</span>
                     <span class="chat-message-time">${timeStr}</span>
                 </div>
                 <div class="chat-message-bubble">
@@ -300,7 +300,9 @@ function initChat() {
 
     // Función para obtener el username actual
     function getCurrentUsername() {
-        return document.body.getAttribute('data-username') || 'usuario';
+        return (typeof currentUserName !== 'undefined' && currentUserName) ? 
+               currentUserName : 
+               (document.body.getAttribute('data-username') || 'usuario');
     }
 
     // Función helper para escapar HTML
