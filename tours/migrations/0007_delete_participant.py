@@ -38,5 +38,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.DeleteModel(
+                    name='PARTICIPANT',
+                ),
+            ],
+        ),
         migrations.RunPython(delete_participant_if_exists, reverse_delete_participant),
     ]
