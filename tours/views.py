@@ -285,6 +285,19 @@ def join_tour(request, token):
 				'error': 'El alias es obligatorio.'
 			})
 		
+		# Validar longitud mínima y máxima
+		if len(alias) < 2:
+			return render(request, 'tours/join_tour.html', {
+				'sesion': sesion,
+				'error': 'El alias debe tener al menos 2 caracteres.'
+			})
+		
+		if len(alias) > 50:
+			return render(request, 'tours/join_tour.html', {
+				'sesion': sesion,
+				'error': 'El alias no puede exceder 50 caracteres.'
+			})
+		
 		# Verificar si el usuario ya tiene una cookie de turista
 		turista_id_cookie = request.session.get('turista_id')
 		
@@ -299,44 +312,29 @@ def join_tour(request, token):
 			# Caso 1: Es el mismo turista volviendo (tiene la cookie correcta)
 			if turista_id_cookie and turista_sesion_existente.turista.id == turista_id_cookie:
 				turista = turista_sesion_existente.turista
-			# Caso 2: El alias está siendo usado activamente pero el usuario no tiene cookie
-			# Esto puede pasar si cerró el navegador o limpió cookies
-			# Desactivamos la sesión anterior como "abandonada" y permitimos continuar
-			elif not turista_id_cookie:
-				turista_sesion_existente.activo = False
-				turista_sesion_existente.save()
-				
-				# Crear nuevo turista con el mismo alias
-				turista = TURISTA.objects.create(
-					alias=alias,
-					user=None
-				)
-				TURISTASESION.objects.create(
-					turista=turista,
-					sesion_tour=sesion,
-					activo=True
-				)
-			# Caso 3: El alias está siendo usado por OTRO usuario con cookie diferente
+			# Caso 2 y 3: El alias está siendo usado activamente por otro usuario
+			# NO permitimos crear un alias duplicado
 			else:
 				return render(request, 'tours/join_tour.html', {
 					'sesion': sesion,
 					'error': f'El alias "{alias}" ya está en uso en este tour. Por favor elige otro nombre.'
 				})
 		else:
-			# No hay nadie activo con ese alias, crear nuevo o reutilizar inactivo
+			# No hay nadie ACTIVO con ese alias
+			# Verificar si hay alguien INACTIVO con ese alias que podamos reutilizar
 			turista_inactivo = TURISTASESION.objects.filter(
 				sesion_tour=sesion,
 				turista__alias=alias,
 				activo=False
 			).first()
 			
-			if turista_inactivo and not turista_id_cookie:
-				# Reutilizar el turista inactivo
+			if turista_inactivo and turista_id_cookie and turista_inactivo.turista.id == turista_id_cookie:
+				# Es el mismo usuario reactivando su sesión anterior
 				turista_inactivo.activo = True
 				turista_inactivo.save()
 				turista = turista_inactivo.turista
 			else:
-				# Crear nuevo turista
+				# Crear nuevo turista con alias único
 				turista = TURISTA.objects.create(
 					alias=alias,
 					user=None
