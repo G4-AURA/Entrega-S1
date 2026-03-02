@@ -300,9 +300,8 @@ def unirse_tour(request):
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Código de acceso inválido.'}, status=404)
 
-	# Validar que la sesión esté activa (en curso)
 	if sesion.estado != 'en_curso':
-		return JsonResponse({'error': 'La sesión no está activa.'}, status=400)
+		return JsonResponse({'error': 'El tour no está activo en este momento.'}, status=400)
 
 	sesion.turistas.add(turista)
 
