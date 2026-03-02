@@ -295,6 +295,14 @@
             `;
         }
 
+        const crearSesionBtn = `
+            <div class="mt-3">
+                    <a class="btn btn-success w-100" href="/tours/sesiones/crear/?ruta_id=${ruta.id}">
+                    Crear sesión
+                </a>
+            </div>
+        `;
+
         const iaBadge = (isIa || destacarIa) ? '<span class="badge-ia">Ruta generada por IA</span>' : '';
 
         col.innerHTML = `
@@ -326,6 +334,7 @@
                     ${moodTags}
                     ${iaBadge}
                     ${guiaInfo}
+                    ${crearSesionBtn}
                 </div>
             </div>
         `;
