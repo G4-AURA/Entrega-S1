@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const bounds = [];
         
         paradasData.forEach(function(parada) {
-            if (parada.lat && parada.lng) {
+            if (parada.lat != null && parada.lng != null) {
                 // Crear icono según si es la parada actual o no
                 const iconHtml = parada.es_actual 
                     ? `<div style="background: linear-gradient(135deg, #10B981, #059669); width: 32px; height: 32px; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6); display: flex; align-items: center; justify-content: center;">

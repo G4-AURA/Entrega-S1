@@ -72,6 +72,7 @@ def mapa_turista(request, sesion_id):
     # 4. Preparamos los datos para enviarlos al HTML
     context = {
         'sesion': sesion,
+        'paradas': paradas,
         'paradas_json': paradas_json,
         'is_anonymous': False,
     }
@@ -138,6 +139,10 @@ def unirse_tour(request):
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Código de acceso inválido.'}, status=404)
 
+	# Validar que la sesión esté activa (en curso)
+	if sesion.estado != 'en_curso':
+		return JsonResponse({'error': 'La sesión no está activa.'}, status=400)
+
 	sesion.turistas.add(turista)
 
 	return JsonResponse(
@@ -184,6 +189,29 @@ def registrar_ubicacion(request):
 		sesion = SESION_TOUR.objects.get(id=sesion_id)
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
+
+	# Verificar que el usuario es el guía de la ruta o un turista unido a la sesión
+	es_guia = False
+	es_turista = False
+
+	# Verificar si es el guía
+	try:
+		if sesion.ruta.guia.user.user == request.user:
+			es_guia = True
+	except AttributeError:
+		pass
+
+	# Verificar si es un turista registrado en esta sesión
+	if not es_guia:
+		if hasattr(request.user, 'turista'):
+			es_turista = sesion.turistas.filter(id=request.user.turista.id).exists()
+
+	# Si no es ni guía ni turista, denegamos el acceso
+	if not es_guia and not es_turista:
+		return JsonResponse(
+			{'error': 'No tienes permiso para registrar ubicaciones en esta sesión.'},
+			status=403,
+		)
 
 	ubicacion = UBICACION_VIVO.objects.create(
 		coordenadas=Point(longitud, latitud, srid=4326),
@@ -363,6 +391,7 @@ def mapa_turista_anonimo(request, token):
 	context = {
 		'sesion': sesion,
 		'turista': turista,
+		'paradas': paradas,
 		'is_anonymous': True,
 		'paradas_json': paradas_json,
 	}
