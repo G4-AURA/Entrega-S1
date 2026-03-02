@@ -536,13 +536,25 @@ def obtener_mensajes(request, sesion_id):
 	
 	if desde:
 		try:
-			desde_datetime = datetime.fromisoformat(desde)
+			# Limpiar el formato de la fecha
+			# Convertir +00:00 a Z y luego a +00:00 para fromisoformat
+			desde_str = desde.strip()
+			
+			# fromisoformat de Python no acepta Z, necesita +00:00
+			if desde_str.endswith('Z'):
+				desde_str = desde_str[:-1] + '+00:00'
+			
+			# Parsear la fecha
+			desde_datetime = datetime.fromisoformat(desde_str)
+			
 			# Hacer timezone-aware si es naive
 			if desde_datetime.tzinfo is None:
 				desde_datetime = timezone.make_aware(desde_datetime)
+			
 			mensajes_query = mensajes_query.filter(momento__gt=desde_datetime)
-		except (ValueError, TypeError):
-			return JsonResponse({'error': 'Formato de fecha inválido. Usa ISO format.'}, status=400)
+		except Exception:
+			# Si hay error parseando, simplemente no filtrar por fecha
+			pass
 
 	mensajes = mensajes_query.values(
 		'id',
