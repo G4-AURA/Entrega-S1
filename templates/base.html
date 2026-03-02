@@ -18,7 +18,7 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
 
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-light">
+<body class="bg-light" {% if user.is_authenticated %}data-username="{{ user.username }}"{% endif %}>
 
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
@@ -38,6 +38,7 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
                         <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}">Crear Ruta</a>
                     </li>
                 </ul>
+
                 <a href="#" class="text-decoration-none" title="Ir a mi perfil">
                    {% if user.is_authenticated %}
                         <div class="d-flex align-items-center">
@@ -57,6 +58,7 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
                         </div>
                     {% endif %}
                 </a>
+                </div>
             </div>
         </div>
     </nav>

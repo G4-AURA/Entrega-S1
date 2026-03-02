@@ -74,6 +74,13 @@
         flex-direction: column;
     }
 
+    .ruta-card-link {
+        display: block;
+        color: inherit;
+        text-decoration: none;
+        flex: 1 1 auto;
+    }
+
     .ruta-card:hover {
         transform: translateY(-4px);
         box-shadow: 0 4px 16px rgba(0,0,0,0.15);
@@ -186,6 +193,31 @@
         border-radius: 999px;
         padding: 0.3rem 0.75rem;
     }
+
+    .ruta-card-actions {
+        padding: 0 1.5rem 1.5rem;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .btn-delete-route {
+        border: 1px solid #dc3545;
+        background: #fff;
+        color: #dc3545;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-delete-route:hover {
+        background: #dc3545;
+        color: #fff;
+    }
+
 </style>
 
 {% block extra_js %}
@@ -307,7 +339,8 @@
 
         col.innerHTML = `
             <div class="ruta-card">
-                <div class="ruta-card-body">
+                <a href="/catalogo/${ruta.id}/" class="ruta-card-link">
+                    <div class="ruta-card-body">
                     <h3 class="ruta-title">${ruta.titulo}</h3>
                     <p class="ruta-description">${ruta.descripcion || 'Sin descripción disponible'}</p>
 
@@ -335,11 +368,59 @@
                     ${iaBadge}
                     ${guiaInfo}
                     ${crearSesionBtn}
+                    </div>
+                </a>
+                <div class="ruta-card-actions">
+                    <button type="button" class="btn-delete-route" data-ruta-id="${ruta.id}" aria-label="Eliminar ruta" title="Eliminar ruta">Eliminar</button>
                 </div>
             </div>
         `;
 
+        const deleteBtn = col.querySelector('.btn-delete-route');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const rutaId = deleteBtn.dataset.rutaId;
+                if (!confirm('¿Seguro que quieres eliminar esta ruta?')) return;
+
+                try {
+                    const response = await fetch(`/catalogo/${rutaId}/eliminar/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('No se pudo eliminar la ruta');
+                    }
+
+                    cargarRutas('manual');
+                    cargarRutas('ia');
+                } catch (error) {
+                    alert(error.message || 'Error al eliminar la ruta');
+                }
+            });
+        }
+
         return col;
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
 </script>
 {% endblock %}
