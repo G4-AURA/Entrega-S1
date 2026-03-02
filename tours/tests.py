@@ -170,7 +170,9 @@ class TrackingEndpointsTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 302)
+        expected_login_url = reverse('login')
+        expected_next = reverse('tours:registrar_ubicacion')
+        self.assertRedirects(response, f"{expected_login_url}?next={expected_next}")
 
     def test_registrar_ubicacion_valida_campos_obligatorios(self):
         client = Client()
