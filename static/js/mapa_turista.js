@@ -2,6 +2,9 @@
    AURA - Lógica del Mapa Inmersivo del Turista
 ========================================= */
 
+let guiaMarker = null;
+let map = null;
+
 document.addEventListener('DOMContentLoaded', function() {
     
     const mapElement = document.getElementById('mapa-tour');
@@ -18,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 2. Inicialización de Leaflet
-    var map = L.map('mapa-tour', {
+    map = L.map('mapa-tour', {
         zoomControl: false 
     }).setView([37.3891, -5.9845], 16);
 
@@ -29,6 +32,13 @@ document.addEventListener('DOMContentLoaded', function() {
         maxZoom: 19,
         attribution: '© Mapbox © OpenStreetMap'
     }).addTo(map);
+
+    if (typeof esGuia !== 'undefined' && esGuia) {
+    iniciarEmisionUbicacion();
+    }
+
+    obtenerUbicacionGuia();
+    setInterval(obtenerUbicacionGuia, 5000); // Actualizar ubicación del guía cada 5 segundos
 
     // 3. Renderizar Paradas Dinámicamente
     if (typeof paradasData !== 'undefined' && Array.isArray(paradasData)) {
@@ -107,6 +117,61 @@ document.addEventListener('DOMContentLoaded', function() {
     // 6. Sistema de Chat
     initChat();
 });
+
+function iniciarEmisionUbicacion() {
+    if (navigator.geolocation) {
+        setInterval(() => {
+            navigator.geolocation.getCurrentPosition(position => {
+                fetch('/tours/ubicacion/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        latitud: position.coords.latitude,
+                        longitud: position.coords.longitude,
+                        sesion_id: sesionId
+                    })
+                });
+            });
+        }, 5000);
+    }
+}
+
+
+function obtenerUbicacionGuia() {
+    if (!map) return;
+    fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.lat && data.lng) {
+                const pos = [data.lat, data.lng];
+                
+                if (!guiaMarker) {
+                    // Crear marcador si no existe
+                    const guiaIcon = L.divIcon({
+                        className: 'guia-marker-container',
+                        html: '<div class="guia-icon-pulsing"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    guiaMarker = L.marker(pos, {icon: guiaIcon}).addTo(map);
+                    guiaMarker.bindPopup("Ubicación del Guía");
+                } else {
+                    // Actualizar posición si ya existe
+                    guiaMarker.setLatLng(pos);
+                }
+            }
+        });
+}
+
+// FUNCIÓN DE POLLING PARA MOSTRAR AL GUÍA
+
+function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+               document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+}
 
 /* =========================================
    AURA - Sistema de Chat Turista
@@ -290,13 +355,7 @@ function initChat() {
         return div.innerHTML;
     }
 
-    // Función helper para obtener CSRF token
-    function getCsrfToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-               document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
-    }
-
     // Iniciar polling cada 3 segundos
     fetchMessages(); // Primera carga inmediata
-    setInterval(fetchMessages, 3000);
+    setInterval(fetchMessages, 5000);
 }
