@@ -7,11 +7,10 @@
     <div class="row mb-4">
         <div class="col">
             <h1 class="h2 fw-bold mb-3">Catálogo de Rutas</h1>
-            <p class="text-muted">Explora todas las rutas disponibles</p>
+            <p class="text-muted">Explora todas las rutas disponibles y descubre los tours creados con IA.</p>
         </div>
     </div>
 
-    <!-- Spinner de carga -->
     <div id="loading" class="text-center py-5">
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Cargando rutas...</span>
@@ -19,17 +18,45 @@
         <p class="mt-3 text-muted">Cargando rutas...</p>
     </div>
 
-    <!-- Contenedor de tarjetas de rutas -->
-    <div id="rutas-container" class="row g-4" style="display: none;">
-        <!-- Las tarjetas se generarán dinámicamente con JavaScript -->
+    <div class="row mb-4 align-items-center">
+        <div class="col-auto">
+            <label for="limite-rutas" class="fw-bold me-2">Mostrar por página:</label>
+            <select id="limite-rutas" class="form-select d-inline-block w-auto">
+                <option value="3" selected>3</option>
+                <option value="6">6</option>
+                <option value="9">9</option>
+            </select>
+        </div>
     </div>
 
-    <!-- Mensaje de error -->
+    <section id="rutas-catalogo-section" style="display: none;" class="mb-5">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h4 fw-bold mb-0">Rutas creadas manualmente</h2>
+            <span id="rutas-catalogo-count" class="text-muted small"></span>
+        </div>
+        <div id="rutas-container" class="row g-4 mb-3"></div>
+        <div class="d-flex justify-content-between">
+            <button id="btn-prev-manual" class="btn btn-outline-primary" disabled>Anterior</button>
+            <button id="btn-next-manual" class="btn btn-outline-primary" disabled>Siguiente</button>
+        </div>
+    </section>
+
+    <section id="rutas-ia-section" style="display: none;">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h4 fw-bold mb-0">Rutas generadas por IA</h2>
+            <span id="rutas-ia-count" class="text-muted small"></span>
+        </div>
+        <div id="rutas-ia-container" class="row g-4 mb-3"></div>
+        <div class="d-flex justify-content-between">
+            <button id="btn-prev-ia" class="btn btn-outline-primary" disabled>Anterior</button>
+            <button id="btn-next-ia" class="btn btn-outline-primary" disabled>Siguiente</button>
+        </div>
+    </section>
+
     <div id="error-message" class="alert alert-danger" role="alert" style="display: none;">
         <strong>Error:</strong> No se pudieron cargar las rutas. Por favor, intenta de nuevo más tarde.
     </div>
 
-    <!-- Mensaje sin rutas -->
     <div id="no-rutas-message" class="alert alert-info" role="alert" style="display: none;">
         No hay rutas disponibles en este momento.
     </div>
@@ -45,6 +72,13 @@
         height: 100%;
         display: flex;
         flex-direction: column;
+    }
+
+    .ruta-card-link {
+        display: block;
+        color: inherit;
+        text-decoration: none;
+        flex: 1 1 auto;
     }
 
     .ruta-card:hover {
@@ -73,6 +107,7 @@
         margin-bottom: 1rem;
         flex-grow: 1;
         display: -webkit-box;
+        line-clamp: 3;
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
@@ -147,58 +182,133 @@
         font-size: 0.875rem;
         color: #6B7280;
     }
+
+    .badge-ia {
+        display: inline-block;
+        margin-top: 0.75rem;
+        background-color: #ede9fe;
+        color: #6d28d9;
+        font-weight: 700;
+        font-size: 0.75rem;
+        border-radius: 999px;
+        padding: 0.3rem 0.75rem;
+    }
+
+    .ruta-card-actions {
+        padding: 0 1.5rem 1.5rem;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .btn-delete-route {
+        border: 1px solid #dc3545;
+        background: #fff;
+        color: #dc3545;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-delete-route:hover {
+        background: #dc3545;
+        color: #fff;
+    }
+
 </style>
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', async function() {
+    let currentLimit = 3;
+    let pageManual = 1;
+    let pageIa = 1;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        cargarRutas('manual');
+        cargarRutas('ia');
+
+        document.getElementById('limite-rutas').addEventListener('change', function(e) {
+            currentLimit = parseInt(e.target.value);
+            if (currentLimit > 10) currentLimit = 10; 
+            
+            pageManual = 1;
+            pageIa = 1;
+            
+            cargarRutas('manual');
+            cargarRutas('ia');
+        });
+
+        document.getElementById('btn-prev-manual').addEventListener('click', () => {
+            if (pageManual > 1) { pageManual--; cargarRutas('manual'); }
+        });
+        document.getElementById('btn-next-manual').addEventListener('click', () => {
+            pageManual++; cargarRutas('manual');
+        });
+
+        document.getElementById('btn-prev-ia').addEventListener('click', () => {
+            if (pageIa > 1) { pageIa--; cargarRutas('ia'); }
+        });
+        document.getElementById('btn-next-ia').addEventListener('click', () => {
+            pageIa++; cargarRutas('ia');
+        });
+    });
+
+    async function cargarRutas(tipo) {
         const loadingEl = document.getElementById('loading');
-        const containerEl = document.getElementById('rutas-container');
         const errorEl = document.getElementById('error-message');
-        const noRutasEl = document.getElementById('no-rutas-message');
-
+        
+        const page = tipo === 'manual' ? pageManual : pageIa;
+        
         try {
-            console.log('Cargando rutas desde /api/rutas/...');
-            const response = await fetch('/api/rutas/');
+            const response = await fetch(`/api/rutas/?tipo=${tipo}&limit=${currentLimit}&page=${page}`);
+            if (!response.ok) throw new Error(`Error cargando catálogo (${response.status})`);
             
-            console.log('Response status:', response.status);
-            console.log('Response ok:', response.ok);
+            const data = await response.json(); 
+            const rutas = data.results;
             
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const rutas = await response.json();
-            console.log('Rutas recibidas:', rutas.length, rutas);
-
             loadingEl.style.display = 'none';
 
-            if (rutas.length === 0) {
-                noRutasEl.style.display = 'block';
-                return;
+            const containerId = tipo === 'manual' ? 'rutas-container' : 'rutas-ia-container';
+            const sectionId = tipo === 'manual' ? 'rutas-catalogo-section' : 'rutas-ia-section';
+            const countId = tipo === 'manual' ? 'rutas-catalogo-count' : 'rutas-ia-count';
+            const prevBtnId = tipo === 'manual' ? 'btn-prev-manual' : 'btn-prev-ia';
+            const nextBtnId = tipo === 'manual' ? 'btn-next-manual' : 'btn-next-ia';
+
+            const container = document.getElementById(containerId);
+            container.innerHTML = ''; 
+
+            if (rutas.length > 0) {
+                document.getElementById(sectionId).style.display = 'block';
+                document.getElementById(countId).textContent = `Página ${data.current_page} de ${data.total_pages} (${data.total_items} rutas en total)`;
+                
+                rutas.forEach(ruta => {
+                    container.appendChild(createRutaCard(ruta, tipo === 'ia'));
+                });
+            } else if (page === 1) {
+                document.getElementById(sectionId).style.display = 'none';
             }
 
-            containerEl.style.display = 'flex';
-            rutas.forEach(ruta => {
-                const card = createRutaCard(ruta);
-                containerEl.appendChild(card);
-            });
+            document.getElementById(prevBtnId).disabled = data.current_page <= 1;
+            document.getElementById(nextBtnId).disabled = data.current_page >= data.total_pages;
 
         } catch (error) {
-            console.error('Error al cargar rutas:', error);
-            console.error('Error stack:', error.stack);
+            console.error(`Error al cargar rutas ${tipo}:`, error);
             loadingEl.style.display = 'none';
             errorEl.style.display = 'block';
             errorEl.innerHTML = `<strong>Error:</strong> ${error.message}`;
         }
-    });
+    }
 
-    function createRutaCard(ruta) {
+    function createRutaCard(ruta, destacarIa = false) {
         const col = document.createElement('div');
         col.className = 'col-12 col-md-6 col-lg-4';
 
-        const exigenciaClass = `exigencia-${ruta.nivel_exigencia.toLowerCase()}`;
-        
+        const exigenciaClass = `exigencia-${String(ruta.nivel_exigencia || '').toLowerCase()}`;
+        const isIa = Boolean(ruta.es_generada_ia);
+
         let moodTags = '';
         if (ruta.mood && ruta.mood.length > 0) {
             moodTags = '<div class="mood-tags">';
@@ -217,12 +327,23 @@
             `;
         }
 
+        const crearSesionBtn = `
+            <div class="mt-3">
+                    <a class="btn btn-success w-100" href="/tours/sesiones/crear/?ruta_id=${ruta.id}">
+                    Crear sesión
+                </a>
+            </div>
+        `;
+
+        const iaBadge = (isIa || destacarIa) ? '<span class="badge-ia">Ruta generada por IA</span>' : '';
+
         col.innerHTML = `
             <div class="ruta-card">
-                <div class="ruta-card-body">
+                <a href="/catalogo/${ruta.id}/" class="ruta-card-link">
+                    <div class="ruta-card-body">
                     <h3 class="ruta-title">${ruta.titulo}</h3>
                     <p class="ruta-description">${ruta.descripcion || 'Sin descripción disponible'}</p>
-                    
+
                     <div class="ruta-info">
                         <div class="info-item">
                             <svg class="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -230,26 +351,76 @@
                             </svg>
                             <span>${ruta.duracion_horas}h</span>
                         </div>
-                        
+
                         <div class="info-item">
                             <svg class="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                             </svg>
                             <span>${ruta.num_personas} personas</span>
                         </div>
-                        
+
                         <div class="info-item">
                             <span class="badge-exigencia ${exigenciaClass}">${ruta.nivel_exigencia}</span>
                         </div>
                     </div>
-                    
+
                     ${moodTags}
+                    ${iaBadge}
                     ${guiaInfo}
+                    ${crearSesionBtn}
+                    </div>
+                </a>
+                <div class="ruta-card-actions">
+                    <button type="button" class="btn-delete-route" data-ruta-id="${ruta.id}" aria-label="Eliminar ruta" title="Eliminar ruta">Eliminar</button>
                 </div>
             </div>
         `;
 
+        const deleteBtn = col.querySelector('.btn-delete-route');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const rutaId = deleteBtn.dataset.rutaId;
+                if (!confirm('¿Seguro que quieres eliminar esta ruta?')) return;
+
+                try {
+                    const response = await fetch(`/catalogo/${rutaId}/eliminar/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('No se pudo eliminar la ruta');
+                    }
+
+                    cargarRutas('manual');
+                    cargarRutas('ia');
+                } catch (error) {
+                    alert(error.message || 'Error al eliminar la ruta');
+                }
+            });
+        }
+
         return col;
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
 </script>
 {% endblock %}

@@ -11,6 +11,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AURA - Crear Tour Manual</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         :root {
             --primary: #4F46E5;
@@ -317,6 +322,80 @@
             box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
 
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(1, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .map-modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .map-modal {
+            background: var(--surface);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 600px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .map-modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .map-modal-header h3 {
+            font-size: 18px;
+            color: var(--text-main);
+        }
+
+        .btn-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-sec);
+        }
+
+        #leaflet-map {
+            height: 400px;
+            width: 100%;
+            background-color: #e5e5e5;
+        }
+
+        .map-modal-footer {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-secondary {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+
         /* Responsive */
         @media (max-width: 768px) {
             .container {
@@ -339,6 +418,10 @@
             .header-title {
                 font-size: 20px;
             }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -350,18 +433,40 @@
             <button class="btn-back" onclick="window.location.href='/crear-ruta/'">
                 <span class="material-icons-round">arrow_back</span>
             </button>
-            <div class="header-title">Crear Ruta Manual</div>
+            <div class="header-title">Creación manual</div>
         </header>
 
             
             <div class="form-group">
                 <label class="input-label">Título del Tour</label>
-                <input type="text" class="input-field" value="Ruta Histórica Centro">
+                <input type="text" id="ruta-titulo" class="input-field" value="Ruta Histórica Centro">
             </div>
 
             <div class="form-group">
                 <label class="input-label">Descripción</label>
-                <textarea class="input-field">Un recorrido por los monumentos más emblemáticos de la ciudad antigua...</textarea>
+                <textarea id="ruta-descripcion" class="input-field">Un recorrido por los monumentos más emblemáticos...</textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="input-label">Duración (horas)</label>
+                    <input type="number" id="ruta-duracion" class="input-field" step="0.5" min="0.5" value="2.0" placeholder="Ej: 2.5">
+                </div>
+                <br>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="input-label">Nº Max. Personas</label>
+                    <input type="number" id="ruta-personas" class="input-field" min="1" value="10" placeholder="Ej: 15">
+                </div>
+                <br>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="input-label">Nivel de Exigencia</label>
+                    <select id="ruta-exigencia" class="input-field" style="appearance: auto; height: 46px;">
+                        <option value="Baja">Baja</option>
+                        <option value="Media" selected>Media</option>
+                        <option value="Alta">Alta</option>
+                    </select>
+                </div>
+                <br><br>
             </div>
 
 
@@ -397,16 +502,14 @@
 
                     <div class="form-group">
                         <label class="input-label">Nombre del Lugar</label>
-                        <input type="text" class="input-field" placeholder="Ej: Catedral">
+                        <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
                     </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
                     <label class="input-label">Ubicación</label>
                     <div class="location-group">
-                        <input type="text" class="input-field" placeholder="Dirección...">
-                        <button class="btn-map">
-                            <span class="material-icons-round">map</span>
-                        </button>
+                        <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
+                        <button class="btn-map"><span class="material-icons-round">map</span></button>
                     </div>
                 </div>
             </div>
@@ -425,16 +528,14 @@
 
                     <div class="form-group">
                         <label class="input-label">Nombre del Lugar</label>
-                        <input type="text" class="input-field" placeholder="Ej: Plaza Mayor">
+                        <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
                     </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
                     <label class="input-label">Ubicación</label>
                     <div class="location-group">
-                        <input type="text" class="input-field" placeholder="Dirección...">
-                        <button class="btn-map">
-                            <span class="material-icons-round">map</span>
-                        </button>
+                        <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
+                        <button class="btn-map"><span class="material-icons-round">map</span></button>
                     </div>
                 </div>
             </div>
@@ -444,10 +545,26 @@
 
     <div class="footer-action">
         <div class="footer-content">
-            <button class="btn-save">
+            <button class="btn-save" id="btn-guardar-tour">
                 <span class="material-icons-round">save</span>
-                Guardar Tour
+                Guardar
             </button>
+        </div>
+    </div>
+
+    <div class="map-modal-overlay" id="map-modal-overlay">
+        <div class="map-modal">
+            <div class="map-modal-header">
+                <h3>Elige la ubicación de la parada</h3>
+                <button class="btn-close" id="close-map-btn">&times;</button>
+            </div>
+            <div id="leaflet-map"></div>
+            <div class="map-modal-footer">
+                <button class="btn-secondary" id="cancel-map-btn">Cancelar</button>
+                <button class="btn-save" id="confirm-map-btn" style="width: auto; padding: 10px 20px;">
+                    Confirmar
+                </button>
+            </div>
         </div>
     </div>
 
@@ -522,7 +639,148 @@
                 updateDisplay();
             }
         }
+
+        document.getElementById('btn-guardar-tour').addEventListener('click', async function() {
+            const btnSave = this;
+            const originalText = btnSave.innerHTML;
+            btnSave.innerHTML = '<span class="material-icons-round">hourglass_empty</span> Guardando...';
+            btnSave.disabled = true;
+
+            const titulo = document.getElementById('ruta-titulo').value;
+            const descripcion = document.getElementById('ruta-descripcion').value;
+            const duracion = document.getElementById('ruta-duracion').value;
+            const personas = document.getElementById('ruta-personas').value;
+            const exigencia = document.getElementById('ruta-exigencia').value;
+            
+            const paradas = [];
+            const stopCards = document.querySelectorAll('.stop-card');
+            
+            stopCards.forEach((card, index) => {
+                const nombreInput = card.querySelector('.stop-nombre') || card.querySelector('input[placeholder^="Ej:"]');
+                const ubicacionInput = card.querySelector('.stop-ubicacion') || card.querySelector('input[placeholder="Dirección..."]');
+                
+                const lat = ubicacionInput && ubicacionInput.dataset.lat ? parseFloat(ubicacionInput.dataset.lat) : 37.38;
+                const lon = ubicacionInput && ubicacionInput.dataset.lon ? parseFloat(ubicacionInput.dataset.lon) : -5.99;
+
+                paradas.push({
+                    nombre: nombreInput ? nombreInput.value : `Parada ${index + 1}`,
+                    direccion: ubicacionInput ? ubicacionInput.value : '',
+                    lat: lat, 
+                    lon: lon
+                });
+            });
+            
+            const payload = {
+                titulo: titulo,
+                descripcion: descripcion,
+                paradas: paradas,
+                duracion_horas:duracion, 
+                num_personas: personas,
+                nivel_exigencia: exigencia,
+                mood: []
+            };
+            
+            try {
+                const response = await fetch('/crear-ruta/api/guardar-manual/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}' 
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'OK') {
+                    alert('¡Ruta guardada con éxito!');
+                    // Redirigir al catálogo para ver la ruta recién creada
+                    window.location.href = '/catalogo/'; 
+                } else {
+                    throw new Error(data.mensaje || "Error desconocido al guardar la ruta");
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Ocurrió un error al intentar guardar la ruta: ' + error.message);
+            } finally {
+                // Restaurar el botón
+                btnSave.innerHTML = originalText;
+                btnSave.disabled = false;
+            }
+        });
+
+        // Variables globales para el mapa
+        let map = null;
+        let marker = null;
+        let currentInputTarget = null; // Guardará el input que disparó el mapa
+        let tempCoords = null; // Coordenadas temporales seleccionadas
+
+        // Inicializar el mapa
+        function initMap() {
+            if (!map) {
+                // Centrado por defecto en Sevilla
+                map = L.map('leaflet-map').setView([37.3886, -5.9823], 13);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                map.on('click', function(e) {
+                    tempCoords = e.latlng;
+                    if (marker) {
+                        marker.setLatLng(tempCoords);
+                    } else {
+                        marker = L.marker(tempCoords).addTo(map);
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            const mapBtn = e.target.closest('.btn-map');
+            
+            if (mapBtn) {
+                e.preventDefault(); 
+                currentInputTarget = mapBtn.previousElementSibling;
+                
+                // Mostrar el modal
+                document.getElementById('map-modal-overlay').style.display = 'flex';
+                
+                initMap();
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+            }
+        });
+
+        // Cerrar modal
+        function closeMapModal() {
+            document.getElementById('map-modal-overlay').style.display = 'none';
+            tempCoords = null;
+            if (marker) {
+                map.removeLayer(marker);
+                marker = null;
+            }
+        }
+
+        document.getElementById('close-map-btn').addEventListener('click', closeMapModal);
+        document.getElementById('cancel-map-btn').addEventListener('click', closeMapModal);
+
+        // Confirmar ubicación
+        document.getElementById('confirm-map-btn').addEventListener('click', function() {
+            if (tempCoords && currentInputTarget) {
+                currentInputTarget.dataset.lat = tempCoords.lat;
+                currentInputTarget.dataset.lon = tempCoords.lng;
+                
+                currentInputTarget.value = `📍 Ubicación guardada (${tempCoords.lat.toFixed(4)}, ${tempCoords.lng.toFixed(4)})`;
+                
+                closeMapModal();
+            } else {
+                alert("Por favor, haz clic en el mapa para seleccionar una ubicación primero.");
+            }
+        });
     </script>
+
 </body>
 </html>
 

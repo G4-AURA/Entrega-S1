@@ -47,9 +47,9 @@ def llamar_gemini_bypass(prompt, api_key):
 
     # Si se llega aquí, devolvemos datos de fallback.
     # Nota: un 429 (Too Many Requests) entra en requests.HTTPError y dispara este retorno.
-        """
-        Datos de prueba por si la conexión a la IA falla.
-        """
+        
+    #Datos de prueba por si la conexión a la IA falla.
+        
     return [
             {"nombre": f"Centro Histórico", "coords": [40.4167, -3.7037], "desc": "Punto de interés principal recomendado."},
             {"nombre": "Parque Principal", "coords": [40.4233, -3.6827], "desc": "Zona verde ideal para el descanso del grupo."},
