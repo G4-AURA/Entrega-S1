@@ -116,6 +116,7 @@
     const sesionId = {{ sesion.id }};
     const esGuia = {{ es_guia|yesno:"true,false" }}; // Pasar variable al JS
     const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
+    const currentUserName = '{{ current_user_name|escapejs }}';
 </script>
 
 <script src="{% static 'js/mapa_turista.js' %}"></script>

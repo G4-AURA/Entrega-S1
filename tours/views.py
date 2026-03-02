@@ -88,7 +88,8 @@ def mapa_turista(request, sesion_id):
         'paradas': paradas,
         'paradas_json': paradas_json,
         'is_anonymous': False,
-        'es_guia': es_guia,  # <--- Añadir esto
+        'es_guia': es_guia,
+        'current_user_name': request.user.turista.alias if hasattr(request.user, 'turista') else request.user.username,
     }
     
     return render(request, 'turista_mapa.html', context)
@@ -472,6 +473,19 @@ def join_tour(request, token):
 				'error': 'El alias es obligatorio.'
 			})
 		
+		# Validar longitud mínima y máxima
+		if len(alias) < 2:
+			return render(request, 'tours/join_tour.html', {
+				'sesion': sesion,
+				'error': 'El alias debe tener al menos 2 caracteres.'
+			})
+		
+		if len(alias) > 50:
+			return render(request, 'tours/join_tour.html', {
+				'sesion': sesion,
+				'error': 'El alias no puede exceder 50 caracteres.'
+			})
+		
 		# Verificar si el usuario ya tiene una cookie de turista
 		turista_id_cookie = request.session.get('turista_id')
 		
@@ -486,44 +500,29 @@ def join_tour(request, token):
 			# Caso 1: Es el mismo turista volviendo (tiene la cookie correcta)
 			if turista_id_cookie and turista_sesion_existente.turista.id == turista_id_cookie:
 				turista = turista_sesion_existente.turista
-			# Caso 2: El alias está siendo usado activamente pero el usuario no tiene cookie
-			# Esto puede pasar si cerró el navegador o limpió cookies
-			# Desactivamos la sesión anterior como "abandonada" y permitimos continuar
-			elif not turista_id_cookie:
-				turista_sesion_existente.activo = False
-				turista_sesion_existente.save()
-				
-				# Crear nuevo turista con el mismo alias
-				turista = TURISTA.objects.create(
-					alias=alias,
-					user=None
-				)
-				TURISTASESION.objects.create(
-					turista=turista,
-					sesion_tour=sesion,
-					activo=True
-				)
-			# Caso 3: El alias está siendo usado por OTRO usuario con cookie diferente
+			# Caso 2 y 3: El alias está siendo usado activamente por otro usuario
+			# NO permitimos crear un alias duplicado
 			else:
 				return render(request, 'tours/join_tour.html', {
 					'sesion': sesion,
 					'error': f'El alias "{alias}" ya está en uso en este tour. Por favor elige otro nombre.'
 				})
 		else:
-			# No hay nadie activo con ese alias, crear nuevo o reutilizar inactivo
+			# No hay nadie ACTIVO con ese alias
+			# Verificar si hay alguien INACTIVO con ese alias que podamos reutilizar
 			turista_inactivo = TURISTASESION.objects.filter(
 				sesion_tour=sesion,
 				turista__alias=alias,
 				activo=False
 			).first()
 			
-			if turista_inactivo and not turista_id_cookie:
-				# Reutilizar el turista inactivo
+			if turista_inactivo and turista_id_cookie and turista_inactivo.turista.id == turista_id_cookie:
+				# Es el mismo usuario reactivando su sesión anterior
 				turista_inactivo.activo = True
 				turista_inactivo.save()
 				turista = turista_inactivo.turista
 			else:
-				# Crear nuevo turista
+				# Crear nuevo turista con alias único
 				turista = TURISTA.objects.create(
 					alias=alias,
 					user=None
@@ -589,6 +588,7 @@ def mapa_turista_anonimo(request, token):
 		'paradas': paradas,
 		'is_anonymous': True,
 		'paradas_json': paradas_json,
+		'current_user_name': turista.alias,
 	}
 	
 	return render(request, 'turista_mapa.html', context)
@@ -614,19 +614,17 @@ def join_tour_by_code(request, codigo):
 def enviar_mensaje(request, sesion_id):
 	"""
 	Endpoint REST para enviar un mensaje en la sesión de tour.
+	Soporta tanto usuarios autenticados como turistas anónimos.
 	
 	Parámetros POST:
 	- texto: El contenido del mensaje (obligatorio)
 	
 	Respuesta:
 	- message_id: ID del mensaje creado
-	- remitente: Usuario que envía el mensaje
+	- nombre_remitente: Nombre/alias del remitente
 	- texto: Contenido del mensaje
 	- momento: Timestamp del mensaje
 	"""
-	if not _is_authenticated(request):
-		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
-
 	try:
 		body = json.loads(request.body or '{}')
 	except json.JSONDecodeError:
@@ -641,21 +639,55 @@ def enviar_mensaje(request, sesion_id):
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
 
-	# Validar que el usuario pertenece a la sesión (como guía o turista)
-	es_turista = hasattr(request.user, 'turista') and request.user.turista in sesion.turistas.all()
-	# Para permitir que el guía también envíe, verificamos si es el propietario de la ruta
-	es_guia = False
-	if not (es_turista or es_guia):
-		return JsonResponse({'error': 'No tienes permiso para enviar mensajes en esta sesión.'}, status=403)
-	# o simplemente permitimos que cualquier usuario autenticado envíe en una sesión activa
-	
 	if sesion.estado != 'en_curso':
 		return JsonResponse({'error': 'La sesión debe estar en curso para enviar mensajes.'}, status=400)
+
+	# Determinar remitente (usuario autenticado o turista anónimo)
+	remitente_user = None
+	remitente_turista = None
+	nombre_remitente = 'Anónimo'
+	
+	if _is_authenticated(request):
+		# Usuario autenticado (puede ser guía o turista registrado)
+		remitente_user = request.user
+		
+		# Verificar si es un turista registrado
+		if hasattr(request.user, 'turista'):
+			remitente_turista = request.user.turista
+			nombre_remitente = remitente_turista.alias
+		else:
+			# Es el guía u otro usuario
+			nombre_remitente = request.user.username
+			
+		# Validar permisos para usuarios autenticados
+		es_turista = remitente_turista and remitente_turista in sesion.turistas.all()
+		es_guia = hasattr(sesion.ruta, 'guia') and hasattr(sesion.ruta.guia, 'user') and hasattr(sesion.ruta.guia.user, 'user') and sesion.ruta.guia.user.user == request.user
+		
+		if not (es_turista or es_guia):
+			return JsonResponse({'error': 'No tienes permiso para enviar mensajes en esta sesión.'}, status=403)
+	else:
+		# Turista anónimo: verificar mediante cookie de sesión
+		turista_id = request.session.get('turista_id')
+		if not turista_id:
+			return JsonResponse({'error': 'Debes unirte al tour para enviar mensajes.'}, status=401)
+		
+		try:
+			turista = TURISTA.objects.get(id=turista_id)
+			# Verificar que esté en esta sesión
+			if not TURISTASESION.objects.filter(turista=turista, sesion_tour=sesion, activo=True).exists():
+				return JsonResponse({'error': 'No perteneces a esta sesión.'}, status=403)
+			
+			remitente_turista = turista
+			nombre_remitente = turista.alias
+		except TURISTA.DoesNotExist:
+			return JsonResponse({'error': 'Turista no encontrado.'}, status=404)
 
 	try:
 		mensaje = MENSAJE_CHAT.objects.create(
 			sesion_tour=sesion,
-			remitente=request.user,
+			remitente=remitente_user,
+			turista=remitente_turista,
+			nombre_remitente=nombre_remitente,
 			texto=texto
 		)
 
@@ -663,7 +695,7 @@ def enviar_mensaje(request, sesion_id):
 			{
 				'message': 'Mensaje enviado correctamente.',
 				'message_id': mensaje.id,
-				'remitente': mensaje.remitente.username,
+				'nombre_remitente': mensaje.nombre_remitente,
 				'texto': mensaje.texto,
 				'momento': mensaje.momento.isoformat(),
 				'sesion_id': sesion.id,
@@ -678,35 +710,52 @@ def enviar_mensaje(request, sesion_id):
 def obtener_mensajes(request, sesion_id):
 	"""
 	Endpoint REST para obtener mensajes de una sesión (polling).
+	Soporta tanto usuarios autenticados como turistas anónimos.
 	
 	Parámetros GET:
 	- desde: Timestamp ISO para obtener solo mensajes posteriores (opcional)
 	- limite: Número máximo de mensajes a devolver (default: 50, máximo: 500)
 	
 	Respuesta:
-	- mensajes: Lista de mensajes con remitente, texto, momento e ID
+	- mensajes: Lista de mensajes con nombre_remitente, texto, momento e ID
 	- total: Cantidad total de mensajes en la sesión
 	"""
-	if not _is_authenticated(request):
-		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
-
 	try:
 		sesion = SESION_TOUR.objects.select_related('ruta').prefetch_related('turistas').get(id=sesion_id)
 	except SESION_TOUR.DoesNotExist:
 		return JsonResponse({'error': 'Sesión no encontrada.'}, status=404)
 
-	# Validar que el usuario pertenece a la sesión con una sola consulta
-	turistas = [t.user_id for t in sesion.turistas.all()]
-	es_turista = request.user.id in turistas
-	# Determinar si el usuario es el guía de la ruta de la sesión
-	es_guia = False
-	if hasattr(sesion.ruta, 'guia'):
-		guia = sesion.ruta.guia
-		# Navegar hasta el usuario de Django asociado al guía, si existe
-		if hasattr(guia, 'user') and hasattr(guia.user, 'user'):
-			es_guia = guia.user.user == request.user
-	if not (es_turista or es_guia):
-		return JsonResponse({'error': 'No tienes permiso para ver los mensajes de esta sesión.'}, status=403)	
+	# Validar permisos: usuario autenticado o turista anónimo
+	tiene_permiso = False
+	
+	if _is_authenticated(request):
+		# Usuario autenticado: verificar que es turista o guía de la sesión
+		turistas = [t.user_id for t in sesion.turistas.all() if t.user_id]
+		es_turista = request.user.id in turistas
+		
+		# Verificar si es el guía
+		es_guia = False
+		if hasattr(sesion.ruta, 'guia'):
+			guia = sesion.ruta.guia
+			if hasattr(guia, 'user') and hasattr(guia.user, 'user'):
+				es_guia = guia.user.user == request.user
+		
+		tiene_permiso = es_turista or es_guia
+	else:
+		# Turista anónimo: verificar mediante cookie de sesión
+		turista_id = request.session.get('turista_id')
+		if turista_id:
+			try:
+				turista = TURISTA.objects.get(id=turista_id)
+				# Verificar que esté en esta sesión
+				if TURISTASESION.objects.filter(turista=turista, sesion_tour=sesion, activo=True).exists():
+					tiene_permiso = True
+			except TURISTA.DoesNotExist:
+				pass
+	
+	if not tiene_permiso:
+		return JsonResponse({'error': 'No tienes permiso para ver los mensajes de esta sesión.'}, status=403)
+	
 	# Obtener parámetros opcionales
 	desde = request.GET.get('desde')
 	
@@ -746,7 +795,7 @@ def obtener_mensajes(request, sesion_id):
 
 	mensajes = mensajes_query.values(
 		'id',
-		'remitente__username',
+		'nombre_remitente',
 		'texto',
 		'momento'
 	)[:limite]
