@@ -5,29 +5,6 @@
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<style>
-    .fab-button {
-        position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        z-index: 1000;
-        width: 64px;
-        height: 64px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--brand-color), var(--brand-hover));
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .fab-button:hover {
-        transform: scale(1.1);
-        box-shadow: 0 8px 20px rgba(79, 70, 229, 0.6);
-    }
-    .input-token {
-        font-family: monospace;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -37,48 +14,6 @@
         <p class="text-muted">Vista del guía turístico para Puntos de Interés (POIs).</p>
         
         <div id="mi-mapa" class="map-container"></div>
-    </div>
-</div>
-
-<!-- Botón flotante para unirse a tour -->
-<button class="fab-button btn btn-brand d-flex align-items-center justify-content-center" 
-        data-bs-toggle="modal" 
-        data-bs-target="#joinTokenModal"
-        title="Unirse a un tour">
-    <span class="material-icons-round" style="font-size: 32px;">add_location_alt</span>
-</button>
-
-<!-- Modal para ingresar token -->
-<div class="modal fade" id="joinTokenModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content rounded-4 border-0 shadow-lg">
-            <div class="modal-body p-4 p-md-5 text-center">
-                <div class="bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-4" 
-                     style="width: 70px; height: 70px; background-color: #EEF2FF; color: var(--brand-color);">
-                    <span class="material-icons-round" style="font-size:36px">tour</span>
-                </div>
-                
-                <h3 class="fw-bold mb-2">Unirse a un Tour</h3>
-                <p class="text-muted mb-4">Ingresa el código de acceso que te proporcionó tu guía</p>
-                
-                <div id="mensaje-token" class="alert d-none small text-start mb-4 rounded-3" role="alert"></div>
-                
-                <input type="text" 
-                       id="token-input" 
-                       class="form-control form-control-lg text-center input-token fw-bold mb-4 bg-light border-2 py-3" 
-                       placeholder="DEMO123" 
-                       maxlength="100">
-                
-                <div class="d-grid gap-2">
-                    <button id="btn-ir-tour" class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3">
-                        Continuar
-                    </button>
-                    <button class="btn btn-link text-muted text-decoration-none fw-semibold mt-2" data-bs-dismiss="modal">
-                        Cancelar
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 {% endblock %}
@@ -101,48 +36,5 @@
     // 3. Añadir marcadores
     var marker = L.marker([37.3891, -5.9845]).addTo(map);
     marker.bindPopup("<b>¡Hola Guía!</b><br>Este es el punto de encuentro.").openPopup();
-
-    // --- LÓGICA PARA UNIRSE A TOUR CON TOKEN O CÓDIGO ---
-    const btnIrTour = document.getElementById('btn-ir-tour');
-    const tokenInput = document.getElementById('token-input');
-    const mensajeDiv = document.getElementById('mensaje-token');
-
-    if (btnIrTour) {
-        btnIrTour.addEventListener('click', function() {
-            const codigoValor = tokenInput.value.trim().toUpperCase();
-            
-            // Resetear mensajes
-            mensajeDiv.classList.add('d-none');
-            mensajeDiv.classList.remove('alert-success', 'alert-danger');
-            
-            if (!codigoValor) {
-                mensajeDiv.innerText = "Por favor, ingresa un código válido.";
-                mensajeDiv.classList.add('alert-danger');
-                mensajeDiv.classList.remove('d-none');
-                return;
-            }
-            
-            // Determinar si es UUID o código de acceso
-            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            let joinUrl;
-            
-            if (uuidPattern.test(codigoValor)) {
-                // Es un UUID (token)
-                joinUrl = `/tours/live/${codigoValor}/`;
-            } else {
-                // Es un código de acceso corto
-                joinUrl = `/tours/live/code/${codigoValor}/`;
-            }
-            
-            window.location.href = joinUrl;
-        });
-
-        // Permitir enviar con Enter
-        tokenInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                btnIrTour.click();
-            }
-        });
-    }
 </script>
 {% endblock %}
