@@ -32,7 +32,7 @@ def home_router(request):
 def registro(request):
     # Si el usuario ya está logueado, se le manda a la home directamente
     if request.user.is_authenticated:
-        return redirect('home')
+        return redirect('catalogo')
 
     if request.method == 'POST':
         form = RegistroUsuarioForm(request.POST)
@@ -50,7 +50,7 @@ def registro(request):
     
             login(request, user)
 
-            return redirect('home')
+            return redirect('catalogo')
     else:
         form = RegistroUsuarioForm()
         

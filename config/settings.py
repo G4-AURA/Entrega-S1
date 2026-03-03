@@ -166,5 +166,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 LOGIN_URL = '/accounts/login/'              # A dónde ir si no tienes sesión
-LOGIN_REDIRECT_URL = '/'                    # A dónde ir tras loguearse con éxito
+LOGIN_REDIRECT_URL = '/catalogo/'                    # A dónde ir tras loguearse con éxito
 LOGOUT_REDIRECT_URL = '/accounts/login/'    # A dónde ir tras cerrar sesión
