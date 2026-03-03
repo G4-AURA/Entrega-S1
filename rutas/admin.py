@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import AuthUser, Guia, Ruta, Parada
 
-
+# Autenticación de usuarios 
 @admin.register(AuthUser)
 class AuthUserAdmin(admin.ModelAdmin):
 	list_display = ("user",)
