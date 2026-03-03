@@ -32,12 +32,14 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
+                    {% if user.is_authenticated %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'catalogo' %}" style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Mis Rutas</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}" style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Crear Ruta</a>
                     </li>
+                     {% endif %}
                 </ul>
 
                 <a href="#" class="text-decoration-none" title="Ir a mi perfil">

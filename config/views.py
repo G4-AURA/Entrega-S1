@@ -41,7 +41,7 @@ def registro(request):
             
             auth_user, _ = AuthUser.objects.get_or_create(user=user)
             
-            tipo = form.cleaned_data.get('tipo_cuenta')
+            tipo = 'guia'
             if tipo == 'guia':
                 Guia.objects.create(user=auth_user)
             else:
