@@ -11,7 +11,11 @@
 {% endblock %}
 
 {% block content %}
-{% if is_anonymous %}
+{% if es_guia %}
+    <a href="/catalogo/" class="btn-back"> 
+        <span class="material-icons-round">arrow_back</span>
+    </a>
+{% elif is_anonymous %}
     <a href="/" class="btn-back">
         <span class="material-icons-round">arrow_back</span>
     </a>
