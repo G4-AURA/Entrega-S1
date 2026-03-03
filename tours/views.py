@@ -99,12 +99,14 @@ def mapa_turista(request, sesion_id):
 # VISTAS PARA GUÍAS (requieren login)
 # =============================================================================
 
-@login_required
 @require_POST
 def iniciar_tour(request, sesion_id):
 	"""
 	Vista para que un GUÍA inicie un tour.
 	"""
+	if not request.user.is_authenticated:
+		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
+	
 	try:
 		sesion = SESION_TOUR.objects.get(id=sesion_id)
 	except SESION_TOUR.DoesNotExist:
@@ -323,12 +325,14 @@ def unirse_tour(request):
 	)
 
 
-@login_required
 @require_POST
 def registrar_ubicacion(request):
 	"""
 	Vista para registrar la ubicación de un usuario (GUÍA o TURISTA registrado).
 	"""
+	if not request.user.is_authenticated:
+		return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
+	
 	try:
 		body = json.loads(request.body or '{}')
 	except json.JSONDecodeError:
