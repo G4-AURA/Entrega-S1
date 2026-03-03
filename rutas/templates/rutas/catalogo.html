@@ -327,13 +327,24 @@
             `;
         }
 
-        const crearSesionBtn = `
-            <div class="mt-3">
+        let crearSesionBtn = '';
+        if (ruta.sesion_activa_id) {
+            crearSesionBtn = `
+                <div class="mt-3">
+                    <a class="btn btn-primary w-100" href="/tours/sesiones/${ruta.sesion_activa_id}/guia/">
+                        Acceder a sesión
+                    </a>
+                </div>
+            `;
+        } else {
+            crearSesionBtn = `
+                <div class="mt-3">
                     <a class="btn btn-success w-100" href="/tours/sesiones/crear/?ruta_id=${ruta.id}">
-                    Crear sesión
-                </a>
-            </div>
-        `;
+                        Crear sesión
+                    </a>
+                </div>
+            `;
+        }
 
         const iaBadge = (isIa || destacarIa) ? '<span class="badge-ia">Ruta generada por IA</span>' : '';
 

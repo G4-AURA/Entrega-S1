@@ -9,6 +9,17 @@
             <div class="col-md-7">
                 <div class="card shadow-sm p-4 h-100">
                     <h3 class="fw-bold mb-3">Sesión creada</h3>
+                    
+                    <div class="mb-3">
+                        <p class="mb-2"><strong>Estado:</strong></p>
+                        <span id="sesion-estado" class="badge 
+                            {% if sesion.estado == 'en_curso' %}bg-success
+                            {% elif sesion.estado == 'pendiente' %}bg-warning
+                            {% else %}bg-secondary{% endif %} px-3 py-2">
+                            {{ sesion.get_estado_display|upper }}
+                        </span>
+                    </div>
+                    
                     <p class="mb-2"><strong>Código de acceso:</strong></p>
                     <h4 class="mb-3" id="sesion-code">{{ sesion.codigo_acceso }}</h4>
 
@@ -21,6 +32,9 @@
                     {% endwith %}
 
                     <div class="d-flex flex-wrap gap-2 mb-3">
+                        {% if sesion.estado == 'pendiente' %}
+                        <button id="iniciar-tour" class="btn btn-success">🚀 Iniciar Tour</button>
+                        {% endif %}
                         <button id="copy-code" class="btn btn-outline-primary">Copiar código de acceso</button>
                         <button id="regenerate-code" class="btn btn-outline-secondary">Generar nuevo código</button>
                         <button id="close-access" class="btn btn-danger">Cerrar acceso</button>
@@ -63,6 +77,7 @@ function copyText(id) {
 document.addEventListener('DOMContentLoaded', function() {
     const participantesList = document.getElementById('participantes-list');
     const participantesCount = document.getElementById('participantes-count');
+    
     async function fetchParticipants() {
         try {
             const resp = await fetch('{% url "tours:participantes_sesion" sesion.id %}');
@@ -88,6 +103,52 @@ document.addEventListener('DOMContentLoaded', function() {
 
     fetchParticipants();
     const participantesInterval = setInterval(fetchParticipants, 4000);
+
+    // Iniciar tour
+    const iniciarBtn = document.getElementById('iniciar-tour');
+    if (iniciarBtn) {
+        iniciarBtn.addEventListener('click', async () => {
+            if (!confirm('¿Iniciar el tour? Los turistas podrán comenzar a seguirte.')) return;
+
+            const csrftoken = (function() {
+                const name = 'csrftoken=';
+                const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith(name));
+                return c ? c.substring(name.length) : '';
+            })();
+
+            try {
+                const resp = await fetch('{% url "tours:iniciar_tour" sesion.id %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    alert('Error iniciando el tour: ' + resp.status + '\n' + txt);
+                    return;
+                }
+
+                const data = await resp.json();
+                if (data.estado === 'en_curso') {
+                    const estadoBadge = document.getElementById('sesion-estado');
+                    if (estadoBadge) {
+                        estadoBadge.className = 'badge bg-success px-3 py-2';
+                        estadoBadge.textContent = 'EN CURSO';
+                    }
+                    iniciarBtn.remove();
+                    alert('¡Tour iniciado! Ya puedes acceder a la sesión y usar el chat.');
+                } else {
+                    alert('Respuesta inesperada del servidor.');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error conectando con el servidor.');
+            }
+        });
+    }
 
     document.getElementById('copy-code').addEventListener('click', () => copyText('sesion-code'));
 
