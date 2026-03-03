@@ -31,5 +31,6 @@ urlpatterns = [
 	# Endpoints REST para chat
 	path('sesiones/<int:sesion_id>/mensajes/enviar/', views.enviar_mensaje, name='enviar_mensaje'),
 	path('sesiones/<int:sesion_id>/mensajes/', views.obtener_mensajes, name='obtener_mensajes'),
+    path('sesiones/<int:sesion_id>/ubicacion_guia/', views.obtener_ubicacion_guia, name='ubicacion_guia'),
 
 ]

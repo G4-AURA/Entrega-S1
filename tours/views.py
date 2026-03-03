@@ -60,9 +60,16 @@ def mapa_turista(request, sesion_id):
     # 1. Buscamos la sesión por su ID. Si no existe, devuelve un error 404 seguro.
     sesion = get_object_or_404(SESION_TOUR, id=sesion_id)
     
-    # 2. Seguridad extra: Comprobamos que este turista realmente pertenece a esta sesión
-    if not hasattr(request.user, 'turista') or request.user.turista not in sesion.turistas.all():
-        return redirect('tours:pantalla_unirse') # Si intenta colarse, lo devolvemos a su panel
+    es_turista = hasattr(request.user, 'turista') and request.user.turista in sesion.turistas.all()
+    es_guia = False
+    try:
+        if sesion.ruta.guia.user.user == request.user:
+            es_guia = True
+    except AttributeError:
+        pass
+
+    if not es_turista and not es_guia:
+        return redirect('tours:pantalla_unirse')
     
     # 3. Obtener paradas de la ruta
     paradas = sesion.ruta.paradas.all()
@@ -81,6 +88,7 @@ def mapa_turista(request, sesion_id):
         'paradas': paradas,
         'paradas_json': paradas_json,
         'is_anonymous': False,
+        'es_guia': es_guia,
         'current_user_name': request.user.turista.alias if hasattr(request.user, 'turista') else request.user.username,
     }
     
@@ -392,7 +400,33 @@ def registrar_ubicacion(request):
 		status=201,
 	)
 
+@login_required
+def obtener_ubicacion_guia(request, sesion_id):
+    """
+    Devuelve la última ubicación registrada del guía de la sesión.
+    """
+    sesion = get_object_or_404(SESION_TOUR, id=sesion_id)
+    
+    # Identificamos al usuario que es el guía de la ruta
+    try:
+        guia_user = sesion.ruta.guia.user.user
+    except AttributeError:
+        return JsonResponse({'error': 'No se pudo identificar al guía de esta ruta.'}, status=404)
 
+    # Obtenemos su ubicación más reciente en esta sesión específica
+    ultima_ubi = UBICACION_VIVO.objects.filter(
+        sesion_tour=sesion,
+        usuario=guia_user
+    ).order_by('-timestamp').first()
+
+    if ultima_ubi and ultima_ubi.coordenadas:
+        return JsonResponse({
+            'lat': ultima_ubi.coordenadas.y,
+            'lng': ultima_ubi.coordenadas.x,
+            'timestamp': ultima_ubi.timestamp.isoformat()
+        })
+    
+    return JsonResponse({'error': 'El guía aún no ha compartido su ubicación.'}, status=404)
 
 # =============================================================================
 # VISTAS PARA TURISTAS ANÓNIMOS (solo requieren token/cookie)
