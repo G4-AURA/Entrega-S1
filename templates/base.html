@@ -22,20 +22,21 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
 
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" style="letter-spacing: 1px;" href="/">AURA</a>
+            <div class="navbar-brand d-flex align-items-center">
+                <img src="{% static 'img/logo_aura.png' %}" 
+                    alt="AURA" 
+                    height="60">    
+            </div>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="{% url 'home' %}">Mapa Principal</a>
+                        <a class="nav-link" href="{% url 'catalogo' %}" style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Mis Rutas</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'catalogo' %}">Catálogo</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}">Crear Ruta</a>
+                        <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}" style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Crear Ruta</a>
                     </li>
                 </ul>
 

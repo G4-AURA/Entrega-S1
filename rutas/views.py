@@ -61,6 +61,15 @@ def rutas_catalogo(request):
         except Exception:
             pass
 
+        # Buscar sesión activa para esta ruta
+        from tours.models import SESION_TOUR
+        sesion_activa = SESION_TOUR.objects.filter(
+            ruta=ruta,
+            estado__in=['pendiente', 'en_curso']
+        ).first()
+        
+        sesion_activa_id = sesion_activa.id if sesion_activa else None
+
         paradas_en_memoria = list(ruta.paradas.all())
         paradas_en_memoria.sort(key=lambda p: p.orden)
 
@@ -93,6 +102,7 @@ def rutas_catalogo(request):
                 "username": guia_username,
             },
             "paradas": paradas_data,
+            "sesion_activa_id": sesion_activa_id,
         })
 
     response_data = {

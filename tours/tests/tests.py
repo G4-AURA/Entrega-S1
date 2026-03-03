@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from rutas.models import AuthUser, Guia, Ruta
 from tours.tasks import barrido_mensajes_efimeros
-from ..models import MENSAJE_CHAT, SESION_TOUR, TURISTA, UBICACION_VIVO
+from tours.models import MENSAJE_CHAT, SESION_TOUR, TURISTA, UBICACION_VIVO
 
 
 class SessionLogicEndpointsTests(TestCase):
