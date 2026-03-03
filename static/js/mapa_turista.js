@@ -148,13 +148,18 @@ function iniciarEmisionUbicacion() {
 function obtenerUbicacionGuia() {
     if (!map) return;
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
-        .then(response => response.json())
+        .then(response => {
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error('Error al obtener ubicación');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.lat && data.lng) {
                 const pos = [data.lat, data.lng];
                 
                 if (!guiaMarker) {
-                    // Crear marcador si no existe
                     const guiaIcon = L.divIcon({
                         className: 'guia-marker-container',
                         html: '<div class="guia-icon-pulsing"></div>',
@@ -164,25 +169,35 @@ function obtenerUbicacionGuia() {
                     guiaMarker = L.marker(pos, {icon: guiaIcon}).addTo(map);
                     guiaMarker.bindPopup("Ubicación del Guía");
                 } else {
-                    // Actualizar posición si ya existe
                     guiaMarker.setLatLng(pos);
                 }
             }
+        })
+        .catch(() => {
+            // Silenciar error si el guía no ha compartido ubicación aún
         });
 }
 
 // FUNCIÓN DE POLLING PARA MOSTRAR AL GUÍA
 
 function getCsrfToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-               document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+    let token = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    if (token) return token;
+    
+    const cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
+    if (cookieMatch) return cookieMatch[1];
+    
+    const metaToken = document.querySelector('meta[name="csrf-token"]');
+    if (metaToken) return metaToken.content;
+    
+    return '';
 }
 
 /* =========================================
    AURA - Sistema de Chat Turista
 ========================================= */
 function initChat() {
-    if (typeof sesionId === 'undefined') {
+    if (typeof sesionId === 'undefined' || !sesionId) {
         console.error('sesionId no está definido');
         return;
     }
@@ -190,6 +205,11 @@ function initChat() {
     const chatInput = document.getElementById('chat-input');
     const chatSendBtn = document.getElementById('chat-send');
     const chatMessages = document.getElementById('chat-messages');
+    
+    if (!chatInput || !chatSendBtn || !chatMessages) {
+        return;
+    }
+    
     let lastMessageTime = null;
     let isCurrentlyInChat = false;
     let unreadCount = 0; // Contador de mensajes no leídos
@@ -228,7 +248,19 @@ function initChat() {
             },
             body: JSON.stringify({ texto: texto })
         })
-        .then(response => response.json())
+        .then(response => {
+            // Verificar si la respuesta es JSON
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error('Error al enviar mensaje. Verifica tu conexión.');
+            }
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 console.error('Error al enviar mensaje:', data.error);
@@ -242,7 +274,7 @@ function initChat() {
         })
         .catch(error => {
             console.error('Error de red:', error);
-            alert('Error al enviar el mensaje. Por favor, inténtalo de nuevo.');
+            alert('Error al enviar el mensaje: ' + error.message);
         })
         .finally(() => {
             chatSendBtn.disabled = false;
@@ -276,7 +308,17 @@ function initChat() {
         }
 
         fetch(url)
-        .then(response => response.json())
+        .then(response => {
+            // Verificar si la respuesta es JSON
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error('Error al obtener mensajes');
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 console.error('Error al obtener mensajes:', data.error);
@@ -306,7 +348,7 @@ function initChat() {
             }
         })
         .catch(error => {
-            console.error('Error al obtener mensajes:', error);
+            // Silenciar errores de polling para no saturar la consola
         });
     }
 

@@ -11,6 +11,7 @@
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 {% if es_guia %}
     <a href="/catalogo/" class="btn-back"> 
         <span class="material-icons-round">arrow_back</span>
@@ -74,6 +75,25 @@
                 </span>
             </div>
 
+            <h2 class="fw-bold mb-1 text-dark">{{ sesion.ruta.titulo }}</h2>
+            
+            <p class="text-muted mb-4 d-flex align-items-center">
+                <span class="material-icons-round me-2" style="font-size: 18px;">person_pin</span> 
+                Guiado por {{ sesion.ruta.guia.user.user.get_full_name|default:sesion.ruta.guia.user.user.username }}
+            </p>
+
+            <h6 class="text-muted fw-bold text-uppercase mb-0" style="letter-spacing: 1px; font-size: 0.8rem;">Itinerario del Tour</h6>
+            
+            <div class="timeline">
+                {% for parada in paradas %}
+                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
+                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">{{ parada.nombre }}</h6>
+                    <p class="text-muted small mb-0">Parada {{ parada.orden }} del recorrido</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
         <!-- Tab: Chat -->
         <div class="tab-content" id="tab-chat">
             <div class="chat-container">
@@ -92,23 +112,6 @@
             </div>
         </div>
         
-        <h2 class="fw-bold mb-1 text-dark">{{ sesion.ruta.titulo }}</h2>
-        
-        <p class="text-muted mb-4 d-flex align-items-center">
-            <span class="material-icons-round me-2" style="font-size: 18px;">person_pin</span> 
-            Guiado por {{ sesion.ruta.guia.user.user.get_full_name|default:sesion.ruta.guia.user.user.username }}
-        </p>
-
-        <h6 class="text-muted fw-bold text-uppercase mb-0" style="letter-spacing: 1px; font-size: 0.8rem;">Itinerario del Tour</h6>
-        
-        <div class="timeline">
-            {% for parada in paradas %}
-            <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
-                <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">{{ parada.nombre }}</h6>
-                <p class="text-muted small mb-0">Parada {{ parada.orden }} del recorrido</p>
-            </div>
-            {% endfor %}
-        </div>
     </div>
 </div>
 {% endblock %}
@@ -118,7 +121,7 @@
 <script>
     const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
     const sesionId = {{ sesion.id }};
-    const esGuia = {{ es_guia|yesno:"true,false" }}; // Pasar variable al JS
+    const esGuia = {{ es_guia|yesno:"true,false" }};
     const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
     const currentUserName = '{{ current_user_name|escapejs }}';
 </script>
