@@ -4,7 +4,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from rutas.models import AuthUser, Guia, Ruta
-from .models import SESION_TOUR, TURISTA, UBICACION_VIVO
+from .models import SESION_TOUR, TURISTA, UBICACION_VIVO, MENSAJE_CHAT
+from .tasks import barrido_mensajes_efimeros
 
 
 class SessionLogicEndpointsTests(TestCase):
