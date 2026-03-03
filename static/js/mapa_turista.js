@@ -33,12 +33,14 @@ document.addEventListener('DOMContentLoaded', function() {
         attribution: '© Mapbox © OpenStreetMap'
     }).addTo(map);
 
-    if (typeof esGuia !== 'undefined' && esGuia) {
-    iniciarEmisionUbicacion();
-    }
+    // TODOS los usuarios rastrean su propia ubicación localmente para verse a sí mismos
+    iniciarRastreoLocal();
 
-    obtenerUbicacionGuia();
-    setInterval(obtenerUbicacionGuia, 5000); // Actualizar ubicación del guía cada 5 segundos
+    // SOLO los turistas necesitan pedir la ubicación del guía al servidor
+    if (typeof esGuia !== 'undefined' && !esGuia) {
+        obtenerUbicacionGuia();
+        setInterval(obtenerUbicacionGuia, 5000);
+    }
 
     // 3. Renderizar Paradas Dinámicamente
     if (typeof paradasData !== 'undefined' && Array.isArray(paradasData)) {
@@ -123,10 +125,38 @@ document.addEventListener('DOMContentLoaded', function() {
     initChat();
 });
 
-function iniciarEmisionUbicacion() {
+let miUbicacionMarker = null;
+
+function iniciarRastreoLocal() {
     if (navigator.geolocation) {
-        setInterval(() => {
-            navigator.geolocation.getCurrentPosition(position => {
+
+        navigator.geolocation.watchPosition(position => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const pos = [lat, lng];
+
+            // --- 1. MOSTRAR MI UBICACIÓN (En mi pantalla solamente) ---
+            if (!miUbicacionMarker) {
+                // Definimos un estilo azul para el turista y rojo para el guía viéndose a sí mismo
+                const iconHtml = esGuia 
+                    ? '<div style="background-color: #ef4444; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.8);"></div>'
+                    : '<div style="background-color: #3b82f6; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);"></div>';
+
+                const miIcon = L.divIcon({
+                    className: 'mi-ubicacion-marker',
+                    html: iconHtml,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+
+                miUbicacionMarker = L.marker(pos, {icon: miIcon, zIndexOffset: 1000}).addTo(map);
+                miUbicacionMarker.bindPopup(esGuia ? "Mi Ubicación (Guía)" : "Mi Ubicación");
+            } else {
+                miUbicacionMarker.setLatLng(pos);
+            }
+
+            // --- 2. ENVIAR AL SERVIDOR (Solo si soy el guía) ---
+            if (typeof esGuia !== 'undefined' && esGuia) {
                 fetch('/tours/ubicacion/', {
                     method: 'POST',
                     headers: {
@@ -134,19 +164,26 @@ function iniciarEmisionUbicacion() {
                         'X-CSRFToken': getCsrfToken()
                     },
                     body: JSON.stringify({
-                        latitud: position.coords.latitude,
-                        longitud: position.coords.longitude,
+                        latitud: lat,
+                        longitud: lng,
                         sesion_id: sesionId
                     })
-                });
-            });
-        }, 5000);
+                }).catch(err => console.error("Error enviando ubicación al servidor:", err));
+            }
+
+        }, error => {
+            console.warn("Error de geolocalización: ", error);
+        }, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 5000
+        });
     }
 }
 
-
 function obtenerUbicacionGuia() {
     if (!map) return;
+    
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
         .then(response => response.json())
         .then(data => {
@@ -154,21 +191,21 @@ function obtenerUbicacionGuia() {
                 const pos = [data.lat, data.lng];
                 
                 if (!guiaMarker) {
-                    // Crear marcador si no existe
                     const guiaIcon = L.divIcon({
                         className: 'guia-marker-container',
-                        html: '<div class="guia-icon-pulsing"></div>',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
+                        html: '<div style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.8); display:flex; justify-content:center; align-items:center;"><span class="material-icons-round" style="font-size: 16px; color: white;">flag</span></div>',
+                        iconSize: [34, 34],
+                        iconAnchor: [17, 17]
                     });
-                    guiaMarker = L.marker(pos, {icon: guiaIcon}).addTo(map);
+                    
+                    guiaMarker = L.marker(pos, {icon: guiaIcon, zIndexOffset: 900}).addTo(map);
                     guiaMarker.bindPopup("Ubicación del Guía");
                 } else {
-                    // Actualizar posición si ya existe
                     guiaMarker.setLatLng(pos);
                 }
             }
-        });
+        })
+        .catch(error => console.error("Error obteniendo ubicación del guía:", error));
 }
 
 // FUNCIÓN DE POLLING PARA MOSTRAR AL GUÍA
