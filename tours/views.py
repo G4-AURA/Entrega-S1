@@ -44,13 +44,12 @@ def pantalla_unirse_tour(request):
 		turista = None
 		mis_tours = []
 
-	# Le pasamos los datos reales a la plantilla HTML
 	context = {
 		'turista': turista,
 		'mis_tours': mis_tours
 	}
 	
-	return render(request, 'inicio_turista.html', context)
+	return render(request, 'turista/inicio_turista.html', context)
 
 @login_required
 def mapa_turista(request, sesion_id):
@@ -92,7 +91,7 @@ def mapa_turista(request, sesion_id):
         'current_user_name': request.user.turista.alias if hasattr(request.user, 'turista') else request.user.username,
     }
     
-    return render(request, 'turista_mapa.html', context)
+    return render(request, 'turista/turista_mapa.html', context)
 
 
 # =============================================================================
@@ -283,7 +282,6 @@ def participantes_sesion(request, sesion_id):
 	return JsonResponse({'participantes': participantes}, status=200)
 
 
-@login_required
 @require_POST
 def unirse_tour(request):
 	"""
@@ -323,7 +321,6 @@ def unirse_tour(request):
 	)
 
 
-@login_required
 @require_POST
 def registrar_ubicacion(request):
 	"""
@@ -400,7 +397,6 @@ def registrar_ubicacion(request):
 		status=201,
 	)
 
-@login_required
 def obtener_ubicacion_guia(request, sesion_id):
     """
     Devuelve la última ubicación registrada del guía de la sesión.
@@ -590,7 +586,7 @@ def mapa_turista_anonimo(request, token):
 		'current_user_name': turista.alias,
 	}
 	
-	return render(request, 'turista_mapa.html', context)
+	return render(request, 'turista/turista_mapa.html', context)
 
 
 def join_tour_by_code(request, codigo):
