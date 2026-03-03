@@ -44,7 +44,6 @@ def pantalla_unirse_tour(request):
 		turista = None
 		mis_tours = []
 
-	# Le pasamos los datos reales a la plantilla HTML
 	context = {
 		'turista': turista,
 		'mis_tours': mis_tours
