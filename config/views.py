@@ -24,10 +24,7 @@ def home_router(request):
     # 3. Si es guía o cualquier otro usuario (superusuario, etc.)
     # le mostramos el mapa principal (home de guías)
 
-    context = {
-        'MAPBOX_ACCESS_TOKEN': getattr(settings, 'MAPBOX_ACCESS_TOKEN', '')
-    }
-    return render(request, 'mapa.html', context)
+    return redirect('catalogo')
 
 def registro(request):
     # Si el usuario ya está logueado, se le manda a la home directamente
