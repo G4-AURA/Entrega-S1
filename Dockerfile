@@ -25,10 +25,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 # collect static (opcional en build, el || true evita que falle si faltan variables)
 RUN python manage.py collectstatic --noinput || true
-RUN chmod +x /app/docker/entrypoint.prod.sh
 
 # Cloud Run injects the PORT environment variable automatically
-EXPOSE 8000
 
-ENTRYPOINT ["/app/docker/entrypoint.prod.sh"]
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "3"]
+
+CMD exec gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0
