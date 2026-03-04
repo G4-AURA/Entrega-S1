@@ -1,0 +1,6 @@
+Plaintext
+.git
+.venv
+__pycache__
+*.pyc
+db.sqlite3 # Opcional: Si quieres subir tu BD local, quita esta línea. Si quieres una limpia, déjala.
