@@ -18,7 +18,7 @@ if not all([name, user, password]):
 
 for attempt in range(1, 31):
     try:
-        psycopg.connect(host=host, port=port, dbname=name, user=user, password=password).close()
+        psycopg.connect(host=host, port=port, dbname=name, user=user, password=password, sslmode="require").close()
         print("[entrypoint] Database is ready.")
         break
     except Exception as exc:
