@@ -31,4 +31,4 @@ RUN chmod +x /app/docker/entrypoint.prod.sh
 EXPOSE 8000
 
 ENTRYPOINT ["/app/docker/entrypoint.prod.sh"]
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+CMD exec gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3
