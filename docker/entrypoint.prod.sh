@@ -2,7 +2,7 @@
 set -e
 
 echo "[entrypoint] Waiting for database..."
-python - <<'PY'
+python -u - <<'PY'
 import os
 import time
 import psycopg
@@ -18,7 +18,7 @@ if not all([name, user, password]):
 
 for attempt in range(1, 31):
     try:
-        psycopg.connect(host=host, port=port, dbname=name, user=user, password=password, sslmode="require").close()
+        psycopg.connect(host=host, port=port, dbname=name, user=user, password=password, sslmode="require", connect_timeout=3).close()
         print("[entrypoint] Database is ready.")
         break
     except Exception as exc:
