@@ -8,3 +8,4 @@ pgvector==0.3.2
 langgraph==1.0.9
 ortools==9.15.6755
 google-genai==1.64.0
+whitenoise==6.6.0
