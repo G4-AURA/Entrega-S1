@@ -57,9 +57,9 @@ class GeneracionRutaIATestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'OK')
-        self.assertTrue(payload.get('ruta_id'))
+        self.assertTrue(payload.get('datos', {}).get('ruta_id'))
 
-        ruta = Ruta.objects.get(id=payload['ruta_id'])
+        ruta = Ruta.objects.get(id=payload['datos']['ruta_id'])
         self.assertEqual(ruta.guia.user.user, guia_user)
         self.assertEqual(ruta.titulo, f"Sevilla {timezone.localtime().strftime('%Y-%m-%d')}")
         self.assertTrue(ruta.es_generada_ia)

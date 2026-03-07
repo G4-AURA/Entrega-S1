@@ -4,83 +4,7 @@
 {% block title %}AURA - Personalización de Ruta{% endblock %}
 
 {% block extra_css %}
-<style>
-    .personalizacion-wrapper {
-        max-width: 960px;
-        margin: 0 auto;
-    }
-
-    .gradient-card {
-        border: 0;
-        border-radius: 1rem;
-        background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%);
-    }
-
-    .form-label {
-        font-weight: 600;
-    }
-
-    .map-container-ruta {
-        height: 500px;
-        width: 100%;
-        border-radius: 1rem;
-        border: 1px solid #dee2e6;
-    }
-
-    .list-paradas-container {
-        max-height: 500px;
-        overflow-y: auto;
-    }
-
-    .loading-overlay {
-        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
-        z-index: 1080; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px);
-    }
-
-    .loading-overlay__card {
-        width: min(92vw, 420px);
-        border-radius: 1rem;
-    }
-
-    .loading-overlay__spinner {
-        width: 3.5rem;
-        height: 3.5rem;
-    }
-
-    .mood-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .mood-btn {
-        padding: 0.5rem 1rem;
-        border: 2px solid #dee2e6;
-        border-radius: 2rem;
-        background: white;
-        color: #6c757d;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-size: 0.95rem;
-        user-select: none;
-    }
-
-    .mood-btn:hover {
-        border-color: #0d6efd;
-        color: #0d6efd;
-    }
-
-    .mood-btn.active {
-        background: #0d6efd;
-        color: white;
-        border-color: #0d6efd;
-    }
-
-    .mood-btn input[type="checkbox"] {
-        display: none;
-    }
-
-</style>
+<link rel="stylesheet" href="{% static 'css/creacion/personalizacion.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -95,23 +19,21 @@
 
             <div id="estado-respuesta" class="alert d-none" role="alert"></div>
 
-            <form id="form-personalizacion-ruta" class="row g-3 g-md-4">
+            <form id="form-personalizacion-ruta" class="row g-3 g-md-4" data-csrf-token="{{ csrf_token }}" data-mapbox-token="{{ MAPBOX_ACCESS_TOKEN }}">
                 <div class="col-12">
                     <label for="ciudad" class="form-label">¿Qué ciudad quieres recorrer?</label>
                     <input type="text" id="ciudad" name="ciudad" class="form-control form-control-lg" required>
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="duracion" class="form-label">Duración (horas)</label>
-                    <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" 
-                           min="1" max="24" step="1" placeholder="Ej: 2" required>
+                    <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" min="1" max="24" step="1" placeholder="Ej: 2" required>
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="personas" class="form-label">Número de Personas</label>
-                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" 
-                           min="1" max="100" step="1" placeholder="Ej: 4" required>
+                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" min="1" max="100" step="1" placeholder="Ej: 4" required>
                 </div>
                 <div class="col-12 col-md-6">
-                    <label class="form-label">Exigencia</label>
+                    <label class="form-label" for="exigencia">Exigencia</label>
                     <select id="exigencia" name="exigencia" class="form-select" required>
                         <option value="baja">Baja</option>
                         <option value="media" selected>Media</option>
@@ -177,30 +99,19 @@
         </div>
         <div class="col-12 col-lg-4">
             <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
-            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
-                </div>
+            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm"></div>
         </div>
     </div>
 </section>
 
 <div id="pantalla-carga" class="loading-overlay">
-    <div class="card p-5 text-center shadow-lg border-0" style="max-width: 400px;">
-        <div class="spinner-border text-primary mx-auto mb-4" style="width: 3rem; height: 3rem;"></div>
+    <div class="card p-5 text-center shadow-lg border-0 loading-overlay__card">
+        <div class="spinner-border text-primary mx-auto mb-4 loading-overlay__spinner"></div>
         <h5>Generando...</h5>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script id="personalizacion-config" type="application/json">
-    {
-        "urls": {
-            "generar": "{% url 'creacion:generar_ruta_ia' %}"
-        },
-        "csrfToken": "{{ csrf_token|escapejs }}",
-        "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN|escapejs }}"
-    }
-</script>
-<script src="{% static 'js/creacion/mapa_creacion.js' %}"></script>
-<script src="{% static 'js/creacion/personalizacion_ruta.js' %}"></script>
+<script src="{% static 'js/creacion/personalizacion.js' %}"></script>
 {% endblock %}

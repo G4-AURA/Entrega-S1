@@ -275,6 +275,130 @@ class State(TypedDict):
     ruta_final: dict
 
 
+MOOD_MAP = {
+    'historia': 'historia',
+    'gastronomia': 'gastronomia',
+    'naturaleza': 'naturaleza',
+    'misterio-leyendas': 'misterio y leyendas',
+    'misterio y leyendas': 'misterio y leyendas',
+    'local': 'local',
+    'cine-series': 'cine y series',
+    'cine y series': 'cine y series',
+    'religioso-espiritual': 'religioso y espiritual',
+    'religioso y espiritual': 'religioso y espiritual',
+    'arquitectura-diseno': 'arquitectura y diseño',
+    'arquitectura y diseño': 'arquitectura y diseño',
+    'ocio-cultural': 'ocio/cultural',
+    'ocio/cultural': 'ocio/cultural',
+}
+
+EXIGENCIA_MAP = {
+    'baja': 'baja',
+    'media': 'media',
+    'medio': 'media',
+    'alta': 'alta',
+}
+
+
+def normalizar_mood(raw_moods):
+    if isinstance(raw_moods, str):
+        raw_moods = [raw_moods]
+
+    normalizados = []
+    for mood in raw_moods or []:
+        key = str(mood).strip().lower()
+        if not key:
+            continue
+        normalizados.append(MOOD_MAP.get(key, key))
+    return normalizados
+
+
+def normalizar_nivel_exigencia(raw_value, default='media'):
+    return EXIGENCIA_MAP.get(str(raw_value or '').strip().lower(), default)
+
+
+def _normalizar_coordenadas(raw_coordenadas, lat=None, lon=None):
+    if isinstance(raw_coordenadas, dict):
+        lat = raw_coordenadas.get('lat')
+        lon = raw_coordenadas.get('lon') if raw_coordenadas.get('lon') is not None else raw_coordenadas.get('lng')
+    elif isinstance(raw_coordenadas, (list, tuple)) and len(raw_coordenadas) >= 2:
+        lat, lon = raw_coordenadas[0], raw_coordenadas[1]
+
+    if lat is None or lon is None:
+        return None
+
+    return [float(lat), float(lon)]
+
+
+def mapear_payload_ia(payload):
+    ciudad = str(payload.get('ciudad') or '').strip()
+    duracion = payload.get('duracion')
+    personas = payload.get('personas')
+
+    if not ciudad or duracion in (None, '') or personas in (None, ''):
+        raise ValueError('Faltan parámetros obligatorios en la petición.')
+
+    mood = normalizar_mood(payload.get('mood') or [])
+    if not mood:
+        raise ValueError('Debes seleccionar al menos un mood para generar la ruta.')
+
+    return {
+        'ciudad': ciudad,
+        'duracion': float(duracion),
+        'personas': int(personas),
+        'exigencia': normalizar_nivel_exigencia(payload.get('exigencia')),
+        'mood': mood,
+    }
+
+
+def mapear_payload_manual(payload):
+    paradas_normalizadas = []
+    for idx, parada in enumerate(payload.get('paradas', []), start=1):
+        coords = _normalizar_coordenadas(
+            parada.get('coordenadas') or parada.get('coords'),
+            lat=parada.get('lat'),
+            lon=parada.get('lon'),
+        )
+        if not coords:
+            continue
+
+        paradas_normalizadas.append(
+            {
+                'orden': int(parada.get('orden') or idx),
+                'nombre': parada.get('nombre') or f'Parada {idx}',
+                'descripcion': parada.get('descripcion') or parada.get('desc') or '',
+                'coordenadas': coords,
+            }
+        )
+
+    if not paradas_normalizadas:
+        raise ValueError('La ruta manual debe incluir al menos una parada con coordenadas válidas.')
+
+    return {
+        'titulo': str(payload.get('titulo') or '').strip() or 'Ruta manual',
+        'descripcion': str(payload.get('descripcion') or '').strip(),
+        'duracion_horas': float(payload.get('duracion_horas') or 2.0),
+        'num_personas': int(payload.get('num_personas') or 10),
+        'nivel_exigencia': normalizar_nivel_exigencia(payload.get('nivel_exigencia')),
+        'mood': normalizar_mood(payload.get('mood') or []),
+        'paradas': paradas_normalizadas,
+    }
+
+
+def serializar_ruta_creada(ruta, paradas):
+    return {
+        'id': ruta.id,
+        'titulo': ruta.titulo,
+        'descripcion': ruta.descripcion,
+        'duracion_horas': float(ruta.duracion_horas),
+        'num_personas': int(ruta.num_personas),
+        'nivel_exigencia': ruta.nivel_exigencia,
+        'mood': ruta.mood,
+        'es_generada_ia': bool(ruta.es_generada_ia),
+        'paradas': paradas,
+    }
+
+
 ### --- FUNCIONES AUXILIARES --- ###
 def llamar_gemini_bypass(prompt, api_key):
 
