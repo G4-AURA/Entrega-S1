@@ -4,7 +4,8 @@ y bloques para contenido específico de cada página. Este template es solo de d
 y puede ser modificado según las necesidades del proyecto. Las páginas específicas 
 (como mapa.html) extenderán este template y llenarán los bloques definidos aquí. */
 -->
-{% load static %} <!DOCTYPE html>
+{% load static %}
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -13,7 +14,6 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
 
     {% block extra_css %}{% endblock %}
@@ -23,57 +23,56 @@ y puede ser modificado según las necesidades del proyecto. Las páginas especí
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
             <div class="navbar-brand d-flex align-items-center">
-                <img src="{% static 'img/logo_aura.png' %}" 
-                    alt="AURA" 
-                    height="60">    
+                <img src="{% static 'img/logo_aura.png' %}" alt="AURA" height="60">
             </div>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
+
+                {# Solo los guías autenticados ven los enlaces de navegación #}
                 <ul class="navbar-nav me-auto">
                     {% if user.is_authenticated %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'catalogo' %}" style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Mis Rutas</a>
+                        <a class="nav-link" href="{% url 'catalogo' %}"
+                           style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Mis Rutas</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}" style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Crear Ruta</a>
+                        <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}"
+                           style="color: #f4f3ee; font-size: 18px; font-weight: 600;">Crear Ruta</a>
                     </li>
-                     {% endif %}
+                    {% endif %}
                 </ul>
 
-                <a href="#" class="text-decoration-none" title="Ir a mi perfil">
-                   {% if user.is_authenticated %}
-                        <div class="d-flex align-items-center">
-                            <span class="me-3 text-secondary small">Conectado como <strong>{{ user.username }}</strong></span>
-                            
-                            <form method="post" action="{% url 'logout' %}">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-outline-danger btn-sm px-3 rounded-pill fw-bold">
-                                    <i class="bi bi-box-arrow-right me-1"></i> Salir
-                                </button>
-                            </form>
-                        </div>
-                    {% else %}
-                        <div class="d-flex gap-2">
-                            <a href="{% url 'login' %}" class="btn btn-outline-primary btn-sm px-3 rounded-pill">Entrar</a>
-                            <a href="{% url 'registro' %}" class="btn btn-primary btn-sm px-3 rounded-pill">Registrarse</a>
-                        </div>
+                <div>
+                    {% if user.is_authenticated %}
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="text-secondary small">
+                            Conectado como <strong>{{ user.username }}</strong>
+                        </span>
+                        <form method="post" action="{% url 'logout' %}">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    class="btn btn-outline-danger btn-sm px-3 rounded-pill fw-bold">
+                                <i class="bi bi-box-arrow-right me-1"></i> Salir
+                            </button>
+                        </form>
+                    </div>
                     {% endif %}
-                </a>
                 </div>
+
             </div>
         </div>
     </nav>
 
     <main class="container">
-        {% block content %}
-        {% endblock %}
+        {% block content %}{% endblock %}
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
     {% block extra_js %}{% endblock %}
 </body>
