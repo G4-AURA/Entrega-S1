@@ -1,116 +1,66 @@
-from django.contrib.auth.decorators import login_required
-from django.contrib.gis.geos import Point
-from django.db.models import Prefetch
+"""
+rutas/views.py
+
+Vistas delgadas: validan HTTP y delegan al módulo rutas/services.
+
+Roles:
+  - Guía: autenticado con Django Auth (@login_required)
+
+Funcionalidades:
+  - Gestión de rutas: listado, visualización y eliminación.
+"""
+
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.core.exceptions import PermissionDenied
 
 from .models import Ruta, Parada
+from . import services
 
-MAX_RUTAS_PAGE_SIZE = 100
+MAX_RUTAS_PAGE_SIZE = 9
+
+# ================================================
+# Método auxiliar para validar que rol sea <guía>
+# ================================================
+
+from django.core.exceptions import PermissionDenied
+
+def es_guia(user):
+    """
+    Comprueba si el usuario autenticado tiene un perfil de Guia asociado.
+    Ruta de modelos: User -> AuthUser (auth_profile) -> Guia (guia)
+    """
+    if user.is_authenticated:
+        if hasattr(user, 'auth_profile') and hasattr(user.auth_profile, 'guia'):
+            if user.auth_profile.guia is not None:
+                return True
+                
+    raise PermissionDenied("Acceso denegado: área exclusiva para guías.")
+
+# ================================================
+
 
 @require_GET
 @login_required
+@user_passes_test(es_guia)
 def rutas_catalogo(request):
     try:
-        limit = int(request.GET.get("limit", 10))
+        limit = int(request.GET.get("limit", 3))
+        if limit > MAX_RUTAS_PAGE_SIZE:
+            limit = MAX_RUTAS_PAGE_SIZE
     except (TypeError, ValueError):
-        limit = 10
-        
+        limit = 3
+
     try:
         page_number = int(request.GET.get("page", 1))
     except (TypeError, ValueError):
         page_number = 1
-
+    
     tipo = request.GET.get("tipo")
 
-    rutas_qs = (
-        Ruta.objects.select_related("guia")
-        .prefetch_related(
-            Prefetch('paradas', queryset=Parada.objects.all()) 
-        )
-        .filter(guia__user__user=request.user)
-        .distinct()
-        .order_by("-id")
-    )
-
-    if tipo == "ia":
-        rutas_qs = rutas_qs.filter(es_generada_ia=True)
-    elif tipo == "manual":
-        rutas_qs = rutas_qs.filter(es_generada_ia=False)
-
-    paginator = Paginator(rutas_qs, limit)
-
-    try:
-        page_obj = paginator.page(page_number)
-    except PageNotAnInteger:
-        page_obj = paginator.page(1)
-    except EmptyPage:
-        page_obj = paginator.page(paginator.num_pages)
-
-    data = []
-    for ruta in page_obj.object_list:
-        guia_username = None
-        guia_id = None
-        
-        try:
-            if ruta.guia and ruta.guia.user:
-                guia_id = ruta.guia.id
-                guia_username = ruta.guia.user.user.username
-        except Exception:
-            pass
-
-        # Buscar sesión activa para esta ruta
-        from tours.models import SESION_TOUR
-        sesion_activa = SESION_TOUR.objects.filter(
-            ruta=ruta,
-            estado__in=['pendiente', 'en_curso']
-        ).first()
-        
-        sesion_activa_id = sesion_activa.id if sesion_activa else None
-
-        paradas_en_memoria = list(ruta.paradas.all())
-        paradas_en_memoria.sort(key=lambda p: p.orden)
-
-        paradas_data = []
-        for parada in paradas_en_memoria:
-            coords = None
-            if parada.coordenadas:
-                coords = {
-                    "lat": parada.coordenadas.y,
-                    "lng": parada.coordenadas.x,
-                }
-            paradas_data.append({
-                "id": parada.id,
-                "orden": parada.orden,
-                "nombre": parada.nombre,
-                "coordenadas": coords,
-            })
-
-        data.append({
-            "id": ruta.id,
-            "titulo": ruta.titulo,
-            "descripcion": ruta.descripcion,
-            "duracion_horas": ruta.duracion_horas,
-            "num_personas": ruta.num_personas,
-            "nivel_exigencia": ruta.nivel_exigencia,
-            "mood": list(ruta.mood or []),
-            "es_generada_ia": ruta.es_generada_ia,
-            "guia": {
-                "id": guia_id,
-                "username": guia_username,
-            },
-            "paradas": paradas_data,
-            "sesion_activa_id": sesion_activa_id,
-        })
-
-    response_data = {
-        "results": data,
-        "current_page": page_obj.number,
-        "total_pages": paginator.num_pages,
-        "total_items": paginator.count
-    }
+    response_data = services.obtener_datos_catalogo_paginado(request.user, limit, page_number, tipo)
 
     response = JsonResponse(response_data, safe=False, json_dumps_params={'ensure_ascii': False})
     response['Content-Type'] = 'application/json; charset=utf-8'
@@ -118,25 +68,31 @@ def rutas_catalogo(request):
 
 
 @require_GET
+@login_required
+@user_passes_test(es_guia)
 def catalogo_view(request):
-    """Vista que renderiza la página del catálogo de rutas"""
+    """
+    Vista que renderiza la página del catálogo de rutas
+    """
     return render(request, 'rutas/catalogo.html')
 
 
 @login_required
 @require_http_methods(["POST"])
+@user_passes_test(es_guia)
 def eliminar_ruta_view(request, ruta_id):
     ruta = get_object_or_404(
         Ruta,
         id=ruta_id,
         guia__user__user=request.user,
     )
-    ruta.delete()
+    services.eliminar_ruta(ruta)
     return JsonResponse({"status": "ok"})
 
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@user_passes_test(es_guia)
 def ruta_detalle_view(request, ruta_id):
     ruta = get_object_or_404(
         Ruta.objects.select_related("guia").prefetch_related("paradas"),
@@ -144,148 +100,78 @@ def ruta_detalle_view(request, ruta_id):
         guia__user__user=request.user,
     )
 
-    allowed_moods = {value for value, _ in Ruta.Mood.choices}
+    # Gestión de peticiones POST (formularios de edición)
     if request.method == "POST":
         form_type = request.POST.get("form_type")
 
         if form_type == "title":
-            new_title = (request.POST.get("titulo") or "").strip()
-            new_description = (request.POST.get("descripcion") or "").strip()
-            if new_title:
-                ruta.titulo = new_title
-                ruta.descripcion = new_description
-                ruta.save(update_fields=["titulo", "descripcion"])
+            try:
+                services.actualizar_titulo_ruta(ruta, request.POST.get("titulo"))
+                services.actualizar_descripcion_ruta(ruta, request.POST.get("descripcion"))
                 return redirect(f"{request.path}?title_updated=1")
-            return redirect(f"{request.path}?title_error=1")
+            except ValueError:
+                return redirect(f"{request.path}?title_error=1")
 
         if form_type == "meta":
             try:
-                duracion_horas = float((request.POST.get("duracion_horas") or "").strip())
-                num_personas = int((request.POST.get("num_personas") or "").strip())
-            except (TypeError, ValueError):
+                services.actualizar_duracion_ruta(ruta, request.POST.get("duracion_horas"))
+                services.actualizar_personas_ruta(ruta, request.POST.get("num_personas"))
+                services.actualizar_exigencia_ruta(ruta, request.POST.get("nivel_exigencia"))
+                return redirect(f"{request.path}?meta_updated=1")
+            except ValueError:
                 return redirect(f"{request.path}?meta_error=1")
-
-            nivel_exigencia = (request.POST.get("nivel_exigencia") or "").strip()
-            exigencias_validas = {value for value, _ in Ruta.Exigencia.choices}
-
-            if duracion_horas <= 0 or num_personas <= 0 or nivel_exigencia not in exigencias_validas:
-                return redirect(f"{request.path}?meta_error=1")
-
-            ruta.duracion_horas = duracion_horas
-            ruta.num_personas = num_personas
-            ruta.nivel_exigencia = nivel_exigencia
-            ruta.save(update_fields=["duracion_horas", "num_personas", "nivel_exigencia"])
-            return redirect(f"{request.path}?meta_updated=1")
 
         if form_type == "stop_delete":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
-            parada.delete()
-
-            for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
-                if parada_restante.orden != index:
-                    parada_restante.orden = index
-                    parada_restante.save(update_fields=["orden"])
-
+            services.eliminar_parada_y_reordenar(ruta, parada)
             return redirect(f"{request.path}?stop_deleted=1")
 
         if form_type == "stop_edit":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
-
-            nombre = (request.POST.get("nombre") or "").strip()
-            lat_raw = (request.POST.get("lat") or "").strip()
-            lon_raw = (request.POST.get("lon") or "").strip()
-
-            if not nombre:
-                return redirect(f"{request.path}?stop_error=1")
-
             try:
-                lat = float(lat_raw)
-                lon = float(lon_raw)
-            except (TypeError, ValueError):
-                return redirect(f"{request.path}?stop_error=1")
-
-            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                return redirect(f"{request.path}?stop_error=1")
-
-            parada.nombre = nombre
-            parada.coordenadas = Point(lon, lat, srid=4326)
-            parada.save(update_fields=["nombre", "coordenadas"])
-            return redirect(f"{request.path}?stop_updated=1")
-
-        if form_type == "stop_add":
-            nombre = (request.POST.get("nombre") or "").strip()
-            lat_raw = (request.POST.get("lat") or "").strip()
-            lon_raw = (request.POST.get("lon") or "").strip()
-
-            if not nombre:
-                return redirect(f"{request.path}?stop_error=1")
-
-            try:
-                lat = float(lat_raw)
-                lon = float(lon_raw)
-            except (TypeError, ValueError):
-                return redirect(f"{request.path}?stop_error=1")
-
-            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                return redirect(f"{request.path}?stop_error=1")
-
-            ultimo_orden = ruta.paradas.order_by("-orden").values_list("orden", flat=True).first() or 0
-            Parada.objects.create(
-                ruta=ruta,
-                orden=ultimo_orden + 1,
-                nombre=nombre,
-                coordenadas=Point(lon, lat, srid=4326),
-            )
-            return redirect(f"{request.path}?stop_added=1")
-
-        if form_type == "stop_reorder":
-            raw_order = (request.POST.get("stop_order") or "").strip()
-            try:
-                ordered_ids = [int(value) for value in raw_order.split(",") if value.strip()]
+                services.editar_parada(
+                    parada,
+                    request.POST.get("nombre"),
+                    request.POST.get("lat"),
+                    request.POST.get("lon")
+                )
+                return redirect(f"{request.path}?stop_updated=1")
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
-            current_ids = list(ruta.paradas.values_list("id", flat=True))
-            if len(ordered_ids) != len(current_ids) or set(ordered_ids) != set(current_ids):
+        if form_type == "stop_add":
+            try:
+                services.añadir_parada(
+                    ruta,
+                    request.POST.get("nombre"),
+                    request.POST.get("lat"),
+                    request.POST.get("lon")
+                )
+                return redirect(f"{request.path}?stop_added=1")
+            except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
-            paradas_by_id = {parada.id: parada for parada in ruta.paradas.all()}
-            for index, parada_id in enumerate(ordered_ids, start=1):
-                parada = paradas_by_id.get(parada_id)
-                if parada and parada.orden != index:
-                    parada.orden = index
-                    parada.save(update_fields=["orden"])
-
-            return redirect(f"{request.path}?stop_reordered=1")
+        if form_type == "stop_reorder":
+            try:
+                services.reordenar_paradas(
+                    ruta, 
+                    request.POST.get("stop_order")
+                )
+                return redirect(f"{request.path}?stop_reordered=1")
+            except ValueError:
+                return redirect(f"{request.path}?stop_error=1")
 
         if form_type == "mood":
-            selected_moods = request.POST.getlist("mood")
-            cleaned_moods = [mood for mood in selected_moods if mood in allowed_moods]
-            ruta.mood = cleaned_moods
-            ruta.save(update_fields=["mood"])
+            services.actualizar_moods(ruta, request.POST.getlist("mood"))
             return redirect(f"{request.path}?mood_updated=1")
 
         return redirect(request.path)
 
+    # Gestión de peticiones GET (renderizado de la página)
     paradas = sorted(ruta.paradas.all(), key=lambda parada: parada.orden)
-
-    paradas_json = []
-    for parada in paradas:
-        if parada.coordenadas:
-            coordenadas = [parada.coordenadas.y, parada.coordenadas.x]
-        else:
-            coordenadas = None
-
-        paradas_json.append(
-            {
-                "id": parada.id,
-                "orden": parada.orden,
-                "nombre": parada.nombre,
-                "coordenadas": coordenadas,
-            }
-        )
+    paradas_json = services.obtener_paradas_json(paradas)
 
     context = {
         "ruta": ruta,
@@ -305,3 +191,5 @@ def ruta_detalle_view(request, ruta_id):
         "exigencia_choices": Ruta.Exigencia.choices,
     }
     return render(request, "rutas/detalle_ruta.html", context)
+
+
