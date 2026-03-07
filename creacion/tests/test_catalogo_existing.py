@@ -117,9 +117,9 @@ class CatalogoRutasIATestCase(TestCase):
                 content_type='application/json',
             )
 
-        response = self.client.get(reverse('rutas-catalogo') + '?solo_ia=1')
+        response = self.client.get(reverse('rutas-catalogo') + '?tipo=ia')
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = response.json()['results']
         self.assertEqual(len(data), 1)
         self.assertTrue(data[0]['es_generada_ia'])
 
@@ -178,7 +178,7 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
 
         response = self.client.get(reverse('rutas-catalogo'))
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = response.json()['results']
 
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['guia']['username'], user_2.username)

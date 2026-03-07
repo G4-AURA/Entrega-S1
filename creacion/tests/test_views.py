@@ -55,8 +55,8 @@ class GenerarRutaIAViewTests(TestCase):
             'ciudad': 'Sevilla',
             'duracion': 3.0,
             'personas': 6,
-            'exigencia': 'media',
-            'mood': ['historia', 'gastronomia'],
+            'exigencia': Ruta.Exigencia.MEDIA,
+            'mood': [Ruta.Mood.HISTORIA, Ruta.Mood.GASTRONOMIA],
         })
         mock_get_guia.assert_called_once_with(user)
         mock_guardar.assert_called_once()
