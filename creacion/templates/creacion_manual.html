@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}AURA - Crear Ruta Manual{% endblock %}
 
@@ -430,7 +431,7 @@
     <div class="container">
         
         <header class="header">
-            <button class="btn-back" onclick="window.location.href='/crear-ruta/'">
+            <button class="btn-back" type="button">
                 <span class="material-icons-round">arrow_back</span>
             </button>
             <div class="header-title">Creación manual</div>
@@ -477,10 +478,10 @@
                 <span class="counter-number" id="counter-display">2</span>
             </div>
             <div class="counter-actions">
-                <button class="btn-counter" onclick="removeStop()">
+                <button class="btn-counter" id="btn-remove-stop" type="button">
                     <span class="material-icons-round">remove</span>
                 </button>
-                <button class="btn-counter" onclick="addStop()">
+                <button class="btn-counter" id="btn-add-stop" type="button">
                     <span class="material-icons-round">add</span>
                 </button>
             </div>
@@ -494,11 +495,11 @@
                     <span class="material-icons-round" style="color: var(--text-sec); cursor: grab;">drag_handle</span>
                 </div>
 
-                <div class="image-upload-area" id="img-area-1" onclick="document.getElementById('file-1').click()">
+                <div class="image-upload-area" id="img-area-1" data-file-input="file-1">
                     <span class="material-icons-round">add_photo_alternate</span>
                     <span class="image-upload-text">Cargar Imagen</span>
                 </div>
-                <input type="file" id="file-1" hidden accept="image/*" onchange="previewImage(this, 1)">
+                <input type="file" id="file-1" hidden accept="image/*" data-stop-id="1">
 
                     <div class="form-group">
                         <label class="input-label">Nombre del Lugar</label>
@@ -520,11 +521,11 @@
                     <span class="material-icons-round" style="color: var(--text-sec); cursor: grab;">drag_handle</span>
                 </div>
 
-                <div class="image-upload-area" id="img-area-2" onclick="document.getElementById('file-2').click()">
+                <div class="image-upload-area" id="img-area-2" data-file-input="file-2">
                     <span class="material-icons-round">add_photo_alternate</span>
                     <span class="image-upload-text">Cargar Imagen</span>
                 </div>
-                <input type="file" id="file-2" hidden accept="image/*" onchange="previewImage(this, 2)">
+                <input type="file" id="file-2" hidden accept="image/*" data-stop-id="2">
 
                     <div class="form-group">
                         <label class="input-label">Nombre del Lugar</label>
@@ -568,218 +569,18 @@
         </div>
     </div>
 
-    <script>
-        let stopCount = 2;
-        const container = document.getElementById('stops-container');
-        const display = document.getElementById('counter-display');
-
-        function updateDisplay() {
-            display.innerText = stopCount;
+    <script id="creacion-manual-config" type="application/json">
+        {
+            "urls": {
+                "guardarManual": "{% url 'creacion:guardar_ruta_manual' %}",
+                "volver": "{% url 'creacion:seleccion_tipo_ruta' %}",
+                "catalogo": "{% url 'rutas:catalogo' %}"
+            },
+            "csrfToken": "{{ csrf_token|escapejs }}"
         }
-
-        function previewImage(input, id) {
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const area = document.getElementById(`img-area-${id}`);
-                    area.style.backgroundImage = `url(${e.target.result})`;
-                    area.innerHTML = '';
-                    area.style.border = 'none';
-                }
-                reader.readAsDataURL(input.files[0]);
-            }
-        }
-
-        function addStop() {
-            stopCount++;
-            updateDisplay();
-
-            const div = document.createElement('div');
-            div.className = 'stop-card';
-            div.id = `stop-${stopCount}`;
-            div.innerHTML = `
-                <div class="stop-header">
-                    <span class="stop-number-badge">PARADA ${stopCount}</span>
-                    <span class="material-icons-round" style="color: var(--text-sec); cursor: grab;">drag_handle</span>
-                </div>
-
-                <div class="image-upload-area" id="img-area-${stopCount}" onclick="document.getElementById('file-${stopCount}').click()">
-                    <span class="material-icons-round">add_photo_alternate</span>
-                    <span class="image-upload-text">Cargar Imagen</span>
-                </div>
-                <input type="file" id="file-${stopCount}" hidden accept="image/*" onchange="previewImage(this, ${stopCount})">
-
-                <div class="form-group">
-                    <label class="input-label">Nombre del Lugar</label>
-                    <input type="text" class="input-field" placeholder="Nombre...">
-                </div>
-
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label class="input-label">Ubicación</label>
-                    <div class="location-group">
-                        <input type="text" class="input-field" placeholder="Dirección...">
-                        <button class="btn-map">
-                            <span class="material-icons-round">map</span>
-                        </button>
-                    </div>
-                </div>
-            `;
-            container.appendChild(div);
-            
-            setTimeout(() => {
-                div.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 100);
-        }
-
-        function removeStop() {
-            if (stopCount > 1) {
-                const el = document.getElementById(`stop-${stopCount}`);
-                if (el) el.remove();
-                stopCount--;
-                updateDisplay();
-            }
-        }
-
-        document.getElementById('btn-guardar-tour').addEventListener('click', async function() {
-            const btnSave = this;
-            const originalText = btnSave.innerHTML;
-            btnSave.innerHTML = '<span class="material-icons-round">hourglass_empty</span> Guardando...';
-            btnSave.disabled = true;
-
-            const titulo = document.getElementById('ruta-titulo').value;
-            const descripcion = document.getElementById('ruta-descripcion').value;
-            const duracion = document.getElementById('ruta-duracion').value;
-            const personas = document.getElementById('ruta-personas').value;
-            const exigencia = document.getElementById('ruta-exigencia').value;
-            
-            const paradas = [];
-            const stopCards = document.querySelectorAll('.stop-card');
-            
-            stopCards.forEach((card, index) => {
-                const nombreInput = card.querySelector('.stop-nombre') || card.querySelector('input[placeholder^="Ej:"]');
-                const ubicacionInput = card.querySelector('.stop-ubicacion') || card.querySelector('input[placeholder="Dirección..."]');
-                
-                const lat = ubicacionInput && ubicacionInput.dataset.lat ? parseFloat(ubicacionInput.dataset.lat) : 37.38;
-                const lon = ubicacionInput && ubicacionInput.dataset.lon ? parseFloat(ubicacionInput.dataset.lon) : -5.99;
-
-                paradas.push({
-                    nombre: nombreInput ? nombreInput.value : `Parada ${index + 1}`,
-                    direccion: ubicacionInput ? ubicacionInput.value : '',
-                    lat: lat, 
-                    lon: lon
-                });
-            });
-            
-            const payload = {
-                titulo: titulo,
-                descripcion: descripcion,
-                paradas: paradas,
-                duracion_horas:duracion, 
-                num_personas: personas,
-                nivel_exigencia: exigencia,
-                mood: []
-            };
-            
-            try {
-                const response = await fetch('/crear-ruta/api/guardar-manual/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token }}' 
-                    },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.status === 'OK') {
-                    alert('¡Ruta guardada con éxito!');
-                    // Redirigir al catálogo para ver la ruta recién creada
-                    window.location.href = '/catalogo/'; 
-                } else {
-                    throw new Error(data.mensaje || "Error desconocido al guardar la ruta");
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Ocurrió un error al intentar guardar la ruta: ' + error.message);
-            } finally {
-                // Restaurar el botón
-                btnSave.innerHTML = originalText;
-                btnSave.disabled = false;
-            }
-        });
-
-        // Variables globales para el mapa
-        let map = null;
-        let marker = null;
-        let currentInputTarget = null; // Guardará el input que disparó el mapa
-        let tempCoords = null; // Coordenadas temporales seleccionadas
-
-        // Inicializar el mapa
-        function initMap() {
-            if (!map) {
-                // Centrado por defecto en Sevilla
-                map = L.map('leaflet-map').setView([37.3886, -5.9823], 13);
-                
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors'
-                }).addTo(map);
-
-                map.on('click', function(e) {
-                    tempCoords = e.latlng;
-                    if (marker) {
-                        marker.setLatLng(tempCoords);
-                    } else {
-                        marker = L.marker(tempCoords).addTo(map);
-                    }
-                });
-            }
-        }
-
-        document.addEventListener('click', function(e) {
-            const mapBtn = e.target.closest('.btn-map');
-            
-            if (mapBtn) {
-                e.preventDefault(); 
-                currentInputTarget = mapBtn.previousElementSibling;
-                
-                // Mostrar el modal
-                document.getElementById('map-modal-overlay').style.display = 'flex';
-                
-                initMap();
-                setTimeout(() => {
-                    map.invalidateSize();
-                }, 100);
-            }
-        });
-
-        // Cerrar modal
-        function closeMapModal() {
-            document.getElementById('map-modal-overlay').style.display = 'none';
-            tempCoords = null;
-            if (marker) {
-                map.removeLayer(marker);
-                marker = null;
-            }
-        }
-
-        document.getElementById('close-map-btn').addEventListener('click', closeMapModal);
-        document.getElementById('cancel-map-btn').addEventListener('click', closeMapModal);
-
-        // Confirmar ubicación
-        document.getElementById('confirm-map-btn').addEventListener('click', function() {
-            if (tempCoords && currentInputTarget) {
-                currentInputTarget.dataset.lat = tempCoords.lat;
-                currentInputTarget.dataset.lon = tempCoords.lng;
-                
-                currentInputTarget.value = `📍 Ubicación guardada (${tempCoords.lat.toFixed(4)}, ${tempCoords.lng.toFixed(4)})`;
-                
-                closeMapModal();
-            } else {
-                alert("Por favor, haz clic en el mapa para seleccionar una ubicación primero.");
-            }
-        });
     </script>
+    <script src="{% static 'js/creacion/mapa_creacion.js' %}"></script>
+    <script src="{% static 'js/creacion/creacion_manual.js' %}"></script>
 
 </body>
 </html>

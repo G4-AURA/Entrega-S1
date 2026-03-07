@@ -41,7 +41,7 @@ class GeneracionRutaIATestCase(TestCase):
             ],
         }
 
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.services.consultar_langgraph')
     def test_guia_puede_generar_y_guardar_ruta_ia(self, mock_consultar):
         mock_consultar.return_value = self.ruta_ia
 
@@ -66,7 +66,7 @@ class GeneracionRutaIATestCase(TestCase):
         self.assertEqual(ruta.paradas.count(), 2)
         self.assertEqual(Parada.objects.filter(ruta=ruta).count(), 2)
 
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.services.consultar_langgraph')
     def test_turista_no_puede_generar_ruta_ia(self, mock_consultar):
         mock_consultar.return_value = self.ruta_ia
 
@@ -89,7 +89,7 @@ class CatalogoRutasIATestCase(TestCase):
         guia_user = User.objects.create_user(username='guia2', password='1234')
         self.client.login(username='guia2', password='1234')
 
-        with patch('creacion.views.consultar_langgraph') as mock_consultar:
+        with patch('creacion.services.consultar_langgraph') as mock_consultar:
             mock_consultar.return_value = {
                 'titulo': 'Ruta IA catálogo',
                 'descripcion': 'Descripción',
@@ -128,7 +128,7 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
     def setUp(self):
         self.client = Client()
 
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.services.consultar_langgraph')
     def test_catalogo_solo_muestra_rutas_del_usuario_autenticado(self, mock_consultar):
         mock_consultar.return_value = {
             'titulo': 'Ruta IA user',
