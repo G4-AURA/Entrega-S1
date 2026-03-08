@@ -1,3 +1,5 @@
+# rutas/urls.py
+
 from django.urls import path
 
 from . import views
@@ -13,4 +15,13 @@ urlpatterns = [
     # API que se comunica con el backend para obtener las rutas
     # ------------------------------------------------------------------
     path("api/rutas/", views.rutas_catalogo, name="rutas-catalogo"),
+    # ------------------------------------------------------------------
+    # S2.1-32: Endpoint AJAX para recalcular geometría GraphHopper
+    # sin recargar la página completa del detalle
+    # ------------------------------------------------------------------
+    path(
+        "api/rutas/<int:ruta_id>/recalcular/",
+        views.recalcular_ruta_api,
+        name="ruta-recalcular",
+    ),
 ]

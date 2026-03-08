@@ -29,4 +29,10 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/ubicacion_guia/", views.obtener_ubicacion_guia, name="ubicacion_guia"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
     path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
+
+    # ------------------------------------------------------------------
+    # API REST — navegación en tiempo real (NUEVAS)
+    # ------------------------------------------------------------------
+    path("sesiones/<int:sesion_id>/estado/",views.estado_sesion, name="estado_sesion"),
+    path("sesiones/<int:sesion_id>/ruta-a-parada/", views.ruta_a_parada_actual, name="ruta_a_parada_actual"),
 ]
