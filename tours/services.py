@@ -96,6 +96,17 @@ def validar_sesion_iniciable(sesion: SesionTour) -> None:
         )
 
 
+def validar_sesion_activa_para_union(sesion: SesionTour) -> None:
+    if sesion.esta_finalizada:
+        raise SesionFinalizadaError(
+            "No se puede unir a la sesión: ya está finalizada."
+        )
+    if sesion.estado != SesionTour.EN_CURSO:
+        raise EstadoSesionInvalidoError(
+            "No se puede unir a la sesión: aún no está activa."
+        )
+
+
 def obtener_turista_anonimo(request) -> Optional[Turista]:
     """
     Resuelve el Turista anónimo desde la cookie de sesión Django.
@@ -182,7 +193,7 @@ def unir_turista_anonimo(
     2. Alias inactivo del mismo usuario (misma cookie) → reactivar.
     3. Cualquier otro caso → crear turista nuevo.
     """
-    validar_sesion_no_finalizada(sesion, "unirse a la sesión")
+    validar_sesion_activa_para_union(sesion)
 
     alias_activo_qs = TuristaSesion.objects.filter(
         sesion_tour=sesion, turista__alias=alias, activo=True

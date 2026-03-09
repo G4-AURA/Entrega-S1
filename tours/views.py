@@ -60,7 +60,7 @@ def join_tour_by_code(request, codigo):
         )
 
     try:
-        services.validar_sesion_no_finalizada(sesion, "unirse a esta sesión")
+        services.validar_sesion_activa_para_union(sesion)
     except services.TourServiceError as exc:
         return _render_join_error(
             request,
@@ -86,7 +86,7 @@ def join_tour(request, token):
         )
 
     try:
-        services.validar_sesion_no_finalizada(sesion, "unirse a esta sesión")
+        services.validar_sesion_activa_para_union(sesion)
     except services.TourServiceError as exc:
         return _render_join_error(
             request,
@@ -164,7 +164,7 @@ def mapa_turista_anonimo(request, token):
         )
 
     try:
-        services.validar_sesion_no_finalizada(sesion, "acceder al mapa en vivo")
+        services.validar_sesion_en_curso(sesion, "acceder al mapa en vivo")
     except services.TourServiceError as exc:
         return _render_join_error(request, exc.message, exc.status_code)
 
