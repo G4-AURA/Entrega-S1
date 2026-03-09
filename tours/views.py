@@ -61,7 +61,6 @@ def join_tour(request, token):
             status=410,
         )
 
-    # Si el turista ya tiene cookie y está activo en esta sesión → ir directo al mapa
     if request.method == "GET":
         turista = services.obtener_turista_anonimo(request)
         if turista and TuristaSesion.objects.filter(
@@ -117,11 +116,14 @@ def mapa_turista_anonimo(request, token):
         request,
         "turista/turista_mapa.html",
         {
-            "sesion": sesion,
-            "turista": turista,
-            "paradas": sesion.ruta.paradas.all(),
-            "paradas_json": services.serializar_paradas(sesion),
-            "current_user_name": turista.alias,
+            "sesion":              sesion,
+            "turista":             turista,
+            "paradas":             sesion.ruta.paradas.all(),
+            "paradas_json":        services.serializar_paradas(sesion),
+            # Geometría pre-calculada en BD. None si la ruta aún no tiene
+            # geometría guardada (p.ej. < 2 paradas o sin ejecutar recalcular_rutas).
+            "geometria_ruta_json": sesion.ruta.geometria_ruta_coords,
+            "current_user_name":   turista.alias,
         },
     )
 
@@ -135,8 +137,6 @@ def mapa_turista_anonimo(request, token):
 def crear_sesion(request):
     """
     Crea una SesionTour para la ruta indicada en ?ruta_id=X.
-    Nota: semánticamente debería ser POST; migrar en el siguiente sprint
-    de frontend cuando se actualicen los enlaces del catálogo.
     """
     ruta_id = request.GET.get("ruta_id")
     if not ruta_id:
@@ -144,7 +144,6 @@ def crear_sesion(request):
 
     ruta = get_object_or_404(Ruta, id=ruta_id)
 
-    # Reutilizamos es_guia_de_sesion con un objeto temporal para no duplicar la lógica
     class _RutaProxy:
         pass
     proxy = _RutaProxy()
@@ -258,6 +257,7 @@ def participantes_sesion(request, sesion_id):
         }
     )
 
+
 @login_required
 def mapa_guia(request, sesion_id):
     """
@@ -273,33 +273,31 @@ def mapa_guia(request, sesion_id):
         request,
         "turista/turista_mapa.html",
         {
-            "sesion": sesion,
-            "paradas": sesion.ruta.paradas.all(),
-            "paradas_json": services.serializar_paradas(sesion),
-            "es_guia": True,
-            "current_user_name": request.user.username,
+            "sesion":              sesion,
+            "paradas":             sesion.ruta.paradas.all(),
+            "paradas_json":        services.serializar_paradas(sesion),
+            "geometria_ruta_json": sesion.ruta.geometria_ruta_coords,
+            "es_guia":             True,
+            "current_user_name":   request.user.username,
         },
     )
 
 
 # ===========================================================================
-# UBICACIÓN (exclusivo del guía — los turistas son anónimos y no se rastrean)
+# UBICACIÓN (exclusivo del guía)
 # ===========================================================================
 
 @login_required
 @require_POST
 def registrar_ubicacion(request):
-    """
-    Registra la posición GPS del guía autenticado.
-    Solo el guía comparte ubicación; los turistas anónimos no se rastrean.
-    """
+    """Registra la posición GPS del guía autenticado."""
     try:
         body = json.loads(request.body or "{}")
     except json.JSONDecodeError:
         return JsonResponse({"error": "JSON inválido."}, status=400)
 
-    latitud = body.get("latitud")
-    longitud = body.get("longitud")
+    latitud   = body.get("latitud")
+    longitud  = body.get("longitud")
     sesion_id = body.get("sesion_id")
 
     if any(v is None for v in (latitud, longitud, sesion_id)):
@@ -333,10 +331,10 @@ def registrar_ubicacion(request):
     return JsonResponse(
         {
             "ubicacion_id": ubicacion.id,
-            "sesion_id": sesion.id,
-            "latitud": latitud,
-            "longitud": longitud,
-            "timestamp": ubicacion.timestamp.isoformat(),
+            "sesion_id":    sesion.id,
+            "latitud":      latitud,
+            "longitud":     longitud,
+            "timestamp":    ubicacion.timestamp.isoformat(),
         },
         status=201,
     )
@@ -363,8 +361,8 @@ def obtener_ubicacion_guia(request, sesion_id):
     if ultima_ubi and ultima_ubi.coordenadas:
         return JsonResponse(
             {
-                "lat": ultima_ubi.coordenadas.y,
-                "lng": ultima_ubi.coordenadas.x,
+                "lat":       ultima_ubi.coordenadas.y,
+                "lng":       ultima_ubi.coordenadas.x,
                 "timestamp": ultima_ubi.timestamp.isoformat(),
             }
         )
@@ -373,7 +371,7 @@ def obtener_ubicacion_guia(request, sesion_id):
 
 
 # ===========================================================================
-# CHAT (polling — accesible a turistas anónimos y al guía)
+# CHAT (accesible a turistas anónimos y al guía)
 # ===========================================================================
 
 @require_POST
@@ -390,67 +388,45 @@ def enviar_mensaje(request, sesion_id):
 
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not sesion.esta_activa:
-        return JsonResponse(
-            {"error": "La sesión debe estar en curso para enviar mensajes."}, status=400
-        )
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
 
-    user, turista, nombre, error = services.determinar_remitente(request, sesion)
-    if error:
-        status_code = 401 if "unirte" in error else 403
-        return JsonResponse({"error": error}, status=status_code)
+    nombre_remitente = services.obtener_nombre_remitente(request, sesion)
 
-    mensaje = services.crear_mensaje(sesion, user, turista, nombre, texto)
-
-    return JsonResponse(
-        {
-            "message_id": mensaje.id,
-            "nombre_remitente": mensaje.nombre_remitente,
-            "texto": mensaje.texto,
-            "momento": mensaje.momento.isoformat(),
-        },
-        status=201,
+    MensajeChat.objects.create(
+        sesion_tour=sesion,
+        nombre_remitente=nombre_remitente,
+        texto=texto,
+        momento=timezone.now(),
     )
+
+    return JsonResponse({"status": "ok"}, status=201)
 
 
 @require_GET
 def obtener_mensajes(request, sesion_id):
-    """
-    Polling de mensajes. Parámetros opcionales:
-    - desde: ISO timestamp → solo mensajes posteriores
-    - limite: int (default 50, máx 500)
-    """
+    """Devuelve los mensajes de la sesión, con filtro opcional por `desde`."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
     if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Sin permiso para ver mensajes."}, status=403)
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
 
-    qs = MensajeChat.objects.filter(sesion_tour=sesion)
+    desde_str = request.GET.get("desde")
+    qs = MensajeChat.objects.filter(sesion_tour=sesion).order_by("momento")
 
-    desde_raw = request.GET.get("desde")
-    if desde_raw:
-        dt = parse_datetime(desde_raw)
-        if dt:
-            qs = qs.filter(momento__gt=dt)
+    if desde_str:
+        desde_dt = parse_datetime(desde_str)
+        if desde_dt:
+            qs = qs.filter(momento__gt=desde_dt)
 
-    limite = min(int(request.GET.get("limite", 50)), 500)
-
-    mensajes = list(
-        qs.order_by("momento").values("id", "nombre_remitente", "texto", "momento")[:limite]
-    )
-
-    return JsonResponse(
+    mensajes = [
         {
-            "mensajes": [
-                {
-                    "id": m["id"],
-                    "nombre_remitente": m["nombre_remitente"],
-                    "texto": m["texto"],
-                    "momento": m["momento"].isoformat(),
-                }
-                for m in mensajes
-            ],
-            "total": MensajeChat.objects.filter(sesion_tour=sesion).count(),
+            "id":               m.id,
+            "nombre_remitente": m.nombre_remitente,
+            "texto":            m.texto,
+            "momento":          m.momento.isoformat(),
         }
-    )
+        for m in qs
+    ]
 
+    return JsonResponse({"mensajes": mensajes})

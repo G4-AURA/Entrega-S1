@@ -1,461 +1,342 @@
-/* =========================================
-   AURA - Lógica del Mapa Inmersivo del Turista
-========================================= */
+/* ============================================================
+   AURA — Mapa del Turista  (mapa_turista.js)
 
-let guiaMarker = null;
-let map = null;
+   Muestra el recorrido pre-calculado de la ruta sobre un mapa
+   minimalista. Sin lógica de navegación en tiempo real.
 
-document.addEventListener('DOMContentLoaded', function() {
-    
+   Funcionalidades:
+     · Tiles minimalistas (Mapbox Light / CartoDB Positron)
+     · Polilínea del recorrido guardado en BD (GraphHopper)
+     · Marcadores numerados de paradas (actual en índigo, resto en gris)
+     · Punto pulsante con la posición propia del usuario
+     · Marcador de la posición del guía en tiempo real (solo turistas)
+     · Panel inferior: timeline del itinerario + chat con polling
+   ============================================================ */
+
+'use strict';
+
+let map               = null;
+let guiaMarker        = null;
+let miUbicacionMarker = null;
+
+// ── Inicialización ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+
     const mapElement = document.getElementById('mapa-tour');
     if (!mapElement) return;
 
-    // 1. UX: Ocultar el Navbar
+    // Experiencia inmersiva: ocultar navbar y quitar márgenes del contenedor
     const navbar = document.querySelector('.navbar');
     if (navbar) navbar.style.display = 'none';
-    
-    const mainContainer = document.querySelector('main.container');
-    if (mainContainer) {
-        mainContainer.style.maxWidth = '100%';
-        mainContainer.style.padding = '0';
-    }
+    const main = document.querySelector('main.container');
+    if (main) { main.style.maxWidth = '100%'; main.style.padding = '0'; }
 
-    // 2. Inicialización de Leaflet
-    map = L.map('mapa-tour', {
-        zoomControl: false 
-    }).setView([37.3891, -5.9845], 16);
+    // ── Inicializar mapa ───────────────────────────────────────────────────
+    map = L.map('mapa-tour', { zoomControl: false }).setView([37.3891, -5.9845], 15);
 
-    const token = typeof mapboxToken !== 'undefined' ? mapboxToken : 'pk.tu_token_aqui';
+    // Tiles minimalistas: fondo neutro claro donde la polilínea y los marcadores
+    // destacan sin competir con texturas de satélite.
+    const token = typeof mapboxToken !== 'undefined' ? mapboxToken : '';
+    const tileUrl = token
+        ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
-    // Capa Híbrida de Mapbox (Satélite + Calles)
-    L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=' + token, {
-        maxZoom: 19,
-        attribution: '© Mapbox © OpenStreetMap'
+    L.tileLayer(tileUrl, {
+        maxZoom:     19,
+        attribution: token
+            ? '© <a href="https://mapbox.com">Mapbox</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
+            : '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
     }).addTo(map);
 
-    // TODOS los usuarios rastrean su propia ubicación localmente para verse a sí mismos
-    iniciarRastreoLocal();
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // SOLO los turistas necesitan pedir la ubicación del guía al servidor
-    if (typeof esGuia !== 'undefined' && !esGuia) {
-        obtenerUbicacionGuia();
-        setInterval(obtenerUbicacionGuia, 5000);
+    // ── Dibujar recorrido y paradas ───────────────────────────────────────
+    _dibujarRutaYParadas();
+
+    // ── Posición propia ───────────────────────────────────────────────────
+    _iniciarRastreoLocal();
+
+    // ── Posición del guía (polling cada 5 s, solo turistas) ───────────────
+    if (!esGuia) {
+        _obtenerUbicacionGuia();
+        setInterval(_obtenerUbicacionGuia, 5000);
     }
 
-    // 3. Renderizar Paradas Dinámicamente
-    if (typeof paradasData !== 'undefined' && Array.isArray(paradasData)) {
-        const bounds = [];
-        
-        paradasData.forEach(function(parada) {
-            if (parada.lat != null && parada.lng != null) {
-                // Crear icono según si es la parada actual o no
-                const iconHtml = parada.es_actual 
-                    ? `<div style="background: linear-gradient(135deg, #10B981, #059669); width: 32px; height: 32px; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6); display: flex; align-items: center; justify-content: center;">
-                         <span style="color: white; font-size: 18px; font-weight: bold;">${parada.orden}</span>
-                       </div>`
-                    : `<div style="background-color: #9CA3AF; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3); opacity: 0.7; display: flex; align-items: center; justify-content: center;">
-                         <span style="color: white; font-size: 12px; font-weight: bold;">${parada.orden}</span>
-                       </div>`;
-                
-                const icon = L.divIcon({
-                    className: 'custom-div-icon',
-                    html: iconHtml,
-                    iconSize: parada.es_actual ? [32, 32] : [24, 24],
-                    iconAnchor: parada.es_actual ? [16, 16] : [12, 12]
-                });
-
-                const marker = L.marker([parada.lat, parada.lng], {icon: icon}).addTo(map);
-                marker.bindPopup(`<strong>${parada.nombre}</strong><br>Parada ${parada.orden}`);
-                
-                bounds.push([parada.lat, parada.lng]);
-                
-                // Centrar el mapa en la parada actual
-                if (parada.es_actual) {
-                    map.setView([parada.lat, parada.lng], 17);
-                }
-            }
-        });
-        
-        // Si hay paradas pero ninguna es actual, ajustar bounds para mostrar todas
-        if (bounds.length > 0 && !paradasData.some(p => p.es_actual)) {
-            map.fitBounds(bounds, {padding: [50, 50]});
-        }
-    }
-
-    // 4. Lógica del Panel Expandible (Bottom Sheet)
-    const tourPanel = document.querySelector('.tour-panel');
+    // ── Panel expandible ──────────────────────────────────────────────────
     const panelHeader = document.querySelector('.panel-header');
-
-    if (tourPanel && panelHeader) {
-        panelHeader.addEventListener('click', function() {
-            tourPanel.classList.toggle('expanded');
-        });
+    const tourPanel   = document.querySelector('.tour-panel');
+    if (panelHeader && tourPanel) {
+        panelHeader.addEventListener('click', () => tourPanel.classList.toggle('expanded'));
     }
 
-    // 5. Lógica de Tabs (Itinerario / Chat)
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            
-            // Remover clase active de todos los botones y contenidos
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabContents.forEach(c => c.classList.remove('active'));
-            
-            // Agregar clase active al botón clickeado y su contenido
+    // ── Tabs Itinerario / Chat ─────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const target = this.getAttribute('data-tab');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             this.classList.add('active');
-            document.getElementById('tab-' + targetTab).classList.add('active');
-
-            // Si cambiamos a chat, limpiar badge y marcar como leídos
-            if (targetTab === 'chat') {
+            document.getElementById('tab-' + target)?.classList.add('active');
+            if (target === 'chat') {
                 const badge = document.getElementById('chat-badge');
                 if (badge) badge.style.display = 'none';
-                
-                // Resetear contador de mensajes no leídos dentro del scope de initChat
-                // Esto se manejará desde initChat
-                const event = new CustomEvent('chatOpened');
-                document.dispatchEvent(event);
+                document.dispatchEvent(new CustomEvent('chatOpened'));
             }
         });
     });
 
-    // 6. Sistema de Chat
-    initChat();
+    // ── Chat ──────────────────────────────────────────────────────────────
+    _initChat();
 });
 
-let miUbicacionMarker = null;
 
-function iniciarRastreoLocal() {
-    if (navigator.geolocation) {
+// ── Dibujar recorrido y marcadores ─────────────────────────────────────────
 
-        navigator.geolocation.watchPosition(position => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
+function _dibujarRutaYParadas() {
+
+    // 1. Polilínea del recorrido real (geometría calculada por GraphHopper, guardada en BD)
+    //    `geometriaRuta` se inyecta desde el template como [[lat,lon],...] o null.
+    if (typeof geometriaRuta !== 'undefined' && geometriaRuta && geometriaRuta.length >= 2) {
+        L.polyline(geometriaRuta, {
+            color:        '#4f46e5',   // índigo — color primario de AURA
+            weight:       4,
+            opacity:      0.75,
+            smoothFactor: 1,
+        }).addTo(map);
+
+        map.fitBounds(L.latLngBounds(geometriaRuta), { padding: [48, 48] });
+    }
+
+    // 2. Marcadores de paradas
+    if (typeof paradasData === 'undefined' || !Array.isArray(paradasData)) return;
+
+    const bounds = [];
+
+    paradasData.forEach(parada => {
+        if (parada.lat == null || parada.lng == null) return;
+
+        bounds.push([parada.lat, parada.lng]);
+
+        const esActual = parada.es_actual;
+        const size     = esActual ? 34 : 26;
+
+        const iconHtml = esActual
+            ? `<div style="
+                  background:#4f46e5;
+                  width:${size}px;height:${size}px;
+                  border-radius:50%;border:3px solid white;
+                  box-shadow:0 2px 10px rgba(79,70,229,.45);
+                  display:flex;align-items:center;justify-content:center;">
+                  <span style="color:white;font-size:14px;font-weight:700;">${parada.orden}</span>
+               </div>`
+            : `<div style="
+                  background:#d1d5db;
+                  width:${size}px;height:${size}px;
+                  border-radius:50%;border:2px solid white;
+                  box-shadow:0 1px 5px rgba(0,0,0,.18);
+                  display:flex;align-items:center;justify-content:center;">
+                  <span style="color:#6b7280;font-size:11px;font-weight:600;">${parada.orden}</span>
+               </div>`;
+
+        L.marker([parada.lat, parada.lng], {
+            icon: L.divIcon({
+                className:  '',
+                html:       iconHtml,
+                iconSize:   [size, size],
+                iconAnchor: [size / 2, size / 2],
+                popupAnchor:[0, -(size / 2) - 4],
+            }),
+        })
+        .addTo(map)
+        .bindPopup(
+            `<strong>${parada.nombre}</strong>` +
+            `<br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`
+        );
+    });
+
+    // Si no hay geometría, ajustar la vista a los marcadores
+    if ((typeof geometriaRuta === 'undefined' || !geometriaRuta) && bounds.length > 0) {
+        bounds.length === 1
+            ? map.setView(bounds[0], 16)
+            : map.fitBounds(L.latLngBounds(bounds), { padding: [48, 48] });
+    }
+}
+
+
+// ── Posición propia (punto pulsante) ───────────────────────────────────────
+
+function _iniciarRastreoLocal() {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.watchPosition(
+        position => {
+            const { latitude: lat, longitude: lng } = position.coords;
             const pos = [lat, lng];
 
-            // --- 1. MOSTRAR MI UBICACIÓN (En mi pantalla solamente) ---
             if (!miUbicacionMarker) {
-                // Definimos un estilo azul para el turista y rojo para el guía viéndose a sí mismo
-                const iconHtml = esGuia 
-                    ? '<div style="background-color: #ef4444; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.8);"></div>'
-                    : '<div style="background-color: #3b82f6; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);"></div>';
-
-                const miIcon = L.divIcon({
-                    className: 'mi-ubicacion-marker',
-                    html: iconHtml,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12]
-                });
-
-                miUbicacionMarker = L.marker(pos, {icon: miIcon, zIndexOffset: 1000}).addTo(map);
-                miUbicacionMarker.bindPopup(esGuia ? "Mi Ubicación (Guía)" : "Mi Ubicación");
+                const color = esGuia ? '#ef4444' : '#3b82f6';
+                miUbicacionMarker = L.marker(pos, {
+                    icon: L.divIcon({
+                        className: '',
+                        html: `<div style="position:relative;width:22px;height:22px;">
+                                 <div style="position:absolute;inset:0;border-radius:50%;
+                                      background:${color};opacity:.25;
+                                      animation:pulse 1.8s infinite;"></div>
+                                 <div style="position:absolute;inset:4px;border-radius:50%;
+                                      background:${color};border:2px solid white;
+                                      box-shadow:0 1px 6px rgba(0,0,0,.25);"></div>
+                               </div>`,
+                        iconSize:   [22, 22],
+                        iconAnchor: [11, 11],
+                    }),
+                    zIndexOffset: 1000,
+                }).addTo(map).bindPopup(esGuia ? 'Guía (tú)' : 'Tú');
             } else {
                 miUbicacionMarker.setLatLng(pos);
             }
 
-            // --- 2. ENVIAR AL SERVIDOR (Solo si soy el guía) ---
-            if (typeof esGuia !== 'undefined' && esGuia) {
+            // El guía envía su posición al servidor para que los turistas la vean
+            if (esGuia) {
                 fetch('/tours/ubicacion/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCsrfToken()
-                    },
-                    body: JSON.stringify({
-                        latitud: lat,
-                        longitud: lng,
-                        sesion_id: sesionId
-                    })
-                }).catch(err => console.error("Error enviando ubicación al servidor:", err));
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                    body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
+                }).catch(() => {});
             }
-
-        }, error => {
-            console.warn("Error de geolocalización: ", error);
-        }, {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 5000
-        });
-    }
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 },
+    );
 }
 
-function obtenerUbicacionGuia() {
+
+// ── Posición del guía (solo turistas) ─────────────────────────────────────
+
+function _obtenerUbicacionGuia() {
     if (!map) return;
-    
+
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
-        .then(response => {
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                throw new Error('Error al obtener ubicación');
-            }
-            return response.json();
-        })
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
         .then(data => {
-            if (data.lat && data.lng) {
-                const pos = [data.lat, data.lng];
-                
-                if (!guiaMarker) {
-                    const guiaIcon = L.divIcon({
-                        className: 'guia-marker-container',
-                        html: '<div style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.8); display:flex; justify-content:center; align-items:center;"><span class="material-icons-round" style="font-size: 16px; color: white;">flag</span></div>',
-                        iconSize: [34, 34],
-                        iconAnchor: [17, 17]
-                    });
-                    
-                    guiaMarker = L.marker(pos, {icon: guiaIcon, zIndexOffset: 900}).addTo(map);
-                    guiaMarker.bindPopup("Ubicación del Guía");
-                } else {
-                    guiaMarker.setLatLng(pos);
-                }
+            if (!data.lat || !data.lng) return;
+            const pos = [data.lat, data.lng];
+
+            if (!guiaMarker) {
+                guiaMarker = L.marker(pos, {
+                    icon: L.divIcon({
+                        className: '',
+                        html: `<div style="
+                                background:#ef4444;width:30px;height:30px;
+                                border-radius:50%;border:3px solid white;
+                                box-shadow:0 2px 8px rgba(239,68,68,.5);
+                                display:flex;align-items:center;justify-content:center;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="white">
+                                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75
+                                           7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5
+                                           -2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
+                                </svg>
+                               </div>`,
+                        iconSize:   [30, 30],
+                        iconAnchor: [15, 15],
+                    }),
+                    zIndexOffset: 900,
+                }).addTo(map).bindPopup('Guía');
+            } else {
+                guiaMarker.setLatLng(pos);
             }
         })
-        .catch(error => console.error("Error obteniendo ubicación del guía:", error));
+        .catch(() => {});
 }
 
-// FUNCIÓN DE POLLING PARA MOSTRAR AL GUÍA
 
-function getCsrfToken() {
-    let token = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
-    if (token) return token;
-    
-    const cookieMatch = document.cookie.match(/csrftoken=([^;]+)/);
-    if (cookieMatch) return cookieMatch[1];
-    
-    const metaToken = document.querySelector('meta[name="csrf-token"]');
-    if (metaToken) return metaToken.content;
-    
-    return '';
+// ── Utilidades ─────────────────────────────────────────────────────────────
+
+function _getCsrf() {
+    const c = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('csrftoken='));
+    return c ? c.slice('csrftoken='.length) : '';
 }
 
-/* =========================================
-   AURA - Sistema de Chat Turista
-========================================= */
-function initChat() {
-    if (typeof sesionId === 'undefined' || !sesionId) {
-        console.error('sesionId no está definido');
-        return;
-    }
 
-    const chatInput = document.getElementById('chat-input');
-    const chatSendBtn = document.getElementById('chat-send');
+// ── Chat ───────────────────────────────────────────────────────────────────
+
+function _initChat() {
     const chatMessages = document.getElementById('chat-messages');
-    
-    if (!chatInput || !chatSendBtn || !chatMessages) {
-        return;
-    }
-    
+    const chatInput    = document.getElementById('chat-input');
+    const chatSendBtn  = document.getElementById('chat-send');
+    if (!chatMessages || !chatInput || !chatSendBtn) return;
+
     let lastMessageTime = null;
-    let isCurrentlyInChat = false;
-    let unreadCount = 0; // Contador de mensajes no leídos
+    let unread          = 0;
+    let chatVisible     = false;
 
-    // Detectar si el usuario está viendo el chat
-    const observer = new MutationObserver(() => {
-        const chatTab = document.getElementById('tab-chat');
-        isCurrentlyInChat = chatTab && chatTab.classList.contains('active');
-    });
+    document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
 
-    const chatTab = document.getElementById('tab-chat');
-    if (chatTab) {
-        observer.observe(chatTab, { attributes: true, attributeFilter: ['class'] });
-        isCurrentlyInChat = chatTab.classList.contains('active');
-    }
+    const escHtml = t => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
+    const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
+        ? currentUserName
+        : (document.body.getAttribute('data-username') || '');
 
-    // Listener para resetear contador cuando se abre el chat
-    document.addEventListener('chatOpened', () => {
-        unreadCount = 0;
-    });
+    function renderMessages(msgs) {
+        if (!msgs || !msgs.length) return;
+        chatMessages.querySelector('.chat-empty')?.remove();
+        const me = myName();
 
-    // Función para enviar mensaje
-    function sendMessage() {
-        const texto = chatInput.value.trim();
-        if (!texto) return;
+        msgs.forEach(msg => {
+            if (chatMessages.querySelector(`[data-message-id="${msg.id}"]`)) return;
+            lastMessageTime = msg.momento;
 
-        // Deshabilitar input mientras se envía
-        chatSendBtn.disabled = true;
-        chatInput.disabled = true;
+            const div = document.createElement('div');
+            div.className = `chat-message ${msg.nombre_remitente === me ? 'sent' : 'received'}`;
+            div.setAttribute('data-message-id', msg.id);
 
-        fetch(`/tours/sesiones/${sesionId}/mensajes/enviar/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken()
-            },
-            body: JSON.stringify({ texto: texto })
-        })
-        .then(response => {
-            // Verificar si la respuesta es JSON
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                throw new Error('Error al enviar mensaje. Verifica tu conexión.');
-            }
-            if (!response.ok) {
-                return response.json().then(data => {
-                    throw new Error(data.error || `HTTP error! status: ${response.status}`);
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.error) {
-                console.error('Error al enviar mensaje:', data.error);
-                alert('Error al enviar mensaje: ' + data.error);
-            } else {
-                // Limpiar input
-                chatInput.value = '';
-                // Obtener mensajes actualizados inmediatamente
-                fetchMessages();
-            }
-        })
-        .catch(error => {
-            console.error('Error de red:', error);
-            alert('Error al enviar el mensaje: ' + error.message);
-        })
-        .finally(() => {
-            chatSendBtn.disabled = false;
-            chatInput.disabled = false;
-            chatInput.focus();
-        });
-    }
-
-    // Event listeners
-    chatSendBtn.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
-
-    // Función para obtener mensajes
-    function fetchMessages() {
-        let url = `/tours/sesiones/${sesionId}/mensajes/`;
-        if (lastMessageTime) {
-            // Normalizar la fecha a ISO 8601 para evitar formatos inválidos
-            let dateStr;
-            const parsedDate = new Date(lastMessageTime);
-            if (!isNaN(parsedDate)) {
-                dateStr = parsedDate.toISOString();
-            } else {
-                // Si no se puede parsear, enviar el valor tal cual
-                dateStr = lastMessageTime;
-            }
-            url += `?desde=${encodeURIComponent(dateStr)}`;
-        }
-
-        fetch(url)
-        .then(response => {
-            // Verificar si la respuesta es JSON
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                throw new Error('Error al obtener mensajes');
-            }
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.error) {
-                console.error('Error al obtener mensajes:', data.error);
-                return;
-            }
-
-            if (data.mensajes && data.mensajes.length > 0) {
-                // Identificar mensajes realmente nuevos (que no existen en el DOM)
-                const currentUser = getCurrentUsername();
-                const newMessagesFromOthers = data.mensajes.filter(msg => {
-                    const isNew = !document.querySelector(`[data-message-id="${msg.id}"]`);
-                    const isFromOther = msg.nombre_remitente !== currentUser;
-                    return isNew && isFromOther;
-                }).length;
-
-                displayMessages(data.mensajes);
-                
-                // Actualizar el timestamp del último mensaje
-                const ultimoMensaje = data.mensajes[data.mensajes.length - 1];
-                lastMessageTime = ultimoMensaje.momento;
-
-                // Si no estamos en el chat y hay mensajes nuevos de otros, incrementar contador
-                if (!isCurrentlyInChat && newMessagesFromOthers > 0) {
-                    unreadCount += newMessagesFromOthers;
-                    showChatBadge(unreadCount);
-                }
-            }
-        })
-        .catch(error => {
-            // Silenciar errores de polling para no saturar la consola
-        });
-    }
-
-    // Función para mostrar mensajes
-    function displayMessages(mensajes) {
-        // Remover el mensaje de "chat vacío" si existe
-        const emptyMsg = chatMessages.querySelector('.chat-empty');
-        if (emptyMsg) {
-            emptyMsg.remove();
-        }
-
-        // Obtener el username del usuario actual
-        const currentUser = getCurrentUsername();
-
-        mensajes.forEach(mensaje => {
-            // Verificar si el mensaje ya existe (por su ID)
-            if (document.querySelector(`[data-message-id="${mensaje.id}"]`)) {
-                return; // Ya existe, no lo agregamos de nuevo
-            }
-
-            const messageDiv = document.createElement('div');
-            const isSent = mensaje.nombre_remitente === currentUser;
-            
-            messageDiv.className = `chat-message ${isSent ? 'sent' : 'received'}`;
-            messageDiv.setAttribute('data-message-id', mensaje.id);
-
-            // Formatear timestamp
-            const timestamp = new Date(mensaje.momento);
-            const timeStr = timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-
-            messageDiv.innerHTML = `
+            const t = new Date(msg.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            div.innerHTML = `
                 <div class="chat-message-header">
-                    <span class="chat-message-sender">${escapeHtml(mensaje.nombre_remitente)}</span>
-                    <span class="chat-message-time">${timeStr}</span>
+                    <span class="chat-message-sender">${escHtml(msg.nombre_remitente)}</span>
+                    <span class="chat-message-time">${t}</span>
                 </div>
-                <div class="chat-message-bubble">
-                    ${escapeHtml(mensaje.texto)}
-                </div>
-            `;
+                <div class="chat-message-bubble">${escHtml(msg.texto)}</div>`;
+            chatMessages.appendChild(div);
 
-            chatMessages.appendChild(messageDiv);
+            if (msg.nombre_remitente !== me && !chatVisible) {
+                unread++;
+                const badge = document.getElementById('chat-badge');
+                if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = 'block'; }
+            }
         });
-
-        // Scroll al final
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // Función para mostrar badge con contador
-    function showChatBadge(count) {
-        const badge = document.getElementById('chat-badge');
-        if (badge) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.style.display = 'block';
+    function fetchMessages() {
+        let url = `/tours/sesiones/${sesionId}/mensajes/`;
+        if (lastMessageTime) {
+            try { url += `?desde=${encodeURIComponent(new Date(lastMessageTime).toISOString())}`; }
+            catch { url += `?desde=${encodeURIComponent(lastMessageTime)}`; }
         }
+        fetch(url)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => renderMessages(data.mensajes || data))
+            .catch(() => {});
     }
 
-    // Función para obtener el username actual
-    function getCurrentUsername() {
-        return (typeof currentUserName !== 'undefined' && currentUserName) ? 
-               currentUserName : 
-               (document.body.getAttribute('data-username') || 'usuario');
+    function sendMessage() {
+        const texto = chatInput.value.trim();
+        if (!texto) return;
+        chatSendBtn.disabled = chatInput.disabled = true;
+        fetch(`/tours/sesiones/${sesionId}/mensajes/enviar/`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+            body:    JSON.stringify({ texto }),
+        })
+        .then(r => r.json())
+        .then(() => { chatInput.value = ''; fetchMessages(); })
+        .catch(() => {})
+        .finally(() => { chatSendBtn.disabled = chatInput.disabled = false; chatInput.focus(); });
     }
 
-    // Función helper para escapar HTML
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+    chatSendBtn.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
 
-    // Iniciar polling cada 3 segundos
-    fetchMessages(); // Primera carga inmediata
+    fetchMessages();
     setInterval(fetchMessages, 5000);
 }

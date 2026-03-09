@@ -7,13 +7,18 @@
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
     body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+
+    @keyframes pulse {
+        0%   { transform: scale(1);   opacity: .25; }
+        70%  { transform: scale(2.4); opacity: 0;   }
+        100% { transform: scale(1);   opacity: 0;   }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 {% csrf_token %}
 
-{# Turistas: siempre vuelven al inicio. Guía: va al catálogo. #}
 {% if es_guia %}
     <a href="{% url 'catalogo' %}" class="btn-back">
         <span class="material-icons-round">arrow_back</span>
@@ -32,7 +37,6 @@
         <div class="panel-drag-handle"></div>
     </div>
 
-    <!-- Tabs de navegación -->
     <div class="panel-tabs">
         <button class="tab-btn active" data-tab="itinerario">
             <span class="material-icons-round">map</span>
@@ -41,27 +45,26 @@
         <button class="tab-btn" data-tab="chat">
             <span class="material-icons-round">chat</span>
             Chat
-            <span class="chat-badge" id="chat-badge" style="display: none;"></span>
+            <span class="chat-badge" id="chat-badge" style="display:none;"></span>
         </button>
     </div>
 
     <div class="panel-content">
 
-        <!-- Tab: Itinerario -->
         <div class="tab-content active" id="tab-itinerario">
             <div class="d-flex justify-content-between align-items-center mb-1">
                 {% if sesion.estado == 'en_curso' %}
                 <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2 fw-bold text-uppercase"
-                      style="font-size: 0.65rem; letter-spacing: 0.5px;">
-                    <span class="material-icons-round" style="font-size: 12px; vertical-align: middle;">fiber_manual_record</span>
+                      style="font-size:.65rem;letter-spacing:.5px;">
+                    <span class="material-icons-round" style="font-size:12px;vertical-align:middle;">fiber_manual_record</span>
                     En Curso
                 </span>
                 {% elif sesion.estado == 'pendiente' %}
                 <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill px-3 py-2 fw-bold text-uppercase"
-                      style="font-size: 0.65rem;">Pendiente</span>
+                      style="font-size:.65rem;">Pendiente</span>
                 {% else %}
                 <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 fw-bold text-uppercase"
-                      style="font-size: 0.65rem;">Finalizado</span>
+                      style="font-size:.65rem;">Finalizado</span>
                 {% endif %}
                 <span class="text-muted small">{{ sesion.ruta.titulo }}</span>
             </div>
@@ -69,14 +72,15 @@
             <div class="timeline mt-3">
                 {% for parada in paradas %}
                 <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
-                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">{{ parada.nombre }}</h6>
+                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">
+                        {{ parada.nombre }}
+                    </h6>
                     <p class="text-muted small mb-0">Parada {{ parada.orden }} del recorrido</p>
                 </div>
                 {% endfor %}
             </div>
         </div>
 
-        <!-- Tab: Chat -->
         <div class="tab-content" id="tab-chat">
             <div class="chat-container">
                 <div class="chat-messages" id="chat-messages">
@@ -86,7 +90,8 @@
                     </div>
                 </div>
                 <div class="chat-input-container">
-                    <input type="text" id="chat-input" class="chat-input" placeholder="Escribe un mensaje...">
+                    <input type="text" id="chat-input" class="chat-input"
+                           placeholder="Escribe un mensaje...">
                     <button id="chat-send" class="chat-send-btn">
                         <span class="material-icons-round">send</span>
                     </button>
@@ -99,15 +104,17 @@
 {% endblock %}
 
 {% block extra_js %}
-<script id="paradas-data" type="application/json">{{ paradas_json|safe }}</script>
+<script id="paradas-data"       type="application/json">{{ paradas_json|safe }}</script>
+{# json_script escapa el contenido correctamente, previniendo XSS #}
+{{ geometria_ruta_json|json_script:"geometria-ruta-data" }}
+
 <script>
-    // Configuración global del mapa — consumida por mapa_turista.js
-    const mapboxToken  = '{{ MAPBOX_ACCESS_TOKEN }}';
-    const sesionId     = {{ sesion.id }};
-    // es_guia solo llega al contexto cuando el guía accede al mapa; turistas son siempre false.
-    const esGuia       = {% if es_guia %}true{% else %}false{% endif %};
-    const paradasData  = JSON.parse(document.getElementById('paradas-data').textContent);
+    const mapboxToken     = '{{ MAPBOX_ACCESS_TOKEN }}';
+    const sesionId        = {{ sesion.id }};
+    const esGuia          = {% if es_guia %}true{% else %}false{% endif %};
+    const paradasData     = JSON.parse(document.getElementById('paradas-data').textContent);
     const currentUserName = '{{ current_user_name|escapejs }}';
+    const geometriaRuta   = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
 </script>
 <script src="{% static 'js/mapa_turista.js' %}"></script>
 {% endblock %}
