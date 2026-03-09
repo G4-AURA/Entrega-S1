@@ -114,6 +114,14 @@ def normalizar_payload_ia(datos):
     moods_normalizados = normalizar_moods(mood)
     if not moods_normalizados:
         raise ErrorValidacionRuta('Debes indicar al menos una temática (mood) válida.')
+    
+    deseos_raw = datos.get('deseos') or []
+    if not isinstance(deseos_raw, list):
+        raise ErrorValidacionRuta('Los deseos personalizados deben ser una lista.')
+    deseos = [str(d).strip()[:100] for d in deseos_raw if str(d).strip()][:5]
+
+    # Metadata contextual enviada automáticamente desde el cliente (sin intervención del usuario)
+    metadata = datos.get('metadata') or {}
 
     try:
         return {
@@ -122,6 +130,8 @@ def normalizar_payload_ia(datos):
             'personas': int(personas),
             'exigencia': exigencia_normalizada,
             'mood': moods_normalizados,
+            'deseos': deseos,
+            'metadata': metadata,
         }
     except (TypeError, ValueError) as exc:
         raise ErrorValidacionRuta('Duración y personas deben tener un formato válido.') from exc
@@ -467,6 +477,47 @@ def crear_matriz_datos(pois):
         "depot": 0
     }
 
+def _construir_bloque_metadata(metadata: dict) -> str:
+    """Construye un bloque de contexto con los metadatos del cliente para enriquecer el prompt."""
+    if not metadata:
+        return ''
+
+    lineas = ['\n## Contexto adicional del solicitante']
+
+    ubicacion = metadata.get('ubicacion')
+    if ubicacion:
+        ciudad_origen = ubicacion.get('ciudad') or ubicacion.get('pais') or ''
+        if ciudad_origen:
+            lineas.append(f'- Ubicación actual del guía: {ciudad_origen}')
+        coords = ubicacion.get('coords')
+        if coords:
+            lineas.append(f'  (coordenadas: {coords[0]:.4f}, {coords[1]:.4f})')
+
+    idioma = metadata.get('idioma')
+    if idioma:
+        lineas.append(f'- Idioma del navegador: {idioma}')
+
+    hora_local = metadata.get('hora_local')
+    if hora_local:
+        lineas.append(f'- Hora local del guía al generar: {hora_local}')
+
+    zona_horaria = metadata.get('zona_horaria')
+    if zona_horaria:
+        lineas.append(f'- Zona horaria: {zona_horaria}')
+
+    dispositivo = metadata.get('dispositivo')
+    if dispositivo:
+        lineas.append(f'- Tipo de dispositivo: {dispositivo}')
+
+    return '\n'.join(lineas) if len(lineas) > 1 else ''
+
+def _construir_bloque_deseos(deseos: list) -> str:
+    """Construye un bloque con los deseos personalizados del guía para el prompt."""
+    if not deseos:
+        return ''
+    items = '\n'.join(f'  - {d}' for d in deseos)
+    return f'\n## Preferencias específicas del guía\n{items}'
+
 
 ### --- NODOS --- ###
 def nodo_seleccion_sitios(state: State):
@@ -474,16 +525,30 @@ def nodo_seleccion_sitios(state: State):
     datos = state['usuario_input']
     api_key = os.getenv("GEMINI_API_KEY")
 
+    bloque_metadata = _construir_bloque_metadata(datos.get('metadata') or {})
+    bloque_deseos = _construir_bloque_deseos(datos.get('deseos') or [])
+
     prompt = f"""
-    Eres un guía experto en {datos.get('ciudad')}. El usuario quiere una ruta de {datos.get('duracion')} horas.
-    Temática: {datos.get('mood')}. Exigencia: {datos.get('exigencia')}.
-    
-    Genera una lista de 5 a 8 Puntos de Interés (POIs).
-    Responde ÚNICAMENTE con un JSON válido con esta estructura:
-    [
-        {{"nombre": "Nombre sitio", "coords": [lat, lon], "desc": "Breve descripción"}}
-    ]
-    """
+        Eres un guía turístico experto. Tu tarea es seleccionar los mejores Puntos de Interés (POIs) para
+        una ruta en {datos.get('ciudad')}.
+
+        ## Parámetros de la ruta
+        - Duración total: {datos.get('duracion')} horas
+        - Número de personas: {datos.get('personas')}
+        - Nivel de exigencia física: {datos.get('exigencia')}
+        - Temática(s): {', '.join(datos.get('mood') or [])}
+        {bloque_metadata}
+        {bloque_deseos}
+
+        ## Instrucción
+        Genera una lista de 5 a 8 POIs adecuados para estos parámetros. Ten en cuenta el contexto del
+        solicitante y sus preferencias específicas si las hay.
+
+        Responde ÚNICAMENTE con un JSON válido (sin texto extra) con esta estructura:
+        [
+            {{"nombre": "Nombre del sitio", "coords": [lat, lon], "desc": "Breve descripción del lugar"}}
+        ]
+        """
 
     pois = llamar_gemini_bypass(prompt, api_key)
     return {"pois_seleccionados": pois}
