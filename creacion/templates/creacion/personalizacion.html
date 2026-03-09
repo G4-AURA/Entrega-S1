@@ -12,7 +12,7 @@
     .gradient-card {
         border: 0;
         border-radius: 1rem;
-        background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%);
+        background: linear-gradient(135deg, var(--brand-light) 0%, #f0f4ff 100%);
     }
 
     .form-label {
@@ -23,7 +23,7 @@
         height: 500px;
         width: 100%;
         border-radius: 1rem;
-        border: 1px solid #dee2e6;
+        border: 1px solid var(--border-color);
     }
 
     .list-paradas-container {
@@ -54,10 +54,10 @@
 
     .mood-btn {
         padding: 0.5rem 1rem;
-        border: 2px solid #dee2e6;
+        border: 2px solid var(--border-color);
         border-radius: 2rem;
-        background: white;
-        color: #6c757d;
+        background: var(--bg-white);
+        color: var(--text-muted);
         cursor: pointer;
         transition: all 0.2s;
         font-size: 0.95rem;
@@ -65,14 +65,14 @@
     }
 
     .mood-btn:hover {
-        border-color: #0d6efd;
-        color: #0d6efd;
+        border-color: var(--brand-color);
+        color: var(--brand-color);
     }
 
     .mood-btn.active {
-        background: #0d6efd;
+        background: var(--brand-color);
         color: white;
-        border-color: #0d6efd;
+        border-color: var(--brand-color);
     }
 
     .mood-btn input[type="checkbox"] {
@@ -160,7 +160,7 @@
                     </div>
                 </div>
                 <div class="col-12 d-flex justify-content-end">
-                    <button id="btn-generar-ruta" type="submit" class="btn btn-primary px-5">Generar la ruta</button>
+                    <button id="btn-generar-ruta" type="submit" class="btn btn-brand px-5">Generar la ruta</button>
                 </div>
             </form>
         </div>
@@ -217,11 +217,11 @@
         const lista = document.getElementById('lista-paradas');
         
         // Limpiar lista anterior
-        lista.innerHTML = '';
+        while (lista.firstChild) lista.removeChild(lista.firstChild);
 
         // Mostrar metadatos de la ruta
         rutaMeta.classList.remove('d-none');
-        rutaMeta.textContent = `${datos.titulo || 'Ruta generada'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Exigencia ${datos.nivel_exigencia || '-'}`;
+        rutaMeta.textContent = (datos.titulo || 'Ruta generada') + ' · ' + (datos.duracion_horas || datos.duracion_estimada || '-') + 'h · Exigencia ' + (datos.nivel_exigencia || '-');
 
         // Reiniciar Mapa si ya existe para evitar errores de instancias múltiples
         if (leafletMap) {
@@ -259,16 +259,24 @@
                     .bindPopup(`<b>${p.orden || idx + 1}. ${p.nombre}</b>`);
 
                 // Elemento en la lista lateral
-                lista.innerHTML += `
-                    <div class="list-group-item border-start border-primary border-4 mb-2">
-                        <div class="fw-bold text-primary">Parada ${p.orden || idx + 1}: ${p.nombre}</div>
-                        <div class="small text-muted">${p.descripcion || p.desc || 'Sin descripción'}</div>
-                    </div>`;
+                const item = document.createElement('div');
+                item.className = 'list-group-item border-start border-4 mb-2';
+                item.style.borderColor = 'var(--brand-color)';
+                const itemTitle = document.createElement('div');
+                itemTitle.className = 'fw-bold';
+                itemTitle.style.color = 'var(--brand-color)';
+                itemTitle.textContent = 'Parada ' + (p.orden || idx + 1) + ': ' + p.nombre;
+                const itemDesc = document.createElement('div');
+                itemDesc.className = 'small text-muted';
+                itemDesc.textContent = p.descripcion || p.desc || 'Sin descripción';
+                item.appendChild(itemTitle);
+                item.appendChild(itemDesc);
+                lista.appendChild(item);
             });
 
             // Dibujar línea de conexión y ajustar vista
             if (puntos.length > 1) {
-                L.polyline(puntos, {color: '#0d6efd', weight: 4, opacity: 0.7}).addTo(leafletMap);
+                L.polyline(puntos, {color: '#4F46E5', weight: 4, opacity: 0.7}).addTo(leafletMap);
                 leafletMap.fitBounds(puntos, {padding: [50, 50]});
             }
         }

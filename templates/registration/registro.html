@@ -1,111 +1,50 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}AURA - Registro de Guía{% endblock %}
+{% block title %}AURA - Registro de guía{% endblock %}
 
 {% block extra_css %}
 <style>
-    .auth-wrapper {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem 1rem;
-    }
-    .auth-card {
-        width: 100%;
-        max-width: 500px;
-        border: none;
-        border-radius: 1rem;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-        background-color: #ffffff;
-    }
-    .auth-header { text-align: center; margin-bottom: 2rem; }
-    .auth-header h2 { font-weight: 700; color: #1F2937; }
-    .auth-header p  { color: #6B7280; }
-
-    /* Estilos para el formulario generado por Django */
-    .django-form p { margin-bottom: 1.25rem; }
-    .django-form label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-weight: 600;
-        color: #4B5563;
-        font-size: 0.9rem;
-    }
-    .django-form .helptext {
-        font-size: 0.8rem;
-        color: #6B7280;
-        display: block;
-        margin-top: 0.25rem;
-    }
-    .django-form ul.errorlist {
-        color: #DC2626;
-        padding-left: 1.5rem;
-        font-size: 0.85rem;
-        margin-top: 0.5rem;
-        margin-bottom: 0;
-    }
-    .form-control, .form-select {
-        border-radius: 0.5rem;
-        padding: 0.75rem 1rem;
-        border: 1px solid #D1D5DB;
-        width: 100%;
-        transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .form-control:focus, .form-select:focus {
-        border-color: #4F46E5;
-        outline: 0;
-        box-shadow: 0 0 0 0.25rem rgba(79,70,229,0.25);
-    }
-    .btn-brand {
-        background-color: #4F46E5;
-        border-color: #4F46E5;
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.5rem;
-        font-weight: 600;
-        transition: all 0.2s;
-        width: 100%;
-    }
-    .btn-brand:hover {
-        background-color: #3730A3;
-        border-color: #3730A3;
-        color: white;
-        transform: translateY(-1px);
-    }
+    .auth-page-wrapper { padding-top: 3rem; padding-bottom: 3rem; }
+    .auth-card { max-width: 480px; }
+    .form-control, .form-select { width: 100%; display: block; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="auth-wrapper">
-    <div class="card auth-card p-4 p-md-5">
-        <div class="auth-header">
-            <h2>Crear cuenta de Guía</h2>
-            <p>Regístrate para crear y gestionar tus tours en AURA</p>
+<div class="auth-page-wrapper">
+    <div class="auth-card card">
+
+        <div class="auth-logo">
+            <img src="{% static 'img/logo_aura.png' %}" alt="AURA">
         </div>
+
+        <h1 class="auth-title">Crear cuenta de guía</h1>
+        <p class="auth-subtitle">Regístrate para crear y gestionar tus tours en AURA</p>
 
         <form method="post" class="django-form">
             {% csrf_token %}
             {{ form.as_p }}
-            <button type="submit" class="btn btn-brand mt-2">
+            <button type="submit" class="btn btn-brand btn-lg fw-bold w-100 mt-2"
+                    style="border-radius:var(--radius);">
                 Crear cuenta
             </button>
         </form>
 
-        <div class="text-center mt-4">
-            <p class="text-muted mb-0">
-                ¿Ya tienes cuenta?
-                <a href="{% url 'login' %}" class="text-decoration-none fw-semibold"
-                   style="color: #4F46E5;">Inicia sesión</a>
-            </p>
+        <div class="text-center mt-4" style="font-size:.875rem;">
+            <span style="color:var(--text-muted);">¿Ya tienes cuenta?</span>
+            <a href="{% url 'login' %}" class="fw-bold text-decoration-none ms-1"
+               style="color:var(--brand-color);">Inicia sesión</a>
         </div>
 
-        <hr class="my-4">
-        <p class="text-center text-muted small mb-0">
+        <div class="auth-divider">o</div>
+
+        <div class="auth-tourist-note">
             ¿Eres turista? No necesitas cuenta.
             Pide el código de acceso a tu guía y accede desde
-            <a href="{% url 'login' %}" class="text-decoration-none" style="color: #4F46E5;">aquí</a>.
-        </p>
+            <a href="{% url 'login' %}">aquí</a>.
+        </div>
+
     </div>
 </div>
 

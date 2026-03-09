@@ -3,98 +3,88 @@
 
 {% block title %}Unirse al Tour - AURA{% endblock %}
 
-{% block extra_css %}
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<style>
-    .join-container {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .join-card { max-width: 500px; width: 100%; }
-    .tour-info-badge {
-        background: linear-gradient(135deg, var(--brand-color), var(--brand-hover));
-        color: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="join-container">
+<div class="join-page">
     <div class="join-card">
 
+        <!-- Header -->
         <div class="text-center mb-4">
-            <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
-                 style="width: 80px; height: 80px; background-color: #EEF2FF; color: var(--brand-color);">
-                <span class="material-icons-round" style="font-size:42px">tour</span>
+            <div class="d-inline-flex align-items-center justify-content-center mb-3"
+                 style="width:72px;height:72px;background:var(--brand-light);border-radius:20px;color:var(--brand-color);">
+                <span class="material-icons-round" style="font-size:36px;">tour</span>
             </div>
-            <h2 class="fw-bold mb-2">Únete al Tour</h2>
-            <p class="text-muted">Elige un alias para que tu guía te identifique</p>
+            <h2 style="font-family:'Manrope',sans-serif;font-size:1.625rem;font-weight:800;letter-spacing:-.04em;margin-bottom:.35rem;">
+                Únete al Tour
+            </h2>
+            <p style="color:var(--text-muted);font-size:.875rem;margin:0;">
+                Elige un alias para que tu guía te identifique
+            </p>
         </div>
 
-        <!-- Información de la sesión -->
-        <div class="tour-info-badge text-center shadow-sm">
-            <div class="d-flex align-items-center justify-content-center gap-2 mb-2">
-                <span class="material-icons-round" style="font-size:20px">explore</span>
-                <h5 class="mb-0 fw-bold">{{ sesion.ruta.titulo }}</h5>
+        <!-- Tour info badge -->
+        <div class="tour-badge mb-4">
+            <div class="d-flex align-items-center gap-2 mb-2" style="position:relative;z-index:1;">
+                <span class="material-icons-round" style="font-size:18px;opacity:.9;">explore</span>
+                <span style="font-family:'Manrope',sans-serif;font-weight:700;font-size:1rem;letter-spacing:-.02em;">
+                    {{ sesion.ruta.titulo }}
+                </span>
             </div>
-            <div class="small opacity-75">
-                <span class="material-icons-round" style="font-size:16px; vertical-align: middle;">event</span>
+            <div style="font-size:.8rem;opacity:.75;position:relative;z-index:1;">
+                <span class="material-icons-round" style="font-size:14px;vertical-align:middle;">event</span>
                 {{ sesion.fecha_inicio|date:"d M, Y" }} · {{ sesion.fecha_inicio|time:"H:i" }}
             </div>
-            <div class="mt-2 small">
-                <span class="badge bg-white bg-opacity-25 px-3 py-2 rounded-pill">
-                    {{ sesion.get_estado_display }}
+            <div class="mt-2" style="position:relative;z-index:1;">
+                <span style="background:rgba(255,255,255,0.2);border-radius:var(--radius-pill);padding:.3rem .85rem;font-size:.72rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.3px;">
+                    {{ sesion.get_estado_display|upper }}
                 </span>
             </div>
         </div>
 
         {% if error %}
-        <div class="alert alert-danger rounded-3 d-flex align-items-center gap-2" role="alert">
-            <span class="material-icons-round">error_outline</span>
+        <div class="d-flex align-items-center gap-2 mb-3 px-3 py-2"
+             style="background:var(--danger-light);border:1px solid rgba(239,68,68,.2);border-radius:var(--radius);color:#991B1B;font-size:.875rem;">
+            <span class="material-icons-round" style="font-size:18px;">error_outline</span>
             <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <form method="post" class="card border-0 shadow-sm rounded-4 p-4">
-            {% csrf_token %}
-            <div class="mb-4">
-                <label for="alias" class="form-label fw-bold text-dark">
-                    <span class="material-icons-round me-1" style="font-size:18px; vertical-align: middle;">badge</span>
-                    Tu nombre o alias
-                </label>
-                <input
-                    type="text"
-                    class="form-control form-control-lg border-2 rounded-3"
-                    id="alias"
-                    name="alias"
-                    placeholder="Ej: Juan Pérez"
-                    minlength="2"
-                    maxlength="50"
-                    required
-                    autofocus
-                >
-                <div class="form-text mt-2">
-                    <span class="material-icons-round text-muted" style="font-size:14px; vertical-align: middle;">info</span>
-                    Este alias será visible para tu guía durante el tour (2–50 caracteres)
+        <!-- Form -->
+        <div class="card p-4">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label for="alias" class="form-label">
+                        <span class="material-icons-round" style="font-size:15px;vertical-align:middle;margin-right:4px;">badge</span>
+                        Tu nombre o alias
+                    </label>
+                    <input type="text"
+                           class="form-control form-control-lg"
+                           id="alias"
+                           name="alias"
+                           placeholder="Ej: Juan Pérez"
+                           minlength="2"
+                           maxlength="50"
+                           required
+                           autofocus>
+                    <div class="form-text mt-2">
+                        Visible para tu guía durante el tour (2–50 caracteres)
+                    </div>
                 </div>
-            </div>
 
-            <div class="d-grid gap-3">
-                <button type="submit"
-                        class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3 d-flex align-items-center justify-content-center gap-2">
-                    <span class="material-icons-round">login</span>
-                    Unirse al Tour
-                </button>
-                <a href="/" class="btn btn-link text-muted text-decoration-none fw-semibold">
-                    Volver al inicio
-                </a>
-            </div>
-        </form>
+                <div class="d-grid gap-2">
+                    <button type="submit"
+                            class="btn btn-brand btn-lg fw-bold py-3 d-flex align-items-center justify-content-center gap-2"
+                            style="border-radius:var(--radius);">
+                        <span class="material-icons-round">login</span>
+                        Unirse al Tour
+                    </button>
+                    <a href="/" class="btn fw-semibold text-decoration-none"
+                       style="color:var(--text-muted);font-size:.875rem;">
+                        Volver al inicio
+                    </a>
+                </div>
+            </form>
+        </div>
 
     </div>
 </div>
