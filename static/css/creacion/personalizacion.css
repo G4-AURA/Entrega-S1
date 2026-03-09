@@ -77,3 +77,143 @@
 .mood-btn input[type='checkbox'] {
     display: none;
 }
+
+
+/* ── Sección "Deseos personalizados" ─────────────────────────────────────── */
+
+.deseos-section {
+    background: #fff;
+    border: 1.5px solid #dee2e6;
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.5rem;
+    transition: border-color 0.2s;
+}
+
+.deseos-section:focus-within {
+    border-color: #0d6efd;
+}
+
+.deseos-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.deseos-counter {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6c757d;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 2rem;
+    padding: 0.15rem 0.6rem;
+    min-width: 3rem;
+    text-align: center;
+}
+
+.deseos-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Entrada individual de deseo */
+.deseo-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    animation: deseo-aparecer 0.18s ease;
+}
+
+@keyframes deseo-aparecer {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.deseo-input {
+    flex: 1;
+    padding: 0.45rem 0.75rem;
+    border: 1.5px solid #dee2e6;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.deseo-input:focus {
+    outline: none;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgb(13 110 253 / 12%);
+}
+
+.deseo-chars {
+    font-size: 0.72rem;
+    color: #adb5bd;
+    min-width: 3rem;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.deseo-chars--limit {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.deseo-btn-eliminar {
+    background: none;
+    border: none;
+    padding: 0.25rem;
+    cursor: pointer;
+    color: #adb5bd;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s, background-color 0.15s;
+    flex-shrink: 0;
+}
+
+.deseo-btn-eliminar:hover {
+    color: #dc3545;
+    background: rgb(220 53 69 / 8%);
+}
+
+.deseo-btn-eliminar .material-icons-round {
+    font-size: 1.1rem;
+}
+
+/* Botón "Añadir deseo" */
+.btn-añadir-deseo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: 1.5px dashed #0d6efd;
+    color: #0d6efd;
+    padding: 0.35rem 0.9rem;
+    border-radius: 2rem;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s, opacity 0.15s;
+}
+
+.btn-añadir-deseo:hover:not(:disabled) {
+    background: rgb(13 110 253 / 7%);
+}
+
+.btn-añadir-deseo:disabled,
+.btn-añadir-deseo.deseos-limit {
+    opacity: 0.45;
+    cursor: not-allowed;
+    border-style: solid;
+}
+
+.btn-añadir-deseo .material-icons-round {
+    font-size: 1.1rem;
+}

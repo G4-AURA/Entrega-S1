@@ -5,6 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/creacion/personalizacion.css' %}">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -14,7 +15,7 @@
             <div class="mb-4">
                 <h2 class="h3 mb-2">Personalización de Ruta</h2>
                 <p id="ruta-meta" class="text-muted mb-3 d-none"></p>
-                <p class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
+                <p id="subtitulo-form" class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
             </div>
 
             <div id="estado-respuesta" class="alert d-none" role="alert"></div>
@@ -82,6 +83,27 @@
                         </label>
                     </div>
                 </div>
+
+                <div class="col-12">
+                    <div class="deseos-section">
+                        <div class="deseos-header">
+                            <label class="form-label mb-0">Deseos personalizados</label>
+                            <span class="deseos-counter"><span id="deseos-count">0</span>/5</span>
+                        </div>
+                        <p class="form-text mt-1 mb-3">
+                            Añade hasta 5 indicaciones breves para guiar a la IA en la creación de la ruta
+                            (ej: "evitar escaleras", "incluir una parada con vistas al río").
+                        </p>
+                        <div id="deseos-lista" class="deseos-lista"></div>
+                        <button type="button" id="btn-añadir-deseo" class="btn-añadir-deseo">
+                            <span class="material-icons-round" aria-hidden="true">add_circle_outline</span>
+                            Añadir deseo
+                        </button>
+                    </div>
+                </div>
+
+                <br>
+
                 <div class="col-12 d-flex justify-content-end">
                     <button id="btn-generar-ruta" type="submit" class="btn btn-primary px-5">Generar la ruta</button>
                 </div>
@@ -113,5 +135,15 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/creacion/personalizacion.js' %}"></script>
+<script src="{% static 'js/creacion/mapa_creacion.js' %}"></script>
+<script id="personalizacion-config" type="application/json">
+{
+    "csrfToken": "{{ csrf_token }}",
+    "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN }}",
+    "urls": {
+        "generar": "{% url 'creacion:generar_ruta_ia' %}"
+    }
+}
+</script>
+<script src="{% static 'js/creacion/personalizacion_ruta.js' %}"></script>
 {% endblock %}
