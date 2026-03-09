@@ -108,9 +108,11 @@ form.addEventListener('submit', async (e) => {
         const data = await response.json();
 
         if (response.ok && data.status === 'OK') {
+            form.classList.add('d-none');
+            document.getElementById('subtitulo-form').classList.add('d-none');
             renderizarRuta(data.datos_ruta);
             estado.className = 'alert alert-success mt-3';
-            estado.textContent = data.mensaje;
+            estado.innerHTML = `${data.mensaje} — <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones, accede a la ruta desde el catálogo</a>.`;
             estado.classList.remove('d-none');
         } else {
             throw new Error(data.mensaje || 'Error desconocido al generar la ruta');
