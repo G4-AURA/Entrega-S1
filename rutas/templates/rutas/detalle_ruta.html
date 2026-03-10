@@ -206,7 +206,7 @@
         </form>
     </div>
 
-    {# ── Panel métricas (S2.1-29) + botón recalcular ──────────────────────── #}
+    {# ── Panel métricas (S2.1-29) ─────────────────────────────────────────── #}
     <div id="panel-metricas" class="ruta-metrics-panel">
         {% if distancia_total_km and duracion_total_min %}
             <span class="metric-item">
@@ -224,13 +224,6 @@
             <span class="metrics-empty" id="metrics-placeholder">
                 ℹ️ Ruta sin calcular. Usa el botón para obtener distancia y tiempo real.
             </span>
-        {% endif %}
-
-        {# Botón siempre visible para forzar recálculo (S2.1-32) #}
-        {% if paradas|length >= 2 %}
-        <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper">
-            🔄 Recalcular ruta
-        </button>
         {% endif %}
     </div>
 
@@ -479,6 +472,13 @@
         </div>
     </div>
 
+    <div class="d-flex justify-content-end mt-4">
+        <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper"
+                {% if paradas|length < 2 %}disabled{% endif %}>
+            🔄 Calcular ruta
+        </button>
+    </div>
+
 </section>
 {% endblock %}
 
@@ -584,32 +584,17 @@ function actualizarPanelMetricas(data) {
     const panel = document.getElementById('panel-metricas');
     if (!panel) return;
 
-    const btnRecalcular = document.getElementById('btn-recalcular');
-
     if (data.distancia_total_km && data.duracion_total_min) {
-        const btnHtml = paradas.length >= 2
-            ? `<button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta">🔄 Recalcular ruta</button>`
-            : '';
-
         panel.innerHTML = `
             <span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>
             <span class="metric-sep">|</span>
             <span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>
             <span class="metric-sep">|</span>
-            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>
-            ${btnHtml}`;
+            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
     } else {
-        const btnHtml = paradas.length >= 2
-            ? `<button type="button" id="btn-recalcular" class="btn-recalcular">🔄 Recalcular ruta</button>`
-            : '';
         panel.innerHTML = `
-            <span class="metrics-empty">ℹ️ Ruta sin calcular.</span>
-            ${btnHtml}`;
+            <span class="metrics-empty">ℹ️ Ruta sin calcular.</span>`;
     }
-
-    // Re-asignar listener al nuevo botón tras reemplazar el innerHTML
-    const nuevoBtn = document.getElementById('btn-recalcular');
-    if (nuevoBtn) nuevoBtn.addEventListener('click', handleRecalcular);
 }
 
 // ── Recálculo AJAX (S2.1-32) ──────────────────────────────────────────────
