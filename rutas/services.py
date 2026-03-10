@@ -35,10 +35,12 @@ def obtener_datos_catalogo_paginado(user, limit, page_number, tipo):
         .prefetch_related(
             Prefetch('paradas', queryset=Parada.objects.all())
         )
-        .filter(guia__user__user=user)
         .distinct()
         .order_by("-id")
     )
+
+    if not user.is_superuser:
+        rutas_qs = rutas_qs.filter(guia__user__user=user)
 
     if tipo == "ia":
         rutas_qs = rutas_qs.filter(es_generada_ia=True)

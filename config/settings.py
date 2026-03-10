@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'tours',
     'creacion',
     'rutas',
+    'allowList',
 ]
 
 MIDDLEWARE = [

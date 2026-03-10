@@ -33,9 +33,7 @@ urlpatterns = [
     path('tours/', include('tours.urls')),
     path('', include('rutas.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
-    
-    
-    
+    path("allowList/", include("allowList.urls")),
     
     path('accounts/', include('django.contrib.auth.urls')),
     path('registro/', registro, name='registro'),

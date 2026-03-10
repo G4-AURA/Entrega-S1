@@ -28,6 +28,8 @@ def es_guia(user):
     Comprueba si el usuario autenticado tiene un perfil de Guia asociado.
     Ruta de modelos: User -> AuthUser (auth_profile) -> Guia (guia)
     """
+    if user.is_superuser:
+        return True
     if user.is_authenticated:
         if hasattr(user, 'auth_profile') and hasattr(user.auth_profile, 'guia'):
             if user.auth_profile.guia is not None:

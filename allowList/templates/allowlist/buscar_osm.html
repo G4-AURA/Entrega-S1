@@ -1,0 +1,557 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AURA · Curar POIs desde OSM{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --al-accent:    #0f766e;
+    --al-accent-lt: #ccfbf1;
+    --al-accent-dk: #134e4a;
+    --al-osm:       #3d6e29;
+    --al-osm-lt:    #dcfce7;
+}
+
+.osm-layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 1.5rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .osm-layout { grid-template-columns: 1fr; }
+}
+
+/* ── Sidebar de búsqueda ── */
+.osm-sidebar {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 1.5rem;
+    position: sticky;
+    top: 80px;
+}
+.osm-sidebar-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.osm-field-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 0.4rem;
+}
+.osm-input {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.9rem;
+    background: var(--bg-white);
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+.osm-input:focus { outline: none; border-color: var(--al-accent); box-shadow: 0 0 0 2px var(--al-accent-lt); }
+
+/* Categorías grid */
+.cat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+.cat-item {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 0.8rem;
+    font-weight: 600;
+    user-select: none;
+}
+.cat-item:hover { border-color: var(--al-accent); background: var(--al-accent-lt); }
+.cat-item.selected { border-color: var(--al-accent); background: var(--al-accent-lt); color: var(--al-accent-dk); }
+.cat-item input[type="checkbox"] { display: none; }
+
+.btn-selall {
+    border: none;
+    background: none;
+    color: var(--al-accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 0.6rem;
+}
+
+.btn-buscar {
+    width: 100%;
+    background: var(--al-osm);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.btn-buscar:hover:not(:disabled) { background: var(--al-accent-dk); }
+.btn-buscar:disabled { opacity: 0.55; cursor: wait; }
+
+/* ── Resultados ── */
+.osm-results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.osm-results-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+.btn-importar {
+    background: var(--al-accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.btn-importar:hover:not(:disabled) { background: var(--al-accent-dk); }
+.btn-importar:disabled { opacity: 0.45; cursor: default; }
+
+/* Grid de tarjetas resultados */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.85rem;
+}
+.poi-card {
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    background: var(--bg-white);
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+}
+.poi-card:hover { border-color: var(--al-accent); box-shadow: 0 4px 12px rgba(15,118,110,0.1); }
+.poi-card.selected { border-color: var(--al-accent); background: var(--al-accent-lt); }
+.poi-card.imported { opacity: 0.55; cursor: default; }
+.poi-card.imported::after {
+    content: '✓ Ya importado';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: var(--al-osm-lt);
+    color: var(--al-osm);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+}
+.poi-card-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.25rem; }
+.poi-card-cat {
+    font-size: 0.75rem;
+    color: var(--al-accent);
+    font-weight: 600;
+    background: var(--al-accent-lt);
+    display: inline-block;
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    margin-bottom: 0.3rem;
+}
+.poi-card-coords { font-size: 0.75rem; color: var(--text-muted); }
+
+/* Selección todos */
+.sel-bar {
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+}
+.sel-count { font-weight: 700; color: var(--al-accent); }
+
+/* Map preview */
+#osm-mapa { height: 320px; border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); }
+
+/* States */
+.osm-state { text-align: center; padding: 4rem 2rem; }
+.osm-state-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+
+/* Toast */
+.al-toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: #1e293b; color: white;
+    border-radius: 10px; padding: 0.9rem 1.4rem;
+    font-size: 0.875rem; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s ease; max-width: 360px;
+}
+.al-toast.show { transform: translateY(0); opacity: 1; }
+.al-toast.ok  { border-left: 4px solid #10b981; }
+.al-toast.err { border-left: 4px solid #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+    <a href="{% url 'allowlist:panel' %}" style="color:var(--al-accent);font-weight:600;text-decoration:none;font-size:.875rem;">
+        ← Volver al panel
+    </a>
+</div>
+
+<div class="osm-layout">
+
+    <!-- ── Sidebar búsqueda ── -->
+    <aside class="osm-sidebar">
+        <div class="osm-sidebar-title">🌍 Buscar en OSM</div>
+
+        <label class="osm-field-label" for="osm-ciudad">Ciudad / Área</label>
+        <input type="text" id="osm-ciudad" class="osm-input" placeholder="Ej: Sevilla, Granada…">
+
+        <label class="osm-field-label">Radio de búsqueda</label>
+        <select id="osm-radio" class="osm-input">
+            <option value="3">3 km</option>
+            <option value="5" selected>5 km</option>
+            <option value="10">10 km</option>
+            <option value="20">20 km</option>
+        </select>
+
+        <label class="osm-field-label">Categorías</label>
+        <button class="btn-selall" type="button" id="btn-all-cats">Seleccionar todo</button>
+        <div class="cat-grid" id="cat-grid">
+            {% for value, label in categorias %}
+            {% if value != 'other' %}
+            <label class="cat-item" data-value="{{ value }}">
+                <input type="checkbox" name="categoria" value="{{ value }}">
+                <span>{{ label }}</span>
+            </label>
+            {% endif %}
+            {% endfor %}
+        </div>
+
+        <button class="btn-buscar" id="btn-buscar" type="button">
+            <span>🔍 Buscar</span>
+        </button>
+    </aside>
+
+    <!-- ── Resultados ── -->
+    <div>
+        <div class="osm-results-header">
+            <span class="osm-results-title" id="results-title">Resultados de búsqueda</span>
+            <button type="button" class="btn-importar" id="btn-importar" disabled>
+                📥 Importar seleccionados (<span id="sel-count">0</span>)
+            </button>
+        </div>
+
+        <!-- Barra de selección masiva -->
+        <div class="sel-bar" id="sel-bar" style="display:none;">
+            <span>
+                <span class="sel-count" id="sel-count-bar">0</span> seleccionados
+            </span>
+            <button style="border:none;background:none;color:var(--al-accent);font-weight:700;cursor:pointer;font-size:.85rem;"
+                    id="btn-sel-all-cards">Seleccionar todos</button>
+            <button style="border:none;background:none;color:var(--text-muted);font-weight:700;cursor:pointer;font-size:.85rem;"
+                    id="btn-desel-all">Deseleccionar todos</button>
+        </div>
+
+        <!-- Mapa preview -->
+        <div id="osm-mapa" style="display:none;"></div>
+
+        <!-- Estado inicial -->
+        <div class="osm-state" id="state-initial">
+            <div class="osm-state-icon">🗺️</div>
+            <p style="color:var(--text-muted);font-size:.9rem;">
+                Configura los filtros y pulsa <strong>Buscar</strong> para obtener POIs de OpenStreetMap.
+            </p>
+        </div>
+        <div class="osm-state" id="state-loading" style="display:none;">
+            <div class="spinner-border" style="color:var(--al-accent);width:2.5rem;height:2.5rem;" role="status"></div>
+            <p style="color:var(--text-muted);margin-top:1rem;">Consultando OpenStreetMap…</p>
+        </div>
+        <div class="osm-state" id="state-empty" style="display:none;">
+            <div class="osm-state-icon">📭</div>
+            <p style="color:var(--text-muted);">No se encontraron resultados para esa búsqueda.</p>
+        </div>
+        <div class="osm-state" id="state-error" style="display:none;">
+            <div class="osm-state-icon">⚠️</div>
+            <p style="color:#dc2626;" id="error-msg">Error al buscar.</p>
+        </div>
+
+        <!-- Grid de tarjetas -->
+        <div class="results-grid" id="results-grid"></div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="al-toast" id="al-toast"></div>
+
+{% csrf_token %}
+
+<script>
+    let resultados = [];
+    let seleccionados = new Set();
+    let mapaOsm = null;
+    let markersOsm = [];
+
+    function getCsrf() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+            || document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+    }
+
+    function showToast(msg, tipo = 'ok') {
+        const t = document.getElementById('al-toast');
+        t.textContent = msg;
+        t.className = `al-toast ${tipo} show`;
+        setTimeout(() => t.classList.remove('show'), 3500);
+    }
+
+    function setState(id) {
+        ['state-initial','state-loading','state-empty','state-error'].forEach(s => {
+            document.getElementById(s).style.display = s === id ? '' : 'none';
+        });
+    }
+
+    // Categorías toggle
+    document.querySelectorAll('.cat-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const cb = item.querySelector('input');
+            cb.checked = !cb.checked;
+            item.classList.toggle('selected', cb.checked);
+        });
+    });
+    document.getElementById('btn-all-cats').addEventListener('click', () => {
+        const items = document.querySelectorAll('.cat-item');
+        const allSelected = [...items].every(i => i.classList.contains('selected'));
+        items.forEach(item => {
+            const cb = item.querySelector('input');
+            cb.checked = !allSelected;
+            item.classList.toggle('selected', !allSelected);
+        });
+        document.getElementById('btn-all-cats').textContent = allSelected ? 'Seleccionar todo' : 'Deseleccionar todo';
+    });
+
+    function actualizarSeleccion() {
+        const n = seleccionados.size;
+        
+        const spanCount = document.getElementById('sel-count');
+        const spanCountBar = document.getElementById('sel-count-bar');
+        const btnImportar = document.getElementById('btn-importar');
+        
+        if (spanCount) {
+            spanCount.textContent = n;
+        }
+        if (spanCountBar) {
+            spanCountBar.textContent = n;
+        }
+        if (btnImportar) {
+            btnImportar.disabled = n === 0;
+        }
+    }
+
+    function renderResultados(datos) {
+        const grid = document.getElementById('results-grid');
+        grid.innerHTML = '';
+        seleccionados.clear();
+        actualizarSeleccion();
+
+        if (datos.length === 0) {
+            setState('state-empty');
+            document.getElementById('sel-bar').style.display = 'none';
+            document.getElementById('osm-mapa').style.display = 'none';
+            return;
+        }
+
+        setState(null);  // none visible
+        document.getElementById('results-grid').style.display = '';
+        document.getElementById('sel-bar').style.display = '';
+
+        // Inicializar mapa
+        const mapaEl = document.getElementById('osm-mapa');
+        mapaEl.style.display = '';
+        if (!mapaOsm) {
+            mapaOsm = L.map('osm-mapa');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(mapaOsm);
+        }
+        markersOsm.forEach(m => mapaOsm.removeLayer(m));
+        markersOsm = [];
+        const bounds = [];
+
+        datos.forEach((poi, idx) => {
+            const card = document.createElement('div');
+            card.className = 'poi-card' + (poi.ya_importado ? ' imported' : '');
+            card.dataset.idx = idx;
+            card.innerHTML = `
+                <div class="poi-card-name">${poi.nombre}</div>
+                <span class="poi-card-cat">${poi.categoria_label}</span>
+                <div class="poi-card-coords">📍 ${poi.lat.toFixed(5)}, ${poi.lon.toFixed(5)}</div>
+            `;
+            if (!poi.ya_importado) {
+                card.addEventListener('click', () => toggleCard(card, idx));
+            }
+            grid.appendChild(card);
+
+            // Marcador en el mapa
+            const marker = L.circleMarker([poi.lat, poi.lon], {
+                radius: 7, color: poi.ya_importado ? '#9ca3af' : '#0f766e',
+                fillColor: poi.ya_importado ? '#e5e7eb' : '#ccfbf1',
+                fillOpacity: 0.9, weight: 2,
+            }).addTo(mapaOsm).bindPopup(`<b>${poi.nombre}</b><br>${poi.categoria_label}`);
+            markersOsm.push(marker);
+            bounds.push([poi.lat, poi.lon]);
+        });
+
+        if (bounds.length) mapaOsm.fitBounds(bounds, { padding: [30, 30] });
+        setTimeout(() => mapaOsm.invalidateSize(), 100);
+    }
+
+    function toggleCard(card, idx) {
+        if (seleccionados.has(idx)) {
+            seleccionados.delete(idx);
+            card.classList.remove('selected');
+        } else {
+            seleccionados.add(idx);
+            card.classList.add('selected');
+        }
+        actualizarSeleccion();
+    }
+
+    document.getElementById('btn-sel-all-cards').addEventListener('click', () => {
+        document.querySelectorAll('.poi-card:not(.imported)').forEach((card, idx_dom) => {
+            const idx = parseInt(card.dataset.idx);
+            seleccionados.add(idx);
+            card.classList.add('selected');
+        });
+        actualizarSeleccion();
+    });
+    document.getElementById('btn-desel-all').addEventListener('click', () => {
+        seleccionados.clear();
+        document.querySelectorAll('.poi-card').forEach(c => c.classList.remove('selected'));
+        actualizarSeleccion();
+    });
+
+    // ── Búsqueda OSM ──
+    document.getElementById('btn-buscar').addEventListener('click', async () => {
+        const ciudad = document.getElementById('osm-ciudad').value.trim();
+        const radio  = parseFloat(document.getElementById('osm-radio').value);
+        const cats   = [...document.querySelectorAll('.cat-item.selected')]
+                        .map(el => el.dataset.value);
+
+        if (!ciudad) { showToast('Indica una ciudad para buscar.', 'err'); return; }
+        if (!cats.length) { showToast('Selecciona al menos una categoría.', 'err'); return; }
+
+        const btn = document.getElementById('btn-buscar');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Buscando…';
+        setState('state-loading');
+        document.getElementById('results-grid').innerHTML = '';
+        document.getElementById('results-grid').style.display = 'none';
+        document.getElementById('osm-mapa').style.display = 'none';
+        document.getElementById('sel-bar').style.display = 'none';
+
+        try {
+            const resp = await fetch('{% url "allowlist:api_buscar_osm" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+                body: JSON.stringify({ ciudad, categorias: cats, radio_km: radio }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'OK') {
+                setState('state-error');
+                document.getElementById('error-msg').textContent = data.mensaje || 'Error al contactar con OpenStreetMap.';
+            } else {
+                resultados = data.resultados;
+                document.getElementById('results-title').textContent =
+                    `${data.total} resultado(s) en "${ciudad}"`;
+                renderResultados(resultados);
+            }
+        } catch (err) {
+            setState('state-error');
+            document.getElementById('error-msg').textContent = 'Error de red. Comprueba la conexión.';
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span>🔍 Buscar</span>';
+        }
+    });
+
+    // ── Importar seleccionados ──
+    document.getElementById('btn-importar').addEventListener('click', async () => {
+        if (!seleccionados.size) return;
+        const ciudad = document.getElementById('osm-ciudad').value.trim();
+        const elementos = [...seleccionados].map(idx => resultados[idx]);
+
+        const btn = document.getElementById('btn-importar');
+        btn.disabled = true;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm"></div> Importando…`;
+
+        try {
+            const resp = await fetch('{% url "allowlist:api_importar_osm" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+                body: JSON.stringify({ ciudad, elementos }),
+            });
+            const data = await resp.json();
+            if (data.status === 'OK') {
+                showToast(data.mensaje, 'ok');
+                // Marcar las tarjetas importadas como "ya importado"
+                seleccionados.forEach(idx => {
+                    const card = document.querySelector(`.poi-card[data-idx="${idx}"]`);
+                    if (card) {
+                        card.classList.remove('selected');
+                        card.classList.add('imported');
+                        card.style.pointerEvents = 'none';
+                        resultados[idx].ya_importado = true;
+                    }
+                });
+                seleccionados.clear();
+                actualizarSeleccion();
+            } else {
+                showToast(data.mensaje || 'Error al importar', 'err');
+            }
+        } catch { showToast('Error de red al importar.', 'err'); }
+        finally {
+            btn.disabled = seleccionados.size === 0;
+            btn.innerHTML = `📥 Importar seleccionados (<span id="sel-count">0</span>)`;
+            document.getElementById('sel-count').textContent = seleccionados.size;
+        }
+    });
+    </script>
+{% endblock %}
