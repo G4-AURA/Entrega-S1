@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from creacion import services
 from creacion.views import (
     _guardar_ruta_ia_en_bd,
     _normalizar_moods,
@@ -112,3 +113,129 @@ class RutaStorageServiceTests(TestCase):
 
         with self.assertRaisesMessage(ValueError, 'La ruta generada no contiene paradas válidas para guardar.'):
             _guardar_ruta_ia_en_bd(guia=self.guia, payload=payload, ruta_generada=ruta_generada)
+
+
+class GenerarCandidatosParadasIATests(TestCase):
+    def setUp(self):
+        user = User.objects.create_user(username='guia_candidatos', password='1234')
+        auth_profile = AuthUser.objects.create(user=user)
+        self.guia = Guia.objects.create(user=auth_profile)
+        self.ruta = Ruta.objects.create(
+            titulo='Sevilla Histórica',
+            descripcion='Centro histórico',
+            duracion_horas=2.5,
+            num_personas=12,
+            nivel_exigencia=Ruta.Exigencia.MEDIA,
+            mood=[Ruta.Mood.HISTORIA],
+            es_generada_ia=True,
+            guia=self.guia,
+        )
+        Parada.objects.create(ruta=self.ruta, orden=1, nombre='Catedral', coordenadas='POINT(-5.99 37.39)')
+
+    def test_genera_candidatos_normalizados(self):
+        with self.settings(GEMINI_API_KEY='test-key'):
+            with self.subTest('candidatos ok'):
+                mocked = [
+                    {
+                        'nombre': 'Archivo de Indias',
+                        'coordenadas': [37.385, -5.993],
+                        'categoria': 'historia',
+                        'nivel_confianza': 0.91,
+                        'justificacion': 'Complementa el recorrido histórico.',
+                    }
+                ]
+                from unittest.mock import patch
+                with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                    resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
+
+        self.assertEqual(resultado['ruta_id'], self.ruta.id)
+        self.assertEqual(len(resultado['candidatos']), 1)
+        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')
+        self.assertEqual(resultado['candidatos'][0]['nivel_confianza'], 0.91)
+
+    def test_falla_con_cantidad_fuera_de_rango(self):
+        with self.assertRaisesMessage(services.ErrorValidacionRuta, 'La cantidad de sugerencias debe estar entre 1 y 10.'):
+            services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=0)
+
+    def test_filtra_candidatos_fuera_del_contexto_geografico(self):
+        mocked = [
+            {
+                'nombre': 'Puerta del Sol',
+                'coordenadas': [40.4168, -3.7038],  # Madrid
+                'categoria': 'historia',
+                'nivel_confianza': 0.9,
+                'justificacion': 'Centro turístico muy visitado.',
+            },
+            {
+                'nombre': 'Real Alcázar',
+                'coordenadas': [37.3838, -5.9902],  # Sevilla
+                'categoria': 'historia',
+                'nivel_confianza': 0.95,
+                'justificacion': 'Muy cerca del eje histórico actual.',
+            },
+        ]
+        with self.settings(GEMINI_API_KEY='test-key'):
+            from unittest.mock import patch
+            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=2)
+
+        self.assertEqual(len(resultado['candidatos']), 1)
+        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Real Alcázar')
+
+    def test_falla_si_todos_los_candidatos_estan_fuera_del_contexto_geografico(self):
+        mocked = [
+            {
+                'nombre': 'Puerta del Sol',
+                'coordenadas': [40.4168, -3.7038],  # Madrid
+                'categoria': 'historia',
+                'nivel_confianza': 0.9,
+                'justificacion': 'Centro turístico muy visitado.',
+            }
+        ]
+        with self.settings(GEMINI_API_KEY='test-key'):
+            from unittest.mock import patch
+            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                with self.assertRaisesMessage(
+                    services.ErrorIntegracionIA,
+                    'La IA no devolvió candidatos válidos y no duplicados para esta ruta.',
+                ):
+                    services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
+
+    def test_descarta_candidatos_duplicados_existentes_y_entre_sugerencias(self):
+        mocked = [
+            {
+                'nombre': 'Catedral',  # duplicado por nombre con parada existente
+                'coordenadas': [37.3900, -5.9900],
+                'categoria': 'historia',
+                'nivel_confianza': 0.9,
+                'justificacion': 'Duplicado de prueba.',
+            },
+            {
+                'nombre': 'Archivo de Indias',
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'historia',
+                'nivel_confianza': 0.91,
+                'justificacion': 'Candidato válido.',
+            },
+            {
+                'nombre': 'Archivo de Indias',  # duplicado entre candidatos
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'historia',
+                'nivel_confianza': 0.88,
+                'justificacion': 'Duplicado entre sugerencias.',
+            },
+            {
+                'nombre': 'Plaza Nueva',  # duplicado por coordenadas con candidato válido
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'local',
+                'nivel_confianza': 0.86,
+                'justificacion': 'Mismas coordenadas con otro nombre.',
+            },
+        ]
+        with self.settings(GEMINI_API_KEY='test-key'):
+            from unittest.mock import patch
+            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=4)
+
+        self.assertEqual(len(resultado['candidatos']), 1)
+        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')

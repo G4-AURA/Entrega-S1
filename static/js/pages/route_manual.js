@@ -20,7 +20,7 @@
     const btnRemoveStop = document.getElementById('btn-remove-stop') || document.querySelector('[data-action="remove-stop"]');
 
     if (!container || !display || !btnGuardar || !mapModal) {
-        console.error('Faltan elementos necesarios para inicializar creacion_manual.js');
+        console.error('Faltan elementos necesarios para inicializar route_manual.js');
         return;
     }
 

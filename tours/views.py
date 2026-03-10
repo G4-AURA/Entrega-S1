@@ -391,16 +391,30 @@ def enviar_mensaje(request, sesion_id):
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
-    nombre_remitente = services.obtener_nombre_remitente(request, sesion)
+    remitente_user, remitente_turista, nombre_remitente, error_remitente = services.determinar_remitente(
+        request, sesion
+    )
+    if error_remitente:
+        return JsonResponse({"error": error_remitente}, status=403)
 
-    MensajeChat.objects.create(
-        sesion_tour=sesion,
+    mensaje = services.crear_mensaje(
+        sesion=sesion,
+        remitente_user=remitente_user,
+        remitente_turista=remitente_turista,
         nombre_remitente=nombre_remitente,
         texto=texto,
-        momento=timezone.now(),
     )
 
-    return JsonResponse({"status": "ok"}, status=201)
+    return JsonResponse(
+        {
+            "id": mensaje.id,
+            "status": "ok",
+            "nombre_remitente": mensaje.nombre_remitente,
+            "texto": mensaje.texto,
+            "momento": mensaje.momento.isoformat(),
+        },
+        status=201,
+    )
 
 
 @require_GET
@@ -429,4 +443,4 @@ def obtener_mensajes(request, sesion_id):
         for m in qs
     ]
 
-    return JsonResponse({"mensajes": mensajes})
+    return JsonResponse({"mensajes": mensajes, "total": len(mensajes)})
