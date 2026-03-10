@@ -12,30 +12,35 @@
 {% url 'creacion:generar_ruta' as ia_url %}
 {% url 'creacion:creacion_manual' as manual_url %}
 
-<div class="route-selection-wrapper">
-    <section class="content" aria-labelledby="route-selection-title">
-        <h1 id="route-selection-title" class="section-title">Elige cómo crear tu ruta</h1>
-        <p class="section-subtitle">Selecciona la modalidad que mejor se adapte al grupo y al tiempo disponible.</p>
-        <p class="instruction">¿Cómo quieres diseñar esta experiencia?</p>
+<div style="max-width:1080px;margin:0 auto;">
+    <div class="creation-hero">
+        <h1 class="creation-hero-title">Elige cómo crear tu ruta</h1>
+        <p class="creation-hero-sub">
+            Selecciona la modalidad que mejor se adapte al grupo y al tiempo disponible.
+        </p>
+    </div>
 
-        <div class="options-container">
-            <a class="option-card option-manual" href="{{ manual_url }}">
-                <div class="icon-container">
-                    <span class="material-icons-round">edit_road</span>
-                </div>
-                <span class="card-title">Diseño manual</span>
-                <span class="card-desc">Crea un itinerario estandarizado punto por punto. Tú tienes el control total de la ruta.</span>
-            </a>
+    <div class="creation-options">
+        <a class="creation-card card-manual" href="{{ manual_url }}">
+            <div class="creation-icon">
+                <span class="material-icons-round" style="font-size:36px;">edit_road</span>
+            </div>
+            <span class="creation-card-title">Diseño manual</span>
+            <span class="creation-card-desc">
+                Crea un itinerario punto por punto. Tú tienes el control total de cada parada y detalle de la ruta.
+            </span>
+        </a>
 
-            <a class="option-card option-ai" href="{{ ia_url }}">
-                <div class="badge-recommended">Recomendado</div>
-                <div class="icon-container">
-                    <span class="material-icons-round">auto_awesome</span>
-                </div>
-                <span class="card-title">Generar con IA</span>
-                <span class="card-desc">Introduce los intereses de tu grupo y deja que AURA cree una ruta optimizada al instante.</span>
-            </a>
-        </div>
-    </section>
+        <a class="creation-card card-ai" href="{{ ia_url }}">
+            <span class="badge-recommended">Recomendado</span>
+            <div class="creation-icon">
+                <span class="material-icons-round" style="font-size:36px;">auto_awesome</span>
+            </div>
+            <span class="creation-card-title">Generar con IA</span>
+            <span class="creation-card-desc">
+                Introduce los intereses de tu grupo y deja que AURA genere una ruta optimizada al instante.
+            </span>
+        </a>
+    </div>
 </div>
 {% endblock %}

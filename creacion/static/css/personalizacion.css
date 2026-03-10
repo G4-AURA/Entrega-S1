@@ -1,0 +1,80 @@
+.personalizacion-wrapper {
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.gradient-card {
+    border: 0;
+    border-radius: 1rem;
+    background: linear-gradient(135deg, var(--brand-light) 0%, #f0f4ff 100%);
+}
+
+.form-label {
+    font-weight: 600;
+}
+
+.map-container-ruta {
+    height: 500px;
+    width: 100%;
+    border-radius: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.list-paradas-container {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 1080;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+
+.loading-overlay__card {
+    width: min(92vw, 420px);
+    border-radius: 1rem;
+}
+
+.loading-overlay__spinner {
+    width: 3.5rem;
+    height: 3.5rem;
+}
+
+.mood-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.mood-btn {
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 2rem;
+    background: var(--bg-white);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.95rem;
+    user-select: none;
+}
+
+.mood-btn:hover {
+    border-color: var(--brand-color);
+    color: var(--brand-color);
+}
+
+.mood-btn.active {
+    background: var(--brand-color);
+    color: white;
+    border-color: var(--brand-color);
+}
+
+.mood-btn input[type="checkbox"] {
+    display: none;
+}

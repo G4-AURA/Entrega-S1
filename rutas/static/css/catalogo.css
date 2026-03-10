@@ -1,0 +1,166 @@
+.catalog-header {
+    margin-bottom: 2rem;
+}
+
+.catalog-title {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.catalog-subtitle {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+#controls-row {
+    display: flex;
+    align-items: center;
+    gap: 3rem;
+    margin-bottom: 2rem;
+}
+
+.section-heading {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+.ruta-card {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-white);
+    transition: all 0.2s;
+    overflow: hidden;
+}
+
+.ruta-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    border-color: var(--brand-color);
+}
+
+.ruta-card-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.ruta-card-body {
+    padding: 1.25rem;
+}
+
+.ruta-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.ruta-description {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+}
+
+.ruta-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.info-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.badge-exigencia {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-exigencia-baja {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.badge-exigencia-media {
+    background: #fef08a;
+    color: #ca8a04;
+}
+
+.badge-exigencia-alta {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.mood-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.mood-tag {
+    display: inline-block;
+    padding: 0.3rem 0.65rem;
+    border-radius: 4px;
+    background: var(--brand-light);
+    color: var(--brand-color);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-ia {
+    display: inline-block;
+    background: #dbeafe;
+    color: #0284c7;
+    padding: 0.3rem 0.7rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.guia-info {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+
+.ruta-card-actions {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+.btn-delete-route {
+    background: var(--danger-light);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 12px 0 0 0;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-delete-route:hover {
+    background: var(--danger);
+    color: white;
+}

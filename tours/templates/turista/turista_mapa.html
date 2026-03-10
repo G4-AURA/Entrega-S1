@@ -4,16 +4,7 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<style>
-    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-
-    @keyframes pulse {
-        0%   { transform: scale(1);   opacity: .25; }
-        70%  { transform: scale(2.4); opacity: 0;   }
-        100% { transform: scale(1);   opacity: 0;   }
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -52,30 +43,34 @@
     <div class="panel-content">
 
         <div class="tab-content active" id="tab-itinerario">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between align-items-center mb-1 mt-2">
                 {% if sesion.estado == 'en_curso' %}
-                <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2 fw-bold text-uppercase"
-                      style="font-size:.65rem;letter-spacing:.5px;">
-                    <span class="material-icons-round" style="font-size:12px;vertical-align:middle;">fiber_manual_record</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;background:var(--success-light);color:#065F46;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                    <span class="material-icons-round" style="font-size:10px;">fiber_manual_record</span>
                     En Curso
                 </span>
                 {% elif sesion.estado == 'pendiente' %}
-                <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill px-3 py-2 fw-bold text-uppercase"
-                      style="font-size:.65rem;">Pendiente</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;background:var(--warning-light);color:#92400E;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                    Pendiente
+                </span>
                 {% else %}
-                <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 fw-bold text-uppercase"
-                      style="font-size:.65rem;">Finalizado</span>
+                <span style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                    Finalizado
+                </span>
                 {% endif %}
-                <span class="text-muted small">{{ sesion.ruta.titulo }}</span>
+                <span style="color:var(--text-muted);font-size:.8rem;font-weight:500;">{{ sesion.ruta.titulo }}</span>
             </div>
 
-            <div class="timeline mt-3">
+            <div class="timeline">
                 {% for parada in paradas %}
                 <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
-                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">
+                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
+                        style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
                         {{ parada.nombre }}
                     </h6>
-                    <p class="text-muted small mb-0">Parada {{ parada.orden }} del recorrido</p>
+                    <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
+                        Parada {{ parada.orden }} del recorrido
+                    </p>
                 </div>
                 {% endfor %}
             </div>
@@ -104,8 +99,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script id="paradas-data"       type="application/json">{{ paradas_json|safe }}</script>
-{# json_script escapa el contenido correctamente, previniendo XSS #}
+<script id="paradas-data" type="application/json">{{ paradas_json|safe }}</script>
 {{ geometria_ruta_json|json_script:"geometria-ruta-data" }}
 
 <script>
