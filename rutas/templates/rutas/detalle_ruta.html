@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
-{% load l10n %}
+{% load l10n static %}
 
 {% block title %}AURA - Detalle de Ruta{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/pages/route_detail.css' %}">
 <style>
     .map-container-ruta {
         height: 500px;
@@ -472,7 +473,7 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-end mt-4">
+    <div class="recalc-cta mt-4">
         <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper"
                 {% if paradas|length < 2 %}disabled{% endif %}>
             🔄 Calcular ruta
@@ -485,6 +486,7 @@
 {% block extra_js %}
 {{ paradas_json|json_script:"paradas-json" }}
 {{ geometria_ruta_json|json_script:"geometria-ruta-json" }}
+<script src="{% static 'js/pages/route_detail.js' %}"></script>
 
 <script>
 /**
@@ -601,7 +603,14 @@ function actualizarPanelMetricas(data) {
 async function recalcularRutaAjax() {
     const btn = document.getElementById('btn-recalcular');
     let huboError = false;
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+    if (btn) {
+        if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
+            window.RouteDetailUI.setRecalcularButtonLoading(btn, true, false);
+        } else {
+            btn.disabled = true;
+            btn.textContent = '⏳ Calculando...';
+        }
+    }
     setBadge('warn', '⏳ Calculando...');
 
     try {
@@ -634,8 +643,12 @@ async function recalcularRutaAjax() {
         return null;
     } finally {
         if (btn) {
-            btn.disabled = false;
-            btn.textContent = huboError ? '🔄 Reintentar' : '🔄 Calcular ruta';
+            if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
+                window.RouteDetailUI.setRecalcularButtonLoading(btn, false, huboError);
+            } else {
+                btn.disabled = false;
+                btn.textContent = huboError ? '🔄 Reintentar' : '🔄 Calcular ruta';
+            }
         }
     }
 }
