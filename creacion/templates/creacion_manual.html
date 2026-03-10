@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'css/creacion/creacion_manual.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/route_manual.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -145,5 +145,15 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/creacion/creacion_manual.js' %}"></script>
+<script id="creacion-manual-config" type="application/json">
+{
+    "csrfToken": "{{ csrf_token }}",
+    "urls": {
+        "guardarManual": "{% url 'creacion:guardar_ruta_manual' %}",
+        "volver": "{% url 'creacion:seleccion_tipo_ruta' %}",
+        "catalogo": "{% url 'catalogo' %}"
+    }
+}
+</script>
+<script src="{% static 'js/pages/route_manual.js' %}"></script>
 {% endblock %}
