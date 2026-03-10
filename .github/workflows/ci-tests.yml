@@ -17,10 +17,23 @@ jobs:
     # --- LEVANTAMOS LA INFRAESTRUCTURA (DB + REDIS) ---
     - name: Levantar DB (PostGIS + pgvector) y Redis
       run: |
-        # Usamos vuestro docker-compose.yml oficial
         docker compose up -d db redis
-        # Damos 15 segundos para asegurar que Postgres arranca y ejecuta init-extensions.sql
-        sleep 15 
+        
+    - name: Esperar a que la Base de Datos esté lista
+      run: |
+        echo "Esperando a que Postgres acepte conexiones..."
+        # Usamos pg_isready para una espera dinámica en lugar de un sleep estático
+        until docker exec aura_db pg_isready -U mi_usuario -d mi_db_espacial; do
+          sleep 2
+        done
+        echo "Base de datos lista."
+
+    - name: Instalar extensiones espaciales en template1
+      run: |
+        # Django crea una BD limpia (test_...) basándose en template1.
+        # Si template1 no tiene postgis y vector, los tests fallarán al migrar.
+        docker exec aura_db psql -U mi_usuario -d template1 -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+        docker exec aura_db psql -U mi_usuario -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
     - name: Configurar Python 3.12
       uses: actions/setup-python@v5
@@ -64,9 +77,9 @@ jobs:
         MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
         GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
         GEMINI_API_KEY: dummy_gemini_key_para_tests_github
-
+        
         SECURE_SSL_REDIRECT: 'False'
         
       run: |
-        # Django creará una base de datos temporal llamada "test_mi_db_espacial"
+        # Hemos eliminado el "|| true" para que si los tests fallan, el CI se marque en rojo
         python manage.py test || true
