@@ -156,3 +156,47 @@ class GenerarCandidatosParadasIATests(TestCase):
     def test_falla_con_cantidad_fuera_de_rango(self):
         with self.assertRaisesMessage(services.ErrorValidacionRuta, 'La cantidad de sugerencias debe estar entre 1 y 10.'):
             services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=0)
+
+    def test_filtra_candidatos_fuera_del_contexto_geografico(self):
+        mocked = [
+            {
+                'nombre': 'Puerta del Sol',
+                'coordenadas': [40.4168, -3.7038],  # Madrid
+                'categoria': 'historia',
+                'nivel_confianza': 0.9,
+                'justificacion': 'Centro turístico muy visitado.',
+            },
+            {
+                'nombre': 'Real Alcázar',
+                'coordenadas': [37.3838, -5.9902],  # Sevilla
+                'categoria': 'historia',
+                'nivel_confianza': 0.95,
+                'justificacion': 'Muy cerca del eje histórico actual.',
+            },
+        ]
+        with self.settings(GEMINI_API_KEY='test-key'):
+            from unittest.mock import patch
+            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=2)
+
+        self.assertEqual(len(resultado['candidatos']), 1)
+        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Real Alcázar')
+
+    def test_falla_si_todos_los_candidatos_estan_fuera_del_contexto_geografico(self):
+        mocked = [
+            {
+                'nombre': 'Puerta del Sol',
+                'coordenadas': [40.4168, -3.7038],  # Madrid
+                'categoria': 'historia',
+                'nivel_confianza': 0.9,
+                'justificacion': 'Centro turístico muy visitado.',
+            }
+        ]
+        with self.settings(GEMINI_API_KEY='test-key'):
+            from unittest.mock import patch
+            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                with self.assertRaisesMessage(
+                    services.ErrorIntegracionIA,
+                    'La IA no devolvió candidatos geográficamente válidos para esta ruta.',
+                ):
+                    services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)

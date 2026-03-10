@@ -600,6 +600,7 @@ function actualizarPanelMetricas(data) {
 // ── Recálculo AJAX (S2.1-32) ──────────────────────────────────────────────
 async function recalcularRutaAjax() {
     const btn = document.getElementById('btn-recalcular');
+    let huboError = false;
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
     setBadge('warn', '⏳ Calculando...');
 
@@ -613,7 +614,7 @@ async function recalcularRutaAjax() {
             const errText = await resp.text().catch(() => '');
             console.error('[AURA] Recálculo HTTP', resp.status, errText);
             setBadge('error', `❌ Error ${resp.status} al calcular`);
-            if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar'; }
+            huboError = true;
             return null;
         }
 
@@ -629,8 +630,13 @@ async function recalcularRutaAjax() {
     } catch (err) {
         console.error('[AURA] Error de red al recalcular:', err);
         setBadge('error', '❌ Sin conexión al servidor');
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar'; }
+        huboError = true;
         return null;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = huboError ? '🔄 Reintentar' : '🔄 Calcular ruta';
+        }
     }
 }
 

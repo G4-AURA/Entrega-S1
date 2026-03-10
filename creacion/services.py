@@ -316,6 +316,43 @@ def _normalizar_candidato_parada(candidato, idx):
     }
 
 
+def _distancia_haversine_km(coord_a, coord_b):
+    lat1, lon1 = coord_a
+    lat2, lon2 = coord_b
+    radio_tierra_km = 6371.0
+
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radio_tierra_km * c
+
+
+def _calcular_contexto_geografico(paradas_existentes):
+    coords = [p['coordenadas'] for p in paradas_existentes if isinstance(p.get('coordenadas'), list)]
+    if not coords:
+        return {'centro': [0.0, 0.0], 'radio_km': 8.0}
+
+    centro_lat = sum(c[0] for c in coords) / len(coords)
+    centro_lon = sum(c[1] for c in coords) / len(coords)
+    centro = [centro_lat, centro_lon]
+
+    radio_actual_km = max(_distancia_haversine_km(centro, c) for c in coords)
+    radio_permitido_km = min(30.0, max(8.0, radio_actual_km + 10.0))
+
+    return {'centro': centro, 'radio_km': radio_permitido_km}
+
+
+def _esta_en_contexto_geografico(coordenadas, contexto_geo):
+    return _distancia_haversine_km(coordenadas, contexto_geo['centro']) <= contexto_geo['radio_km']
+
+
 def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     if cantidad < 1 or cantidad > 10:
         raise ErrorValidacionRuta('La cantidad de sugerencias debe estar entre 1 y 10.')
@@ -331,6 +368,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     if not paradas_existentes:
         raise ErrorValidacionRuta('La ruta no tiene paradas actuales para aportar contexto a la IA.')
 
+    contexto_geo = _calcular_contexto_geografico(paradas_existentes)
     ciudad_contexto = str(ruta.titulo or '').split(' ')[0] or 'Sin ciudad'
     preferencias = {
         'duracion_horas': float(ruta.duracion_horas),
@@ -350,11 +388,14 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
         - Temática(s): {', '.join(ruta.mood)}
         - Preferencias: {json.dumps(preferencias, ensure_ascii=False)}
         - Paradas existentes: {json.dumps(paradas_existentes, ensure_ascii=False)}
+        - Centro geográfico aproximado de la ruta: {json.dumps(contexto_geo['centro'], ensure_ascii=False)}
+        - Distancia máxima permitida desde el centro: {round(contexto_geo['radio_km'], 2)} km
 
         ## Criterios
         - Evita sugerir puntos duplicados respecto a las paradas existentes.
         - Mantén coherencia temática con la ruta.
         - Propón coordenadas plausibles dentro de la ciudad indicada.
+        - REGLA ESTRICTA: NO propongas paradas fuera del área geográfica de la ruta.
 
         Responde únicamente JSON válido (sin texto adicional) como lista de objetos con esta estructura:
         [
@@ -379,11 +420,13 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     candidatos = []
     for idx, candidato in enumerate(respuesta_ia, start=1):
         normalizado = _normalizar_candidato_parada(candidato, idx)
-        if normalizado:
+        if normalizado and _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
             candidatos.append(normalizado)
 
     if not candidatos:
-        raise ErrorIntegracionIA('La IA no devolvió candidatos de paradas válidos.')
+        raise ErrorIntegracionIA(
+            'La IA no devolvió candidatos geográficamente válidos para esta ruta.'
+        )
 
     return {
         'ruta_id': ruta.id,
