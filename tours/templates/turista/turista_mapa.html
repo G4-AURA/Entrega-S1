@@ -4,18 +4,7 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<style>
-    /* Hide navbar and reset layout for full-screen map */
-    .aura-navbar { display: none !important; }
-    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-    main.container { max-width: none !important; padding: 0 !important; margin: 0 !important; }
-
-    @keyframes pulse {
-        0%   { transform: scale(1);   opacity: .25; }
-        70%  { transform: scale(2.4); opacity: 0;   }
-        100% { transform: scale(1);   opacity: 0;   }
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}">
 {% endblock %}
 
 {% block content %}

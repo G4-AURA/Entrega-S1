@@ -4,10 +4,7 @@
 {% block title %}AURA - Iniciar sesión{% endblock %}
 
 {% block extra_css %}
-<style>
-    .auth-page-wrapper { padding-top: 3rem; padding-bottom: 3rem; }
-    .form-control { width: 100%; display: block; }
-</style>
+<link rel="stylesheet" href="{% static 'css/auth.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -117,35 +114,8 @@
     </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll('.auth-card input:not([type="hidden"])').forEach(function (el) {
-        el.classList.add('form-control');
-    });
+{% endblock %}
 
-    const btnIrTour   = document.getElementById('btn-ir-tour');
-    const codigoInput = document.getElementById('codigo-input');
-    const mensajeDiv  = document.getElementById('mensaje-codigo');
-
-    function mostrarError(msg) {
-        mensajeDiv.textContent = msg;
-        mensajeDiv.classList.remove('d-none');
-    }
-
-    function irAlTour() {
-        const codigo = codigoInput.value.trim().toUpperCase();
-        mensajeDiv.classList.add('d-none');
-        if (!codigo) { mostrarError('Por favor, introduce un código válido.'); return; }
-        window.location.href = `/tours/live/code/${codigo}/`;
-    }
-
-    btnIrTour.addEventListener('click', irAlTour);
-    codigoInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); irAlTour(); }
-    });
-    codigoInput.addEventListener('input', function () {
-        mensajeDiv.classList.add('d-none');
-    });
-});
-</script>
+{% block extra_js %}
+<script src="{% static 'js/auth.js' %}"></script>
 {% endblock %}

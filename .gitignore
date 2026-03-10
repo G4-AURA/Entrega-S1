@@ -26,3 +26,5 @@ celerybeat.pid
 CLAUDE.md
 
 .claude/
+
+AGENT_INSTRUCTIONS.md

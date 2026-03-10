@@ -4,11 +4,7 @@
 {% block title %}AURA - Registro de guía{% endblock %}
 
 {% block extra_css %}
-<style>
-    .auth-page-wrapper { padding-top: 3rem; padding-bottom: 3rem; }
-    .auth-card { max-width: 480px; }
-    .form-control, .form-select { width: 100%; display: block; }
-</style>
+<link rel="stylesheet" href="{% static 'css/auth.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -48,11 +44,8 @@
     </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll('.django-form input:not([type="hidden"]), .django-form select').forEach(function (el) {
-        el.classList.add('form-control');
-    });
-});
-</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/auth.js' %}"></script>
 {% endblock %}

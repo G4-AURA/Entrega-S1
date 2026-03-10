@@ -72,7 +72,7 @@ h1, h2, h3, h4, h5, h6 {
     position: sticky;
     top: 0;
     z-index: 1030;
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--shadow-sm);
 }
 
 .aura-navbar .navbar-brand {
@@ -103,8 +103,8 @@ h1, h2, h3, h4, h5, h6 {
     .aura-navbar .navbar-collapse {
         background: var(--bg-surface);
         padding: 1rem;
-        margin-top: 0.5rem;
-        border-radius: calc(var(--radius) / 1.2);
+        margin: 0.5rem 1rem 1rem 1rem;
+        border-radius: var(--radius-md);
         box-shadow: var(--shadow-md);
     }
     .aura-navbar .navbar-nav {
