@@ -1,6 +1,12 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}AURA - Crear ruta{% endblock %}
+{% block title %}AURA - Seleccionar tipo de ruta{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/pages/route_selection.css' %}">
+{% endblock %}
 
 {% block content %}
 {% url 'creacion:generar_ruta' as ia_url %}

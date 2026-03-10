@@ -5,8 +5,8 @@
 {% block title %}AURA - Personalización de Ruta{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/personalizacion.css' %}">
-<meta name="mapbox-token" content="{{ MAPBOX_ACCESS_TOKEN|default:'' }}">
+<link rel="stylesheet" href="{% static 'css/pages/route_personalization.css' %}">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -136,5 +136,15 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/personalizacion.js' %}"></script>
+<script src="{% static 'js/pages/route_map.js' %}"></script>
+<script id="personalizacion-config" type="application/json">
+{
+    "csrfToken": "{{ csrf_token }}",
+    "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN }}",
+    "urls": {
+        "generar": "{% url 'creacion:generar_ruta_ia' %}"
+    }
+}
+</script>
+<script src="{% static 'js/pages/route_personalization.js' %}"></script>
 {% endblock %}
