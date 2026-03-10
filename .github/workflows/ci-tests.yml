@@ -69,4 +69,4 @@ jobs:
         
       run: |
         # Django creará una base de datos temporal llamada "test_mi_db_espacial"
-        python manage.py test || true
+        python manage.py test
