@@ -154,3 +154,42 @@ class Parada(models.Model):
         if self.duracion_siguiente_s is None:
             return None
         return round(self.duracion_siguiente_s / 60)
+    
+# ================================================
+# S2.2-35: Modelo de Curiosidades (IA)
+# ================================================
+
+class Curiosidad(models.Model):
+    class TipoCuriosidad(models.TextChoices):
+        HISTORIA      = 'Historia',      'Historia'
+        ARQUITECTURA  = 'Arquitectura',  'Arquitectura'
+        PERSONAJE     = 'Personaje',     'Personaje'
+        EVENTO        = 'Evento',        'Evento'
+        DATO_CURIOSO  = 'Dato Curioso',  'Dato Curioso'
+
+    # Relación 1 a 1: Una parada, una curiosidad.
+    parada = models.OneToOneField(
+        'Parada', 
+        on_delete=models.CASCADE, 
+        related_name='curiosidad'
+    )
+    
+    ciudad = models.CharField(max_length=100)
+    titulo = models.CharField(max_length=255)
+    texto  = models.TextField()
+    
+    tipo = models.CharField(
+        max_length=25,
+        choices=TipoCuriosidad.choices,
+        default=TipoCuriosidad.DATO_CURIOSO
+    )
+    
+    imagen_url = models.URLField(max_length=500, null=True, blank=True)
+    fecha_generacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Curiosidad"
+        verbose_name_plural = "Curiosidades"
+
+    def __str__(self):
+        return f"{self.titulo} ({self.parada.nombre})"
