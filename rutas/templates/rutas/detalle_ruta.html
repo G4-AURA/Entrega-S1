@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
-{% load l10n %}
+{% load l10n static %}
 
 {% block title %}AURA - Detalle de Ruta{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/pages/route_detail.css' %}">
 <style>
     .map-container-ruta {
         height: 500px;
@@ -29,11 +30,7 @@
         margin-bottom: 0.5rem;
     }
 
-    .mood-edit-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
+    .mood-edit-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
     .mood-edit-item {
         border: 1px solid #dee2e6;
@@ -42,15 +39,10 @@
         background: #fff;
     }
 
-    .titulo-edit-wrap {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
+    .titulo-edit-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 
     .btn-edit {
-        border: 1px solid #dee2e6;
+        border: 1px solid #c7d2fe;
         background: #fff;
         border-radius: 999px;
         display: inline-flex;
@@ -61,30 +53,14 @@
         line-height: 1;
         padding: 0.35rem 0.75rem;
         color: #4338ca;
-        border-color: #c7d2fe;
+        cursor: pointer;
     }
 
-    .btn-edit:hover {
-        background: #eef2ff;
-        color: #3730a3;
-    }
+    .btn-edit:hover { background: #eef2ff; color: #3730a3; }
 
-    .meta-edit-wrap {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-
-    .parada-actions {
-        display: flex;
-        gap: 0.5rem;
-        margin-top: 0.5rem;
-    }
-
-    .parada-edit-form {
-        margin-top: 0.75rem;
-    }
+    .meta-edit-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .parada-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .parada-edit-form { margin-top: 0.75rem; }
 
     .add-stop-form {
         border: 1px dashed #cbd5e1;
@@ -94,165 +70,269 @@
         background: #f8fafc;
     }
 
-    .map-edit-hint {
+    .map-edit-hint { font-size: 0.875rem; }
+
+    .parada-item { border-radius: 8px; transition: background 0.15s; }
+    .parada-item.drag-over { background: #eef2ff; }
+    .drag-handle { cursor: grab; color: #9ca3af; font-size: 0.85rem; }
+    .parada-coords-preview { font-size: 0.8rem; color: #6b7280; margin-top: 0.25rem; }
+
+    /* ── Panel métricas (S2.1-29) ──────────────────────────────────────── */
+    .ruta-metrics-panel {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 0.6rem 1rem;
+        background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%);
+        border: 1px solid #c7d2fe;
+        border-radius: 12px;
+        margin-bottom: 1rem;
         font-size: 0.875rem;
     }
 
-    .parada-item {
-        cursor: default;
+    .metric-item { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; color: #3730a3; }
+    .metric-value { color: #1e1b4b; }
+    .metric-sep { color: #c7d2fe; font-weight: 300; font-size: 1.1rem; }
+    .metrics-empty { color: #6b7280; font-size: 0.82rem; font-style: italic; }
+
+    /* Botón de recálculo */
+    .btn-recalcular {
+        margin-left: auto;
+        border: 1px solid #6366f1;
+        background: #fff;
+        color: #4f46e5;
+        border-radius: 999px;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        transition: background 0.15s;
     }
+
+    .btn-recalcular:hover { background: #eef2ff; }
+    .btn-recalcular:disabled { opacity: 0.6; cursor: wait; }
+
+    /* Badge de estado en el mapa */
+    .map-route-status {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        background: rgba(255,255,255,0.92);
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.35rem 0.7rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        pointer-events: none;
+    }
+
+    .map-route-status.ok    { color: #059669; border-color: #a7f3d0; background: rgba(240,253,250,0.95); }
+    .map-route-status.warn  { color: #d97706; border-color: #fcd34d; background: rgba(255,251,235,0.95); }
+    .map-route-status.error { color: #dc2626; border-color: #fca5a5; background: rgba(254,242,242,0.95); }
+
+    .map-wrapper { position: relative; }
+
+    .segmento-badge { font-size: 0.75rem; color: #6b7280; margin-top: 0.2rem; }
 
     .reorder-active .parada-item {
         cursor: grab;
-        border-left-width: 6px !important;
+        border: 1px dashed #6366f1 !important;
     }
 
-    .reorder-active .parada-actions,
-    .reorder-active .parada-edit-form {
-        display: none !important;
+    .ia-suggestions-panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
     }
 
-    .drag-handle {
+    .ia-suggestion-item {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+        padding: 0.6rem;
+        margin-top: 0.5rem;
+    }
+
+    .ia-suggestion-meta {
+        font-size: 0.8rem;
         color: #6b7280;
-        font-size: 0.9rem;
-        user-select: none;
     }
 
-    .parada-item.drag-over {
-        outline: 2px dashed #6366f1;
-        background: #eef2ff;
+    .ia-suggestions-inline {
+        margin-top: 0.75rem;
+    }
+
+    .ia-suggestion-item__actions {
+        margin-top: 0.5rem;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<section class="py-2 py-md-4">
-    <div class="mb-4">
-        <a href="{% url 'catalogo' %}" class="btn btn-outline-secondary btn-sm mb-3">← Volver al catálogo</a>
 
-        <div class="titulo-edit-wrap mb-2">
-            <h2 class="h3 mb-0">{{ ruta.titulo }}</h2>
-            <button type="button" class="btn-edit" id="btn-editar-titulo" title="Editar título" aria-label="Editar título">Editar</button>
+{% block content %}
+<section class="container py-4">
+
+    {# ── Cabecera ─────────────────────────────────────────────────────────── #}
+    <div class="mb-3">
+        {% if title_updated %}<div class="alert alert-success py-2 mb-2">Título actualizado.</div>{% endif %}
+        {% if title_error %}<div class="alert alert-danger py-2 mb-2">El título no puede estar vacío.</div>{% endif %}
+
+        <div class="titulo-edit-wrap mb-1">
+            <h1 class="h4 mb-0">{{ ruta.titulo }}</h1>
+            <button type="button" class="btn-edit" id="btn-editar-titulo">Editar</button>
         </div>
+        <p class="text-muted small mb-0">{{ ruta.descripcion }}</p>
 
-        <form method="post" id="form-editar-titulo" class="row g-2 mb-2 d-none">
+        <form method="post" id="form-editar-titulo" class="d-none mt-2">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="title">
-            <div class="col-12 col-md-8">
-                <input type="text" name="titulo" class="form-control" value="{{ ruta.titulo }}" maxlength="255" required>
+            <div class="mb-2">
+                <input type="text" name="titulo" class="form-control"
+                       value="{{ ruta.titulo }}" required>
             </div>
-            <div class="col-12">
-                <textarea name="descripcion" class="form-control" rows="3" placeholder="Descripción de la ruta...">{{ ruta.descripcion }}</textarea>
+            <div class="mb-2">
+                <textarea name="descripcion" class="form-control" rows="2"
+                          placeholder="Descripción (opcional)">{{ ruta.descripcion }}</textarea>
             </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">Guardar cambios</button>
-            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
         </form>
+    </div>
 
-        {% if title_updated %}
-        <div class="alert alert-success py-2 mt-2 mb-2">Título actualizado correctamente.</div>
+    {# ── Panel métricas (S2.1-29) ─────────────────────────────────────────── #}
+    <div id="panel-metricas" class="ruta-metrics-panel">
+        {% if distancia_total_km and duracion_total_min %}
+            <span class="metric-item">
+                📍 Distancia: <span class="metric-value" id="val-distancia">{{ distancia_total_km }} km</span>
+            </span>
+            <span class="metric-sep">|</span>
+            <span class="metric-item">
+                ⏱️ Tiempo: <span class="metric-value" id="val-duracion">{{ duracion_total_min }} min</span>
+            </span>
+            <span class="metric-sep">|</span>
+            <span class="metric-item">
+                🚶 <span class="metric-value">{{ paradas|length }} paradas</span>
+            </span>
+        {% else %}
+            <span class="metrics-empty" id="metrics-placeholder">
+                ℹ️ Ruta sin calcular. Usa el botón para obtener distancia y tiempo real.
+            </span>
         {% endif %}
-        {% if title_error %}
-        <div class="alert alert-danger py-2 mt-2 mb-2">El título no puede estar vacío.</div>
-        {% endif %}
+    </div>
 
-        <p class="text-muted mb-3">{{ ruta.descripcion|default:'Sin descripción disponible' }}</p>
-
-        <div class="meta-edit-wrap mb-2">
-            <span class="meta-pill">{{ ruta.duracion_horas }}h</span>
-            <span class="meta-pill">{{ ruta.num_personas }} personas</span>
-            <span class="meta-pill">Exigencia {{ ruta.nivel_exigencia }}</span>
-            {% if ruta.es_generada_ia %}
-            <span class="meta-pill">Ruta generada por IA</span>
-            {% endif %}
-            <button type="button" class="btn-edit" id="btn-editar-meta" title="Editar datos" aria-label="Editar datos">Editar</button>
-        </div>
-
-        <form method="post" id="form-editar-meta" class="row g-2 mb-2 d-none">
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="meta">
-
-            <div class="col-12 col-md-3">
-                <input type="number" step="0.1" min="0.1" name="duracion_horas" class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
+    {# ── Meta ─────────────────────────────────────────────────────────────── #}
+    <div class="card shadow-sm border-0 mb-3">
+        <div class="card-body">
+            <div class="meta-edit-wrap mb-2">
+                <span class="meta-pill">{{ ruta.duracion_horas }}h</span>
+                <span class="meta-pill">{{ ruta.num_personas }} personas</span>
+                <span class="meta-pill">Exigencia {{ ruta.nivel_exigencia }}</span>
+                {% if ruta.es_generada_ia %}<span class="meta-pill">Ruta IA</span>{% endif %}
+                <button type="button" class="btn-edit" id="btn-editar-meta">Editar</button>
             </div>
-            <div class="col-12 col-md-3">
-                <input type="number" min="1" name="num_personas" class="form-control" value="{{ ruta.num_personas }}" required>
-            </div>
-            <div class="col-12 col-md-3">
-                <select name="nivel_exigencia" class="form-select" required>
-                    {% for value, label in exigencia_choices %}
-                    <option value="{{ value }}" {% if value == ruta.nivel_exigencia %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">Guardar datos</button>
-            </div>
-        </form>
 
-        {% if meta_updated %}
-        <div class="alert alert-success py-2 mt-2 mb-2">Datos de la ruta actualizados correctamente.</div>
-        {% endif %}
-        {% if meta_error %}
-        <div class="alert alert-danger py-2 mt-2 mb-2">Revisa los valores de duración, personas y exigencia.</div>
-        {% endif %}
-
-        {% if mood_updated %}
-        <div class="alert alert-success py-2 mt-3 mb-0">Etiquetas actualizadas correctamente.</div>
-        {% endif %}
-
-        <div class="card shadow-sm border-0 mt-3">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-3">
-                    <h5 class="h6 mb-0">Etiquetas de la ruta</h5>
-                    <button type="button" class="btn-edit" id="btn-editar-etiquetas" title="Editar etiquetas" aria-label="Editar etiquetas">Editar</button>
+            <form method="post" id="form-editar-meta" class="row g-2 mb-2 d-none">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="meta">
+                <div class="col-12 col-md-3">
+                    <input type="number" step="0.1" min="0.1" name="duracion_horas"
+                           class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
                 </div>
-
-                <div id="etiquetas-lectura" class="mb-3">
-                    {% if ruta.mood %}
-                        {% for mood in ruta.mood %}
-                        <span class="badge text-bg-light border me-1">{{ mood }}</span>
-                        {% endfor %}
-                    {% else %}
-                        <span class="text-muted small">Sin etiquetas</span>
-                    {% endif %}
+                <div class="col-12 col-md-3">
+                    <input type="number" min="1" name="num_personas"
+                           class="form-control" value="{{ ruta.num_personas }}" required>
                 </div>
-
-                <form method="post" id="form-editar-etiquetas" class="d-none">
-                    {% csrf_token %}
-                    <input type="hidden" name="form_type" value="mood">
-                    <div class="mood-edit-grid mb-3">
-                        {% for value, label in mood_choices %}
-                        <label class="mood-edit-item">
-                            <input type="checkbox" name="mood" value="{{ value }}" {% if value in ruta.mood %}checked{% endif %}>
-                            <span>{{ label }}</span>
-                        </label>
+                <div class="col-12 col-md-3">
+                    <select name="nivel_exigencia" class="form-select" required>
+                        {% for value, label in exigencia_choices %}
+                        <option value="{{ value }}"
+                                {% if value == ruta.nivel_exigencia %}selected{% endif %}>
+                            {{ label }}
+                        </option>
                         {% endfor %}
-                    </div>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+                </div>
+            </form>
 
-                    <button type="submit" class="btn btn-primary btn-sm">Guardar etiquetas</button>
-                </form>
-            </div>
+            {% if meta_updated %}<div class="alert alert-success py-2 mt-2 mb-0">Datos actualizados.</div>{% endif %}
+            {% if meta_error %}<div class="alert alert-danger py-2 mt-2 mb-0">Revisa los valores.</div>{% endif %}
         </div>
     </div>
 
-    <div class="row">
+    {# ── Etiquetas mood ────────────────────────────────────────────────── #}
+    {% if mood_updated %}
+    <div class="alert alert-success py-2 mt-3 mb-0">Etiquetas actualizadas.</div>
+    {% endif %}
+
+    <div class="card shadow-sm border-0 mt-3">
+        <div class="card-body">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <h5 class="h6 mb-0">Etiquetas</h5>
+                <button type="button" class="btn-edit" id="btn-editar-etiquetas">Editar</button>
+            </div>
+            <div id="etiquetas-lectura" class="mb-3">
+                {% if ruta.mood %}
+                    {% for mood in ruta.mood %}<span class="badge text-bg-light border me-1">{{ mood }}</span>{% endfor %}
+                {% else %}
+                    <span class="text-muted small">Sin etiquetas</span>
+                {% endif %}
+            </div>
+            <form method="post" id="form-editar-etiquetas" class="d-none">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="mood">
+                <div class="mood-edit-grid mb-3">
+                    {% for value, label in mood_choices %}
+                    <label class="mood-edit-item">
+                        <input type="checkbox" name="mood" value="{{ value }}"
+                               {% if value in ruta.mood %}checked{% endif %}>
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Guardar etiquetas</button>
+            </form>
+        </div>
+    </div>
+
+    {# ── Mapa + Paradas ───────────────────────────────────────────────────── #}
+    <div class="row mt-3">
+
+        {# Mapa (S2.1-31) #}
         <div class="col-12 col-lg-8 mb-3 mb-lg-0">
             <div id="map-edit-hint" class="alert alert-info py-2 map-edit-hint d-none">
-                Selecciona una parada para editar y haz clic en el mapa para elegir su nueva ubicación.
+                Haz clic en el mapa para seleccionar la ubicación.
             </div>
             <div class="card shadow-sm border-0">
                 <div class="card-body p-0">
-                    <div id="mapa-ruta" class="map-container-ruta"></div>
+                    <div class="map-wrapper">
+                        <div id="mapa-ruta" class="map-container-ruta"></div>
+                    </div>
                 </div>
             </div>
         </div>
 
+        {# Panel de paradas #}
         <div class="col-12 col-lg-4">
-            <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
+            <h4 class="h5 mb-3">Itinerario</h4>
+
             <div class="d-flex gap-2 mb-2">
-                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-agregar-parada">Agregar parada</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-reordenar-paradas">Editar orden</button>
+                <button type="button" class="btn btn-outline-primary btn-sm"
+                        id="btn-agregar-parada">Agregar parada</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        id="btn-reordenar-paradas">Editar orden</button>
             </div>
 
             <form method="post" id="form-reordenar-paradas" class="d-none mb-2">
@@ -261,400 +341,630 @@
                 <input type="hidden" name="stop_order" id="stop-order-input">
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary btn-sm">Guardar orden</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-cancelar-reorden">Cancelar</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            id="btn-cancelar-reorden">Cancelar</button>
                 </div>
             </form>
 
             <form method="post" class="add-stop-form d-none" id="form-agregar-parada">
                 {% csrf_token %}
                 <input type="hidden" name="form_type" value="stop_add">
-
                 <div class="mb-2">
-                    <label class="form-label small mb-1">Nombre de la parada</label>
-                    <input type="text" name="nombre" class="form-control form-control-sm" placeholder="Ej: Plaza Nueva" required>
+                    <label class="form-label small mb-1">Nombre</label>
+                    <input type="text" name="nombre" class="form-control form-control-sm"
+                           placeholder="Ej: Plaza Nueva" required>
                 </div>
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label small mb-1">Latitud</label>
-                        <input type="number" step="any" name="lat" class="form-control form-control-sm" required>
+                        <input type="number" step="any" name="lat"
+                               class="form-control form-control-sm" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1">Longitud</label>
-                        <input type="number" step="any" name="lon" class="form-control form-control-sm" required>
+                        <input type="number" step="any" name="lon"
+                               class="form-control form-control-sm" required>
                     </div>
                 </div>
-                <div class="small text-muted mt-2 parada-coords-preview" id="add-stop-coords-preview">Haz clic en el mapa para seleccionar ubicación.</div>
-                <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar nueva parada</button>
+                <div class="parada-coords-preview" id="add-stop-preview">
+                    Haz clic en el mapa para seleccionar.
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar</button>
             </form>
 
-            {% if stop_added %}
-            <div class="alert alert-success py-2">Parada añadida correctamente.</div>
-            {% endif %}
-            {% if stop_reordered %}
-            <div class="alert alert-success py-2">Orden de paradas actualizado correctamente.</div>
-            {% endif %}
-            {% if stop_updated %}
-            <div class="alert alert-success py-2">Parada actualizada correctamente.</div>
-            {% endif %}
-            {% if stop_deleted %}
-            <div class="alert alert-success py-2">Parada eliminada correctamente.</div>
-            {% endif %}
-            {% if stop_error %}
-            <div class="alert alert-danger py-2">No se pudo actualizar la parada. Revisa nombre y coordenadas.</div>
-            {% endif %}
+            {% if stop_added %}<div class="alert alert-success py-2">Parada añadida.</div>{% endif %}
+            {% if stop_reordered %}<div class="alert alert-success py-2">Orden actualizado.</div>{% endif %}
+            {% if stop_updated %}<div class="alert alert-success py-2">Parada actualizada.</div>{% endif %}
+            {% if stop_deleted %}<div class="alert alert-success py-2">Parada eliminada.</div>{% endif %}
+            {% if stop_error %}<div class="alert alert-danger py-2">Error al modificar la parada.</div>{% endif %}
+
             <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
                 {% for parada in paradas %}
-                <div class="list-group-item parada-item border-start border-primary border-4 mb-2" data-parada-id="{{ parada.id }}" draggable="false">
+                <div class="list-group-item parada-item border-start border-primary border-4 mb-2"
+                     data-parada-id="{{ parada.id }}" draggable="false">
+
                     <div class="fw-bold text-primary d-flex align-items-center justify-content-between">
-                        <span>Parada <span class="parada-order-num">{{ parada.orden }}</span>: {{ parada.nombre }}</span>
-                        <span class="drag-handle d-none">↕ Arrastrar</span>
+                        <span>
+                            Parada <span class="parada-order-num">{{ parada.orden }}</span>:
+                            {{ parada.nombre }}
+                        </span>
+                        <span class="drag-handle d-none">↕</span>
                     </div>
+
                     <div class="small text-muted">
                         {% if parada.coordenadas %}
-                        {{ parada.coordenadas.y|floatformat:5 }}, {{ parada.coordenadas.x|floatformat:5 }}
+                            {{ parada.coordenadas.y|floatformat:5 }},
+                            {{ parada.coordenadas.x|floatformat:5 }}
                         {% else %}
-                        Sin coordenadas
+                            Sin coordenadas
                         {% endif %}
                     </div>
 
+                    {# S2.1-29: métricas del segmento #}
+                    {% if parada.distancia_siguiente_m and parada.duracion_siguiente_min %}
+                    <div class="segmento-badge">
+                        → {{ parada.distancia_siguiente_m|floatformat:0 }} m
+                        · {{ parada.duracion_siguiente_min }} min
+                    </div>
+                    {% endif %}
+
                     <div class="parada-actions">
-                        <button type="button" class="btn btn-outline-primary btn-sm btn-editar-parada" data-parada-id="{{ parada.id }}">Editar</button>
+                        <button type="button"
+                                class="btn btn-outline-primary btn-sm btn-editar-parada"
+                                data-parada-id="{{ parada.id }}">Editar</button>
+                        <button type="button"
+                                class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
+                                data-parada-id="{{ parada.id }}">
+                            ✨ IA
+                        </button>
                         <form method="post" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
                             <input type="hidden" name="parada_id" value="{{ parada.id }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('¿Seguro que quieres eliminar esta parada?');">Eliminar</button>
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    onclick="return confirm('¿Seguro que quieres eliminar esta parada?');">
+                                Eliminar
+                            </button>
                         </form>
                     </div>
 
-                    <form method="post" class="parada-edit-form d-none" id="form-editar-parada-{{ parada.id }}">
+                    <div class="ia-suggestions-panel ia-suggestions-inline d-none"
+                         id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <strong class="small">Sugerencias IA para esta parada</strong>
+                            <span id="estado-sugerencias-ia-{{ parada.id }}" class="ia-suggestion-meta"></span>
+                        </div>
+                        <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
+                    </div>
+
+                    <form method="post" class="parada-edit-form d-none"
+                          id="form-editar-parada-{{ parada.id }}">
                         {% csrf_token %}
                         <input type="hidden" name="form_type" value="stop_edit">
                         <input type="hidden" name="parada_id" value="{{ parada.id }}">
-
-                        <div class="mb-2">
+                        <div class="mb-2 mt-2">
                             <label class="form-label small mb-1">Nombre</label>
-                            <input type="text" name="nombre" class="form-control form-control-sm" value="{{ parada.nombre }}" required>
+                            <input type="text" name="nombre" class="form-control form-control-sm"
+                                   value="{{ parada.nombre }}" required>
                         </div>
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small mb-1">Latitud</label>
-                                <input type="number" step="any" name="lat" class="form-control form-control-sm" value="{{ parada.coordenadas.y|unlocalize }}" required>
+                                <input type="number" step="any" name="lat"
+                                       class="form-control form-control-sm"
+                                       value="{{ parada.coordenadas.y|unlocalize }}" required>
                             </div>
                             <div class="col-6">
                                 <label class="form-label small mb-1">Longitud</label>
-                                <input type="number" step="any" name="lon" class="form-control form-control-sm" value="{{ parada.coordenadas.x|unlocalize }}" required>
+                                <input type="number" step="any" name="lon"
+                                       class="form-control form-control-sm"
+                                       value="{{ parada.coordenadas.x|unlocalize }}" required>
                             </div>
                         </div>
-                        <div class="small text-muted mt-2 parada-coords-preview">Coordenadas actuales: {{ parada.coordenadas.y|floatformat:6 }}, {{ parada.coordenadas.x|floatformat:6 }}</div>
-                        <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar parada</button>
+                        <div class="parada-coords-preview">
+                            Actual: {{ parada.coordenadas.y|floatformat:6 }},
+                            {{ parada.coordenadas.x|floatformat:6 }}
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar</button>
                     </form>
                 </div>
                 {% empty %}
-                <div class="list-group-item">Esta ruta no tiene paradas.</div>
+                <div class="list-group-item text-muted">Sin paradas aún.</div>
                 {% endfor %}
             </div>
         </div>
     </div>
+
+    <div class="recalc-cta mt-4">
+        <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper"
+                {% if paradas|length < 2 %}disabled{% endif %}>
+            🔄 Calcular ruta
+        </button>
+    </div>
+
 </section>
 {% endblock %}
 
 {% block extra_js %}
 {{ paradas_json|json_script:"paradas-json" }}
+{{ geometria_ruta_json|json_script:"geometria-ruta-json" }}
+<script src="{% static 'js/pages/route_detail.js' %}"></script>
+
 <script>
-    const btnEditarTitulo = document.getElementById('btn-editar-titulo');
-    const formEditarTitulo = document.getElementById('form-editar-titulo');
-    const btnEditarMeta = document.getElementById('btn-editar-meta');
-    const formEditarMeta = document.getElementById('form-editar-meta');
-    const btnEditarEtiquetas = document.getElementById('btn-editar-etiquetas');
-    const etiquetasLectura = document.getElementById('etiquetas-lectura');
-    const formEditarEtiquetas = document.getElementById('form-editar-etiquetas');
-    const mapEditHint = document.getElementById('map-edit-hint');
-    const btnAgregarParada = document.getElementById('btn-agregar-parada');
-    const formAgregarParada = document.getElementById('form-agregar-parada');
-    const btnReordenarParadas = document.getElementById('btn-reordenar-paradas');
-    const formReordenarParadas = document.getElementById('form-reordenar-paradas');
-    const btnCancelarReorden = document.getElementById('btn-cancelar-reorden');
-    const stopOrderInput = document.getElementById('stop-order-input');
-    const listaParadas = document.getElementById('lista-paradas');
+/**
+ * detalle_ruta.js (inline)
+ * S2.1-31: Dibuja la polilínea GraphHopper al cargar.
+ * S2.1-32: Botón "Recalcular ruta" y función recalcularRutaAjax().
+ */
 
-    if (btnEditarTitulo && formEditarTitulo) {
-        btnEditarTitulo.addEventListener('click', () => {
-            formEditarTitulo.classList.toggle('d-none');
-        });
+// ── Datos del servidor ─────────────────────────────────────────────────────
+const paradas       = JSON.parse(document.getElementById('paradas-json').textContent || '[]');
+const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-json').textContent);
+const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
+const rutaId        = {{ ruta.id }};
+const csrfToken     = '{{ csrf_token }}';
+const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
+
+// ── Inicializar mapa ───────────────────────────────────────────────────────
+const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
+const centroInicial    = primeraConCoords ? primeraConCoords.coordenadas : [40.4167, -3.7037];
+
+const mapa = L.map('mapa-ruta').setView(centroInicial, 14);
+
+const tileUrl = mapboxToken
+    ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
+    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+L.tileLayer(tileUrl, { attribution: mapboxToken ? '© Mapbox' : '© OpenStreetMap contributors' }).addTo(mapa);
+
+// ── Marcadores ─────────────────────────────────────────────────────────────
+const puntos = [];
+paradas.forEach(parada => {
+    if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
+    puntos.push(parada.coordenadas);
+    L.marker(parada.coordenadas)
+        .addTo(mapa)
+        .bindPopup(`<b>${parada.orden}. ${parada.nombre}</b>`);
+});
+
+// ── Estado del badge en el mapa ────────────────────────────────────────────
+const mapBadge = document.getElementById('map-route-badge');
+
+function setBadge(estado, texto) {
+    if (!mapBadge) return;
+    mapBadge.className = `map-route-status ${estado}`;
+    mapBadge.textContent = texto;
+}
+
+// ── Polilínea GraphHopper (S2.1-31) ───────────────────────────────────────
+let rutaPolyline       = null;
+let fallbackPolyline   = null;   // línea recta provisional mientras no hay geometría real
+
+/**
+ * Dibuja la polilínea de ruta real. Elimina el fallback si existe.
+ * @param {Array|null} coords  [[lat, lon], ...] en formato Leaflet
+ */
+function dibujarPolilinea(coords) {
+    // Eliminar geometría anterior
+    if (rutaPolyline)     { mapa.removeLayer(rutaPolyline);     rutaPolyline   = null; }
+    if (fallbackPolyline) { mapa.removeLayer(fallbackPolyline); fallbackPolyline = null; }
+
+    if (coords && coords.length >= 2) {
+        // ✅ Geometría real de GraphHopper
+        rutaPolyline = L.polyline(coords, {
+            color: '#4f46e5',
+            weight: 4,
+            opacity: 0.8,
+            smoothFactor: 1,
+        }).addTo(mapa);
+
+        mapa.fitBounds(rutaPolyline.getBounds(), { padding: [40, 40] });
+        setBadge('ok', '✅ Ruta real calculada');
+
+    } else if (puntos.length >= 2) {
+        // ⚠️ Sin geometría: mostrar línea de referencia (recta) con estilo diferenciado
+        // El color gris discontinuo indica claramente que NO es la ruta real
+        fallbackPolyline = L.polyline(puntos, {
+            color: '#9ca3af',
+            weight: 2,
+            opacity: 0.5,
+            dashArray: '8 6',
+        }).addTo(mapa);
+
+        mapa.fitBounds(L.latLngBounds(puntos), { padding: [40, 40] });
+        setBadge('warn', '⚠️ Sin ruta calculada (línea recta)');
+
+    } else if (puntos.length === 1) {
+        mapa.setView(puntos[0], 15);
+        setBadge('warn', '⚠️ Solo 1 parada');
     }
+}
 
-    if (btnEditarMeta && formEditarMeta) {
-        btnEditarMeta.addEventListener('click', () => {
-            formEditarMeta.classList.toggle('d-none');
-        });
+// Dibujo inicial
+dibujarPolilinea(geometriaRuta && geometriaRuta.length >= 2 ? geometriaRuta : null);
+
+// ── Panel de métricas (S2.1-29) ───────────────────────────────────────────
+function actualizarPanelMetricas(data) {
+    const panel = document.getElementById('panel-metricas');
+    if (!panel) return;
+
+    if (data.distancia_total_km && data.duracion_total_min) {
+        panel.innerHTML = `
+            <span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>
+            <span class="metric-sep">|</span>
+            <span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>
+            <span class="metric-sep">|</span>
+            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
+    } else {
+        panel.innerHTML = `
+            <span class="metrics-empty">ℹ️ Ruta sin calcular.</span>`;
     }
+}
 
-    if (btnEditarEtiquetas && etiquetasLectura && formEditarEtiquetas) {
-        btnEditarEtiquetas.addEventListener('click', () => {
-            etiquetasLectura.classList.toggle('d-none');
-            formEditarEtiquetas.classList.toggle('d-none');
-        });
-    }
-
-    const paradas = JSON.parse(document.getElementById('paradas-json').textContent || '[]');
-    const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
-
-    const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
-    const centroInicial = primeraConCoords ? primeraConCoords.coordenadas : [40.4167, -3.7037];
-
-    const mapa = L.map('mapa-ruta').setView(centroInicial, 14);
-
-    const tileUrl = mapboxToken
-        ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-    L.tileLayer(tileUrl, {
-        attribution: mapboxToken ? '© Mapbox' : '© OpenStreetMap contributors'
-    }).addTo(mapa);
-
-    const puntos = [];
-    let activeParadaForm = null;
-    let activeParadaButton = null;
-    let activeEditMarker = null;
-    let activeMode = null;
-    let reorderMode = false;
-    let draggedItem = null;
-
-    paradas.forEach((parada, index) => {
-        if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
-
-        const coords = parada.coordenadas;
-        puntos.push(coords);
-
-        L.marker(coords).addTo(mapa)
-            .bindPopup(`<b>${parada.orden || index + 1}. ${parada.nombre}</b>`);
-    });
-
-    if (puntos.length > 1) {
-        L.polyline(puntos, { color: '#0d6efd', weight: 4, opacity: 0.7 }).addTo(mapa);
-        mapa.fitBounds(puntos, { padding: [50, 50] });
-    }
-
-    function deactivateParadaEditMode() {
-        if (activeParadaForm) {
-            activeParadaForm.classList.add('d-none');
-            activeParadaForm = null;
-        }
-
-        if (activeParadaButton) {
-            activeParadaButton.classList.remove('btn-primary');
-            activeParadaButton.classList.add('btn-outline-primary');
-            activeParadaButton.textContent = 'Editar';
-            activeParadaButton = null;
-        }
-
-        if (activeEditMarker) {
-            mapa.removeLayer(activeEditMarker);
-            activeEditMarker = null;
-        }
-
-        if (mapEditHint) {
-            mapEditHint.classList.add('d-none');
-            mapEditHint.textContent = 'Selecciona una parada para editar y haz clic en el mapa para elegir su nueva ubicación.';
-        }
-
-        activeMode = null;
-    }
-
-    function updateVisualOrderLabels() {
-        const items = listaParadas ? Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]')) : [];
-        items.forEach((item, index) => {
-            const orderEl = item.querySelector('.parada-order-num');
-            if (orderEl) orderEl.textContent = String(index + 1);
-        });
-    }
-
-    function setReorderMode(enabled) {
-        if (!listaParadas || !formReordenarParadas) return;
-
-        reorderMode = enabled;
-        if (enabled) {
-            deactivateParadaEditMode();
-            if (formAgregarParada) formAgregarParada.classList.add('d-none');
-            formReordenarParadas.classList.remove('d-none');
-            listaParadas.classList.add('reorder-active');
-            if (btnReordenarParadas) btnReordenarParadas.textContent = 'Reordenando...';
+// ── Recálculo AJAX (S2.1-32) ──────────────────────────────────────────────
+async function recalcularRutaAjax() {
+    const btn = document.getElementById('btn-recalcular');
+    let huboError = false;
+    if (btn) {
+        if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
+            window.RouteDetailUI.setRecalcularButtonLoading(btn, true, false);
         } else {
-            formReordenarParadas.classList.add('d-none');
-            listaParadas.classList.remove('reorder-active');
-            if (btnReordenarParadas) btnReordenarParadas.textContent = 'Editar orden';
+            btn.disabled = true;
+            btn.textContent = '⏳ Calculando...';
         }
+    }
+    setBadge('warn', '⏳ Calculando...');
 
-        const items = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'));
-        items.forEach((item) => {
-            item.draggable = enabled;
-            const handle = item.querySelector('.drag-handle');
-            if (handle) handle.classList.toggle('d-none', !enabled);
-            if (!enabled) item.classList.remove('drag-over');
+    try {
+        const resp = await fetch(`/api/rutas/${rutaId}/recalcular/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
         });
 
-        updateVisualOrderLabels();
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            console.error('[AURA] Recálculo HTTP', resp.status, errText);
+            setBadge('error', `❌ Error ${resp.status} al calcular`);
+            huboError = true;
+            return null;
+        }
+
+        const data = await resp.json();
+        dibujarPolilinea(data.geometria);
+        actualizarPanelMetricas(data);
+
+        if (!data.geometria) {
+            console.warn('[AURA] GraphHopper devolvió geometría nula. Revisa los logs del servidor.');
+        }
+        return data;
+
+    } catch (err) {
+        console.error('[AURA] Error de red al recalcular:', err);
+        setBadge('error', '❌ Sin conexión al servidor');
+        huboError = true;
+        return null;
+    } finally {
+        if (btn) {
+            if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
+                window.RouteDetailUI.setRecalcularButtonLoading(btn, false, huboError);
+            } else {
+                btn.disabled = false;
+                btn.textContent = huboError ? '🔄 Reintentar' : '🔄 Calcular ruta';
+            }
+        }
+    }
+}
+
+function handleRecalcular() { recalcularRutaAjax(); }
+
+const btnRecalcularInicial = document.getElementById('btn-recalcular');
+if (btnRecalcularInicial) btnRecalcularInicial.addEventListener('click', handleRecalcular);
+
+// ── Estado del modo de edición ─────────────────────────────────────────────
+let activeParadaForm   = null;
+let activeParadaButton = null;
+let activeEditMarker   = null;
+let activeMode         = null;
+let reorderMode        = false;
+let draggedItem        = null;
+
+const btnEditarTitulo     = document.getElementById('btn-editar-titulo');
+const formEditarTitulo    = document.getElementById('form-editar-titulo');
+const btnEditarMeta       = document.getElementById('btn-editar-meta');
+const formEditarMeta      = document.getElementById('form-editar-meta');
+const btnEditarEtiquetas  = document.getElementById('btn-editar-etiquetas');
+const etiquetasLectura    = document.getElementById('etiquetas-lectura');
+const formEditarEtiquetas = document.getElementById('form-editar-etiquetas');
+const mapEditHint         = document.getElementById('map-edit-hint');
+const btnAgregarParada    = document.getElementById('btn-agregar-parada');
+const formAgregarParada   = document.getElementById('form-agregar-parada');
+const btnReordenarParadas = document.getElementById('btn-reordenar-paradas');
+const formReordenarParadas= document.getElementById('form-reordenar-paradas');
+const btnCancelarReorden  = document.getElementById('btn-cancelar-reorden');
+const stopOrderInput      = document.getElementById('stop-order-input');
+const listaParadas        = document.getElementById('lista-paradas');
+
+if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
+if (btnEditarMeta)      btnEditarMeta.addEventListener('click', () => formEditarMeta?.classList.toggle('d-none'));
+if (btnEditarEtiquetas) btnEditarEtiquetas.addEventListener('click', () => {
+    etiquetasLectura?.classList.toggle('d-none');
+    formEditarEtiquetas?.classList.toggle('d-none');
+});
+
+function deactivateParadaEditMode() {
+    activeParadaForm?.classList.add('d-none');
+    activeParadaForm = null;
+    if (activeParadaButton) {
+        activeParadaButton.classList.replace('btn-primary', 'btn-outline-primary');
+        activeParadaButton.textContent = 'Editar';
+        activeParadaButton = null;
+    }
+    if (activeEditMarker) { mapa.removeLayer(activeEditMarker); activeEditMarker = null; }
+    if (mapEditHint) { mapEditHint.classList.add('d-none'); }
+    activeMode = null;
+}
+
+function activateParadaEditMode(paradaId, triggerButton) {
+    const form = document.getElementById(`form-editar-parada-${paradaId}`);
+    if (!form) return;
+    if (activeParadaForm === form) { deactivateParadaEditMode(); return; }
+
+    deactivateParadaEditMode();
+    activeParadaForm = form; activeParadaButton = triggerButton; activeMode = 'edit';
+    form.classList.remove('d-none');
+    triggerButton.classList.replace('btn-outline-primary', 'btn-primary');
+    triggerButton.textContent = 'Editando...';
+
+    const lat = parseFloat(form.querySelector('input[name="lat"]')?.value);
+    const lon = parseFloat(form.querySelector('input[name="lon"]')?.value);
+    const nombre = form.querySelector('input[name="nombre"]')?.value || 'Parada';
+
+    if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+        activeEditMarker = L.marker([lat, lon]).addTo(mapa);
+        mapa.setView([lat, lon], Math.max(mapa.getZoom(), 14));
+    }
+    if (mapEditHint) {
+        mapEditHint.classList.remove('d-none');
+        mapEditHint.textContent = `Editando "${nombre}": haz clic en el mapa para moverla.`;
+    }
+}
+
+function activateAddStopMode() {
+    if (!formAgregarParada) return;
+    if (activeMode === 'add') { deactivateParadaEditMode(); return; }
+    deactivateParadaEditMode();
+    activeParadaForm = formAgregarParada; activeMode = 'add';
+    formAgregarParada.classList.remove('d-none');
+    if (mapEditHint) {
+        mapEditHint.classList.remove('d-none');
+        mapEditHint.textContent = 'Haz clic en el mapa para elegir la ubicación de la nueva parada.';
+    }
+}
+
+
+function getPanelSugerenciasParada(paradaId) {
+    return {
+        panel: document.getElementById(`panel-sugerencias-ia-${paradaId}`),
+        estado: document.getElementById(`estado-sugerencias-ia-${paradaId}`),
+        lista: document.getElementById(`lista-sugerencias-ia-${paradaId}`),
+    };
+}
+
+const sugerenciasCachePorParada = new Map();
+
+function cerrarTodosLosPanelesIASugerencias() {
+    document.querySelectorAll('.ia-suggestions-inline').forEach((panel) => {
+        panel.classList.add('d-none');
+    });
+}
+
+function renderSugerenciasIAEnParada(paradaId, candidatos) {
+    const { lista } = getPanelSugerenciasParada(paradaId);
+    if (!lista) return;
+    if (!Array.isArray(candidatos) || !candidatos.length) {
+        sugerenciasCachePorParada.set(String(paradaId), []);
+        lista.innerHTML = '<div class="small text-muted mt-2">No se recibieron sugerencias válidas.</div>';
+        return;
     }
 
-    function activateParadaEditMode(paradaId, triggerButton) {
-        const form = document.getElementById(`form-editar-parada-${paradaId}`);
-        if (!form) return;
+    sugerenciasCachePorParada.set(String(paradaId), candidatos);
 
-        if (activeParadaForm === form) {
-            deactivateParadaEditMode();
+    lista.innerHTML = candidatos.map((c, idx) => {
+        const [lat, lon] = Array.isArray(c.coordenadas) ? c.coordenadas : [null, null];
+        const latNum = Number(lat);
+        const lonNum = Number(lon);
+        const hasCoords = Number.isFinite(latNum) && Number.isFinite(lonNum);
+        const coordsText = hasCoords ? `${latNum.toFixed(5)}, ${lonNum.toFixed(5)}` : 'Sin coordenadas';
+
+        return `
+            <div class="ia-suggestion-item">
+                <div class="fw-semibold">${c.nombre || `Parada sugerida ${idx + 1}`}</div>
+                <div class="ia-suggestion-meta">${coordsText}</div>
+                <div class="ia-suggestion-meta">Categoría: ${c.categoria || 'general'} · Confianza: ${Math.round((Number(c.nivel_confianza || 0) * 100))}%</div>
+                <div class="small mt-1">${c.justificacion || 'Sin justificación proporcionada.'}</div>
+                <div class="ia-suggestion-item__actions">
+                    <button type="button"
+                            class="btn btn-success btn-sm btn-usar-sugerencia-ia"
+                            data-parada-id="${paradaId}"
+                            data-candidate-index="${idx}"
+                            ${hasCoords ? '' : 'disabled'}>
+                        Usar esta parada
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function agregarSugerenciaComoNuevaParada(candidato) {
+    const form = document.getElementById('form-agregar-parada');
+    if (!form) return;
+
+    const nameInput = form.querySelector('input[name="nombre"]');
+    const latInput = form.querySelector('input[name="lat"]');
+    const lonInput = form.querySelector('input[name="lon"]');
+
+    const lat = Number(candidato.lat);
+    const lon = Number(candidato.lon);
+    if (!nameInput || !latInput || !lonInput || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return;
+    }
+
+    nameInput.value = candidato.nombre || nameInput.value;
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lon.toFixed(6);
+
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+}
+
+async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
+    const { panel, estado, lista } = getPanelSugerenciasParada(paradaId);
+    if (!panel || !estado || !lista || !triggerButton) return;
+
+    cerrarTodosLosPanelesIASugerencias();
+    panel.classList.remove('d-none');
+    estado.textContent = 'Generando...';
+    lista.innerHTML = '';
+    triggerButton.disabled = true;
+
+    try {
+        const response = await fetch(sugerenciasIaUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({ cantidad: 3 }),
+        });
+
+        const payload = await response.json();
+
+        if (!response.ok || payload.status !== 'OK') {
+            estado.textContent = payload?.mensaje || `Error ${response.status}`;
+            lista.innerHTML = '<div class="small text-danger mt-2">No se pudieron generar sugerencias en este momento.</div>';
             return;
         }
 
+        const candidatos = payload.datos?.candidatos || [];
+        estado.textContent = `${candidatos.length} sugerencias generadas`;
+        renderSugerenciasIAEnParada(paradaId, candidatos);
+    } catch (_error) {
+        estado.textContent = 'Error de red';
+        lista.innerHTML = '<div class="small text-danger mt-2">No se pudo contactar con el servidor.</div>';
+    } finally {
+        triggerButton.disabled = false;
+    }
+}
+
+if (btnAgregarParada) btnAgregarParada.addEventListener('click', activateAddStopMode);
+
+document.querySelectorAll('.btn-editar-parada').forEach(btn => {
+    btn.addEventListener('click', () => activateParadaEditMode(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
+    btn.addEventListener('click', () => cargarSugerenciasIAParaParada(btn.dataset.paradaId, btn));
+});
+
+document.addEventListener('click', (event) => {
+    const usarBtn = event.target.closest('.btn-usar-sugerencia-ia');
+    if (!usarBtn) return;
+
+    const paradaId = usarBtn.dataset.paradaId;
+    const candidateIndex = Number(usarBtn.dataset.candidateIndex);
+    const candidatos = sugerenciasCachePorParada.get(String(paradaId)) || [];
+    const candidato = candidatos[candidateIndex];
+    const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
+    const lat = coords[0];
+    const lon = coords[1];
+
+    const confirmacion = window.confirm(
+        'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
+    );
+    if (!confirmacion) return;
+
+    agregarSugerenciaComoNuevaParada({ nombre: candidato?.nombre || '', lat, lon });
+});
+
+mapa.on('click', (event) => {
+    if (!activeParadaForm) return;
+    const latInput = activeParadaForm.querySelector('input[name="lat"]');
+    const lonInput = activeParadaForm.querySelector('input[name="lon"]');
+    if (!latInput || !lonInput) return;
+
+    const lat = event.latlng.lat;
+    const lon = event.latlng.lng;
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lon.toFixed(6);
+
+    if (!activeEditMarker) activeEditMarker = L.marker([lat, lon]).addTo(mapa);
+    else activeEditMarker.setLatLng([lat, lon]);
+
+    if (activeMode === 'add') {
+        const preview = document.getElementById('add-stop-preview');
+        if (preview) preview.textContent = `Seleccionado: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    }
+});
+
+// ── Reordenación ───────────────────────────────────────────────────────────
+function updateVisualOrderLabels() {
+    Array.from(listaParadas?.querySelectorAll('.parada-item[data-parada-id]') || [])
+        .forEach((item, idx) => {
+            const el = item.querySelector('.parada-order-num');
+            if (el) el.textContent = String(idx + 1);
+        });
+}
+
+function setReorderMode(enabled) {
+    if (!listaParadas || !formReordenarParadas) return;
+    reorderMode = enabled;
+    if (enabled) {
         deactivateParadaEditMode();
-
-        activeParadaForm = form;
-        activeParadaButton = triggerButton;
-        activeMode = 'edit';
-        form.classList.remove('d-none');
-
-        triggerButton.classList.remove('btn-outline-primary');
-        triggerButton.classList.add('btn-primary');
-        triggerButton.textContent = 'Editando...';
-
-        const nombreInput = form.querySelector('input[name="nombre"]');
-        const latInput = form.querySelector('input[name="lat"]');
-        const lonInput = form.querySelector('input[name="lon"]');
-
-        const lat = parseFloat(latInput?.value);
-        const lon = parseFloat(lonInput?.value);
-        if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
-            activeEditMarker = L.marker([lat, lon]).addTo(mapa);
-            mapa.setView([lat, lon], Math.max(mapa.getZoom(), 14));
-        }
-
-        if (mapEditHint) {
-            mapEditHint.classList.remove('d-none');
-            mapEditHint.textContent = `Editando "${nombreInput?.value || 'Parada'}": haz clic en el mapa para seleccionar la nueva ubicación.`;
-        }
+        formAgregarParada?.classList.add('d-none');
+        formReordenarParadas.classList.remove('d-none');
+        listaParadas.classList.add('reorder-active');
+        if (btnReordenarParadas) btnReordenarParadas.textContent = 'Reordenando...';
+    } else {
+        formReordenarParadas.classList.add('d-none');
+        listaParadas.classList.remove('reorder-active');
+        if (btnReordenarParadas) btnReordenarParadas.textContent = 'Editar orden';
     }
-
-    function activateAddStopMode() {
-        if (!formAgregarParada) return;
-
-        if (activeMode === 'add') {
-            deactivateParadaEditMode();
-            return;
-        }
-
-        deactivateParadaEditMode();
-
-        activeParadaForm = formAgregarParada;
-        activeMode = 'add';
-        formAgregarParada.classList.remove('d-none');
-
-        if (mapEditHint) {
-            mapEditHint.classList.remove('d-none');
-            mapEditHint.textContent = 'Añadiendo parada: haz clic en el mapa para seleccionar la ubicación.';
-        }
-    }
-
-    if (btnAgregarParada && formAgregarParada) {
-        btnAgregarParada.addEventListener('click', () => {
-            activateAddStopMode();
-        });
-    }
-
-    if (btnReordenarParadas) {
-        btnReordenarParadas.addEventListener('click', () => {
-            setReorderMode(!reorderMode);
-        });
-    }
-
-    if (btnCancelarReorden) {
-        btnCancelarReorden.addEventListener('click', () => {
-            setReorderMode(false);
-        });
-    }
-
-    if (formReordenarParadas && stopOrderInput && listaParadas) {
-        formReordenarParadas.addEventListener('submit', () => {
-            const orderedIds = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
-                .map((item) => item.dataset.paradaId)
-                .filter(Boolean);
-            stopOrderInput.value = orderedIds.join(',');
-        });
-    }
-
-    document.querySelectorAll('.btn-editar-parada').forEach((button) => {
-        button.addEventListener('click', () => {
-            if (reorderMode) return;
-            const paradaId = button.dataset.paradaId;
-            activateParadaEditMode(paradaId, button);
-        });
+    Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]')).forEach(item => {
+        item.draggable = enabled;
+        item.querySelector('.drag-handle')?.classList.toggle('d-none', !enabled);
+        if (!enabled) item.classList.remove('drag-over');
     });
+    updateVisualOrderLabels();
+}
 
-    if (listaParadas) {
-        listaParadas.querySelectorAll('.parada-item[data-parada-id]').forEach((item) => {
-            item.addEventListener('dragstart', () => {
-                if (!reorderMode) return;
-                draggedItem = item;
-            });
+if (btnReordenarParadas) btnReordenarParadas.addEventListener('click', () => setReorderMode(true));
+if (btnCancelarReorden)  btnCancelarReorden.addEventListener('click',  () => setReorderMode(false));
 
-            item.addEventListener('dragover', (event) => {
-                if (!reorderMode) return;
-                event.preventDefault();
-                item.classList.add('drag-over');
-            });
-
-            item.addEventListener('dragleave', () => {
-                item.classList.remove('drag-over');
-            });
-
-            item.addEventListener('drop', (event) => {
-                if (!reorderMode || !draggedItem || draggedItem === item) return;
-                event.preventDefault();
-                const rect = item.getBoundingClientRect();
-                const shouldInsertAfter = (event.clientY - rect.top) > rect.height / 2;
-
-                if (shouldInsertAfter) {
-                    item.after(draggedItem);
-                } else {
-                    item.before(draggedItem);
-                }
-
-                item.classList.remove('drag-over');
-                updateVisualOrderLabels();
-            });
-
-            item.addEventListener('dragend', () => {
-                draggedItem = null;
-                item.classList.remove('drag-over');
-            });
+// ── Drag & Drop ────────────────────────────────────────────────────────────
+if (listaParadas) {
+    const items = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'));
+    items.forEach(item => {
+        item.addEventListener('dragstart', () => { draggedItem = item; item.style.opacity = '0.5'; });
+        item.addEventListener('dragend',   () => {
+            item.style.opacity = '';
+            draggedItem = null;
+            items.forEach(i => i.classList.remove('drag-over'));
+            updateVisualOrderLabels();
+            const ordered = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
+                .map(i => i.dataset.paradaId).filter(Boolean);
+            if (stopOrderInput) stopOrderInput.value = ordered.join(',');
         });
-    }
-
-    mapa.on('click', (event) => {
-        if (!activeParadaForm) return;
-
-        const latInput = activeParadaForm.querySelector('input[name="lat"]');
-        const lonInput = activeParadaForm.querySelector('input[name="lon"]');
-        const preview = activeParadaForm.querySelector('.parada-coords-preview');
-
-        if (!latInput || !lonInput) return;
-
-        const lat = event.latlng.lat;
-        const lon = event.latlng.lng;
-
-        latInput.value = lat.toFixed(6);
-        lonInput.value = lon.toFixed(6);
-
-        if (!activeEditMarker) {
-            activeEditMarker = L.marker([lat, lon]).addTo(mapa);
-        } else {
-            activeEditMarker.setLatLng([lat, lon]);
-        }
-
-        if (preview) {
-            preview.textContent = activeMode === 'add'
-                ? `Ubicación seleccionada para nueva parada: ${lat.toFixed(6)}, ${lon.toFixed(6)}`
-                : `Nueva ubicación seleccionada: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-        }
+        item.addEventListener('dragover', e => {
+            e.preventDefault();
+            if (!draggedItem || draggedItem === item) return;
+            items.forEach(i => i.classList.remove('drag-over'));
+            item.classList.add('drag-over');
+            const mid = item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
+            listaParadas.insertBefore(draggedItem, e.clientY < mid ? item : item.nextSibling);
+        });
+        item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
     });
+}
 </script>
 {% endblock %}

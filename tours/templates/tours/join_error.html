@@ -3,39 +3,30 @@
 
 {% block title %}Error - AURA{% endblock %}
 
-{% block extra_css %}
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<style>
-    .error-container {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="error-container">
-    <div class="text-center" style="max-width: 500px;">
-        <div class="mb-4">
-            <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3" 
-                 style="width: 100px; height: 100px; background-color: #FEE2E2; color: #DC2626;">
-                <span class="material-icons-round" style="font-size:56px">error_outline</span>
-            </div>
+<div style="min-height:calc(100vh - 68px);display:flex;align-items:center;justify-content:center;padding:2rem 1rem;">
+    <div class="text-center" style="max-width:440px;">
+
+        <div class="d-inline-flex align-items-center justify-content-center mb-4"
+             style="width:88px;height:88px;background:var(--danger-light);border-radius:24px;color:var(--danger);">
+            <span class="material-icons-round" style="font-size:48px;">error_outline</span>
         </div>
-        
-        <h2 class="fw-bold mb-3">¡Ups! Algo salió mal</h2>
-        <p class="text-muted fs-5 mb-4">{{ error }}</p>
-        
-        <div class="d-flex flex-column gap-2">
-            <a href="/" class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm px-5">
-                Volver al Inicio
-            </a>
-            <p class="text-muted small mt-3">
-                Si crees que esto es un error, contacta a tu guía turístico.
-            </p>
-        </div>
+
+        <h2 style="font-family:'Manrope',sans-serif;font-size:1.625rem;font-weight:800;letter-spacing:-.04em;margin-bottom:.75rem;">
+            ¡Ups! Algo salió mal
+        </h2>
+        <p style="color:var(--text-muted);font-size:1rem;line-height:1.6;margin-bottom:2rem;">
+            {{ error }}
+        </p>
+
+        <a href="/" class="btn btn-brand btn-lg fw-bold px-5" style="border-radius:var(--radius);">
+            Volver al inicio
+        </a>
+
+        <p style="color:var(--text-muted);font-size:.8rem;margin-top:1.5rem;margin-bottom:0;">
+            Si crees que esto es un error, contacta a tu guía turístico.
+        </p>
+
     </div>
 </div>
 {% endblock %}

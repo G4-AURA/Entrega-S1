@@ -1,223 +1,121 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}AURA - Iniciar Sesión (Guías){% endblock %}
+{% block title %}AURA - Iniciar sesión{% endblock %}
 
 {% block extra_css %}
-<style>
-    .auth-wrapper {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem 1rem;
-    }
-    .auth-card {
-        width: 100%;
-        max-width: 450px;
-        border: none;
-        border-radius: 1rem;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-        background-color: #ffffff;
-    }
-    .auth-header { text-align: center; margin-bottom: 2rem; }
-    .auth-header h2 { font-weight: 700; color: #1F2937; }
-    .auth-header p  { color: #6B7280; }
-    .form-control {
-        border-radius: 0.5rem;
-        padding: 0.75rem 1rem;
-        border: 1px solid #D1D5DB;
-    }
-    .form-control:focus {
-        border-color: #4F46E5;
-        box-shadow: 0 0 0 0.25rem rgba(79,70,229,0.25);
-    }
-    .btn-brand {
-        background-color: #4F46E5;
-        border-color: #4F46E5;
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.5rem;
-        font-weight: 600;
-        transition: all 0.2s;
-    }
-    .btn-brand:hover {
-        background-color: #3730A3;
-        border-color: #3730A3;
-        color: white;
-        transform: translateY(-1px);
-    }
-    /* Botón flotante de acceso a tour para turistas */
-    .fab-button {
-        position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        z-index: 1000;
-        padding: 0.875rem 1.5rem;
-        border-radius: 50px;
-        background: linear-gradient(135deg, #4F46E5, #3730A3);
-        box-shadow: 0 4px 12px rgba(79,70,229,0.4);
-        transition: transform 0.2s, box-shadow 0.2s;
-        border: none;
-        color: white;
-        font-weight: 600;
-        font-size: 0.95rem;
-        white-space: nowrap;
-    }
-    .fab-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(79,70,229,0.6);
-        color: white;
-    }
-    .input-code {
-        font-family: monospace;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/auth.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="auth-wrapper">
-    <div class="card auth-card p-4 p-md-5">
-        <div class="auth-header">
-            <h2>Bienvenido, Guía</h2>
-            <p>Inicia sesión para gestionar tus rutas y sesiones</p>
+<div class="auth-page-wrapper">
+    <div class="auth-card card">
+
+        <div class="auth-logo">
+            <img src="{% static 'img/logo_aura.png' %}" alt="AURA">
         </div>
 
+        <h1 class="auth-title">Bienvenido, Guía</h1>
+        <p class="auth-subtitle">Inicia sesión para gestionar tus rutas y sesiones</p>
+
         {% if form.errors %}
-        <div class="alert alert-danger rounded-3" role="alert">
-            Usuario o contraseña incorrectos.
+        <div class="alert d-flex align-items-center gap-2 mb-4 py-2 px-3"
+             style="background:var(--danger-light);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius);color:#991B1B;font-size:.875rem;">
+            <span class="material-icons-round" style="font-size:18px;">error_outline</span>
+            <span>Usuario o contraseña incorrectos.</span>
         </div>
         {% endif %}
 
         <form method="post" action="{% url 'login' %}">
             {% csrf_token %}
             <div class="mb-3">
-                <label for="{{ form.username.id_for_label }}" class="form-label fw-semibold text-secondary">
-                    Usuario
-                </label>
+                <label for="{{ form.username.id_for_label }}" class="form-label">Usuario</label>
                 {{ form.username }}
             </div>
             <div class="mb-4">
-                <label for="{{ form.password.id_for_label }}" class="form-label fw-semibold text-secondary">
-                    Contraseña
-                </label>
+                <label for="{{ form.password.id_for_label }}" class="form-label">Contraseña</label>
                 {{ form.password }}
             </div>
             <div class="d-grid">
-                <button type="submit" class="btn btn-brand">Entrar</button>
+                <button type="submit" class="btn btn-brand btn-lg fw-bold" style="border-radius:var(--radius);">
+                    Entrar
+                </button>
             </div>
         </form>
 
-        <div class="text-center mt-4">
-            <p class="text-muted mb-0">
-                ¿No tienes cuenta?
-                <a href="{% url 'registro' %}" class="text-decoration-none fw-semibold"
-                   style="color: #4F46E5;">Regístrate como Guía</a>
-            </p>
+        <div class="text-center mt-4" style="font-size:.875rem;">
+            <span style="color:var(--text-muted);">¿No tienes cuenta?</span>
+            <a href="{% url 'registro' %}" class="fw-bold text-decoration-none ms-1"
+               style="color:var(--brand-color);">Regístrate como Guía</a>
         </div>
 
-        {# Separador para turistas #}
-        <hr class="my-4">
-        <p class="text-center text-muted small mb-0">
+        <div class="auth-divider">o</div>
+
+        <div class="auth-tourist-note">
             ¿Eres turista? Usa el botón
-            <strong>Acceder a Tour</strong> o introduce el código que te dio tu guía.
-        </p>
+            <strong>Acceder a Tour</strong> para unirte con el código de tu guía.
+        </div>
+
     </div>
 </div>
 
-<!-- Botón flotante: punto de entrada para turistas anónimos -->
-<button class="fab-button btn d-flex align-items-center gap-2"
+<!-- FAB: acceso turista -->
+<button class="fab-button btn"
         data-bs-toggle="modal"
         data-bs-target="#joinTourModal"
         title="Acceder a tour como turista">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
         <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
     </svg>
     <span>Acceder a Tour</span>
 </button>
 
-<!-- Modal de acceso rápido por código -->
+<!-- Modal acceso por código -->
 <div class="modal fade" id="joinTourModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content rounded-4 border-0 shadow-lg">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:var(--radius-xl);">
             <div class="modal-body p-4 p-md-5 text-center">
-                <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-4"
-                     style="width: 70px; height: 70px; background-color: #EEF2FF; color: #4F46E5;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" viewBox="0 0 16 16">
+
+                <div class="d-inline-flex align-items-center justify-content-center mb-4"
+                     style="width:64px;height:64px;background:var(--brand-light);border-radius:18px;color:var(--brand-color);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" viewBox="0 0 16 16">
                         <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
                     </svg>
                 </div>
 
-                <h3 class="fw-bold mb-2">Acceder a Tour</h3>
-                <p class="text-muted mb-4">
-                    Introduce el código de acceso que te proporcionó tu guía
+                <h3 class="fw-bold mb-1" style="font-family:'Manrope',sans-serif;font-size:1.375rem;letter-spacing:-.03em;">Acceder a Tour</h3>
+                <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:1.75rem;">
+                    Introduce el código que te dio tu guía
                 </p>
 
-                <div id="mensaje-codigo" class="alert d-none small text-start mb-4 rounded-3" role="alert"></div>
+                <div id="mensaje-codigo" class="d-none mb-3" role="alert"
+                     style="background:var(--danger-light);border:1px solid rgba(239,68,68,.2);border-radius:var(--radius);padding:.75rem 1rem;color:#991B1B;font-size:.82rem;text-align:left;"></div>
 
                 <input type="text"
                        id="codigo-input"
-                       class="form-control form-control-lg text-center input-code fw-bold mb-4 bg-light border-2 py-3"
+                       class="form-control input-code fw-bold mb-4"
+                       style="font-size:1.75rem;padding:1rem;letter-spacing:8px;text-align:center;background:var(--bg-app);"
                        placeholder="ABC123"
                        maxlength="10"
                        autocomplete="off">
 
                 <div class="d-grid gap-2">
-                    <button id="btn-ir-tour" class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3">
+                    <button id="btn-ir-tour" class="btn btn-brand btn-lg fw-bold py-3" style="border-radius:var(--radius);">
                         Continuar al Tour
                     </button>
-                    <button class="btn btn-link text-muted text-decoration-none fw-semibold mt-1"
+                    <button class="btn fw-semibold" style="color:var(--text-muted);font-size:.875rem;"
                             data-bs-dismiss="modal">
                         Cancelar
                     </button>
                 </div>
+
             </div>
         </div>
     </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    // Aplicar clases Bootstrap a los inputs del formulario de Django
-    document.querySelectorAll('.auth-card input:not([type="hidden"])').forEach(function (el) {
-        el.classList.add('form-control');
-    });
+{% endblock %}
 
-    // Acceso al tour por código — redirige a la vista join_tour_by_code
-    const btnIrTour   = document.getElementById('btn-ir-tour');
-    const codigoInput = document.getElementById('codigo-input');
-    const mensajeDiv  = document.getElementById('mensaje-codigo');
-
-    function mostrarError(msg) {
-        mensajeDiv.textContent = msg;
-        mensajeDiv.className = 'alert alert-danger small text-start mb-4 rounded-3';
-    }
-
-    function irAlTour() {
-        const codigo = codigoInput.value.trim().toUpperCase();
-        mensajeDiv.className = 'alert d-none';
-
-        if (!codigo) {
-            mostrarError('Por favor, introduce un código válido.');
-            return;
-        }
-
-        // join_tour_by_code valida el código en servidor y redirige al formulario de alias
-        window.location.href = `/tours/live/code/${codigo}/`;
-    }
-
-    btnIrTour.addEventListener('click', irAlTour);
-
-    // Permitir Intro dentro del input
-    codigoInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); irAlTour(); }
-    });
-
-    // Limpiar error al escribir
-    codigoInput.addEventListener('input', function () {
-        mensajeDiv.className = 'alert d-none';
-    });
-});
-</script>
+{% block extra_js %}
+<script src="{% static 'js/auth.js' %}"></script>
 {% endblock %}

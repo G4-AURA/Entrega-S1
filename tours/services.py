@@ -43,6 +43,22 @@ def obtener_turista_anonimo(request) -> Optional[Turista]:
     return Turista.objects.filter(id=turista_id).first()
 
 
+def obtener_turista_request(request) -> Optional[Turista]:
+    """
+    Resuelve el turista asociado al request.
+    Prioriza cookie de turista anónimo y, como fallback, el vínculo histórico
+    Turista.user para compatibilidad con datos/tests antiguos.
+    """
+    turista_cookie = obtener_turista_anonimo(request)
+    if turista_cookie:
+        return turista_cookie
+
+    if request.user.is_authenticated:
+        return Turista.objects.filter(user=request.user).first()
+
+    return None
+
+
 def tiene_acceso_a_sesion(request, sesion: SesionTour) -> bool:
     """
     Devuelve True si el request pertenece a:
@@ -52,7 +68,7 @@ def tiene_acceso_a_sesion(request, sesion: SesionTour) -> bool:
     if request.user.is_authenticated and es_guia_de_sesion(request.user, sesion):
         return True
 
-    turista = obtener_turista_anonimo(request)
+    turista = obtener_turista_request(request)
     return turista is not None and TuristaSesion.objects.filter(
         turista=turista, sesion_tour=sesion, activo=True
     ).exists()
@@ -166,7 +182,7 @@ def determinar_remitente(
         return request.user, None, request.user.username, None
 
     # Turista anónimo
-    turista = obtener_turista_anonimo(request)
+    turista = obtener_turista_request(request)
     if not turista:
         return None, None, "", "Debes unirte al tour para enviar mensajes."
 

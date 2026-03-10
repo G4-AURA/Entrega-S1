@@ -1,0 +1,233 @@
+/* ── Contenedor del mapa ──────────────────────────────────────────────── */
+.map-container-ruta {
+    height: 500px;
+    width: 100%;
+    border-radius: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.list-paradas-container {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* ── Etiquetas meta ───────────────────────────────────────────────────── */
+.meta-pill {
+    display: inline-block;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    background-color: var(--brand-light);
+    color: var(--brand-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.mood-edit-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.mood-edit-item {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    background: var(--bg-white);
+}
+
+/* ── Título y edición ──────────────────────────────────────────────── */
+.titulo-edit-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-edit {
+    border: 1px solid #c7d2fe;
+    background: var(--bg-white);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.35rem 0.75rem;
+    color: var(--brand-color);
+    cursor: pointer;
+}
+
+.btn-edit:hover {
+    background: var(--brand-light);
+    color: var(--brand-hover);
+}
+
+.meta-edit-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.parada-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.parada-edit-form {
+    margin-top: 0.75rem;
+}
+
+/* ── Formulario agregar parada ────────────────────────────────────── */
+.add-stop-form {
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    background: var(--bg-surface);
+}
+
+.map-edit-hint {
+    font-size: 0.875rem;
+}
+
+/* ── Paradas ──────────────────────────────────────────────────────── */
+.parada-item {
+    border-radius: 8px;
+    transition: background 0.15s;
+}
+
+.parada-item.drag-over {
+    background: var(--brand-light);
+}
+
+.drag-handle {
+    cursor: grab;
+    color: #9ca3af;
+    font-size: 0.85rem;
+}
+
+.parada-coords-preview {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+/* ── Panel métricas ────────────────────────────────────────────────── */
+.ruta-metrics-panel {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.6rem 1rem;
+    background: var(--brand-light);
+    border: 1px solid #c7d2fe;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+.metric-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    color: var(--brand-hover);
+}
+
+.metric-value {
+    color: #1e1b4b;
+}
+
+.metric-sep {
+    color: #c7d2fe;
+    font-weight: 300;
+    font-size: 1.1rem;
+}
+
+.metrics-empty {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-style: italic;
+}
+
+/* ── Botón recalcular ──────────────────────────────────────────────── */
+.btn-recalcular {
+    margin-left: auto;
+    border: 1px solid var(--brand-color);
+    background: var(--bg-white);
+    color: var(--brand-color);
+    border-radius: 999px;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: background 0.15s;
+}
+
+.btn-recalcular:hover {
+    background: var(--brand-light);
+}
+
+.btn-recalcular:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* ── Badge estado en el mapa ───────────────────────────────────────── */
+.map-route-status {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    pointer-events: none;
+}
+
+.map-route-status.ok {
+    color: #059669;
+    border-color: #a7f3d0;
+    background: rgba(240, 253, 250, 0.95);
+}
+
+.map-route-status.warn {
+    color: #d97706;
+    border-color: #fcd34d;
+    background: rgba(255, 251, 235, 0.95);
+}
+
+.map-route-status.error {
+    color: #dc2626;
+    border-color: #fca5a5;
+    background: rgba(254, 242, 242, 0.95);
+}
+
+.map-wrapper {
+    position: relative;
+}
+
+.segmento-badge {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+
+.reorder-active .parada-item {
+    cursor: grab;
+    border: 1px dashed var(--brand-color) !important;
+}
