@@ -111,10 +111,11 @@
 <script>
     const mapboxToken     = '{{ MAPBOX_ACCESS_TOKEN }}';
     const sesionId        = {{ sesion.id }};
+    const sesionEstado    = '{{ sesion.estado|escapejs }}';
     const esGuia          = {% if es_guia %}true{% else %}false{% endif %};
     const paradasData     = JSON.parse(document.getElementById('paradas-data').textContent);
     const currentUserName = '{{ current_user_name|escapejs }}';
     const geometriaRuta   = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
 </script>
-<script src="{% static 'js/mapa_turista.js' %}"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=20260309b"></script>
 {% endblock %}

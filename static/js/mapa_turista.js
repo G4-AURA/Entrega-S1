@@ -18,6 +18,7 @@
 let map               = null;
 let guiaMarker        = null;
 let miUbicacionMarker = null;
+const sesionEnCurso   = typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso';
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -57,7 +58,7 @@ document.addEventListener('DOMContentLoaded', function () {
     _iniciarRastreoLocal();
 
     // ── Posición del guía (polling cada 5 s, solo turistas) ───────────────
-    if (!esGuia) {
+    if (!esGuia && sesionEnCurso) {
         _obtenerUbicacionGuia();
         setInterval(_obtenerUbicacionGuia, 5000);
     }
@@ -196,7 +197,7 @@ function _iniciarRastreoLocal() {
             }
 
             // El guía envía su posición al servidor para que los turistas la vean
-            if (esGuia) {
+            if (esGuia && sesionEnCurso) {
                 fetch('/tours/ubicacion/', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
@@ -213,7 +214,7 @@ function _iniciarRastreoLocal() {
 // ── Posición del guía (solo turistas) ─────────────────────────────────────
 
 function _obtenerUbicacionGuia() {
-    if (!map) return;
+    if (!map || !sesionEnCurso) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
         .then(r => { if (!r.ok) throw new Error(); return r.json(); })
@@ -264,6 +265,14 @@ function _initChat() {
     const chatInput    = document.getElementById('chat-input');
     const chatSendBtn  = document.getElementById('chat-send');
     if (!chatMessages || !chatInput || !chatSendBtn) return;
+
+    if (!sesionEnCurso) {
+        chatInput.value = '';
+        chatInput.disabled = true;
+        chatSendBtn.disabled = true;
+        chatInput.placeholder = 'El chat estará disponible cuando el tour esté en curso.';
+        return;
+    }
 
     let lastMessageTime = null;
     let unread          = 0;
@@ -328,7 +337,7 @@ function _initChat() {
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
             body:    JSON.stringify({ texto }),
         })
-        .then(r => r.json())
+        .then(r => r.ok ? r.json() : Promise.reject())
         .then(() => { chatInput.value = ''; fetchMessages(); })
         .catch(() => {})
         .finally(() => { chatSendBtn.disabled = chatInput.disabled = false; chatInput.focus(); });

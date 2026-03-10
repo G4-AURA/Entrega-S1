@@ -20,7 +20,25 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from rutas.models import Ruta
 
 from . import services
-from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
+from .models import SesionTour, TuristaSesion, UbicacionVivo
+
+def _json_error(message: str, status: int) -> JsonResponse:
+    return JsonResponse({"error": message}, status=status)
+
+
+def _render_join_error(request, message: str, status: int):
+    return render(request, "tours/join_error.html", {"error": message}, status=status)
+
+
+def _service_error_response(exc: services.TourServiceError) -> JsonResponse:
+    return _json_error(exc.message, exc.status_code)
+
+
+def _es_guia_de_ruta(user, ruta: Ruta) -> bool:
+    try:
+        return ruta.guia.user.user == user
+    except AttributeError:
+        return False
 
 
 # ===========================================================================
@@ -33,32 +51,47 @@ def join_tour_by_code(request, codigo):
     Punto de entrada para turistas. Resuelve el código legible al token UUID
     interno y redirige. El código es insensible a mayúsculas/minúsculas.
     """
-    sesion = get_object_or_404(SesionTour, codigo_acceso=codigo.upper())
-
-    if sesion.esta_finalizada:
-        return render(
+    sesion = SesionTour.objects.filter(codigo_acceso=codigo.upper()).first()
+    if not sesion:
+        return _render_join_error(
             request,
-            "tours/join_error.html",
-            {"error": "Esta sesión ya ha finalizado."},
-            status=410,
+            "No existe una sesión con ese código de acceso.",
+            404,
+        )
+
+    try:
+        services.validar_sesion_activa_para_union(sesion)
+    except services.TourServiceError as exc:
+        return _render_join_error(
+            request,
+            exc.message,
+            exc.status_code,
         )
 
     return redirect("tours:join_tour", token=sesion.token)
 
 
+@require_http_methods(["GET", "POST"])
 def join_tour(request, token):
     """
     GET:  Formulario de alias.
     POST: Crea/reactiva el turista anónimo y redirige al mapa.
     """
-    sesion = get_object_or_404(SesionTour, token=token)
-
-    if sesion.esta_finalizada:
-        return render(
+    sesion = SesionTour.objects.filter(token=token).first()
+    if not sesion:
+        return _render_join_error(
             request,
-            "tours/join_error.html",
-            {"error": "Esta sesión ya ha finalizado."},
-            status=410,
+            "La sesión solicitada no existe.",
+            404,
+        )
+
+    try:
+        services.validar_sesion_activa_para_union(sesion)
+    except services.TourServiceError as exc:
+        return _render_join_error(
+            request,
+            exc.message,
+            exc.status_code,
         )
 
     if request.method == "GET":
@@ -76,20 +109,39 @@ def join_tour(request, token):
                 request,
                 "tours/join_tour.html",
                 {"sesion": sesion, "error": "El alias debe tener al menos 2 caracteres."},
+                status=400,
             )
         if len(alias) > 50:
             return render(
                 request,
                 "tours/join_tour.html",
                 {"sesion": sesion, "error": "El alias no puede exceder 50 caracteres."},
+                status=400,
             )
 
         turista_id_cookie = request.session.get("turista_id")
-        turista, error = services.unir_turista_anonimo(sesion, alias, turista_id_cookie)
+        try:
+            turista, error = services.unir_turista_anonimo(
+                sesion,
+                alias,
+                turista_id_cookie,
+            )
+        except services.SesionFinalizadaError as exc:
+            return _render_join_error(request, exc.message, exc.status_code)
+        except services.TourServiceError as exc:
+            return render(
+                request,
+                "tours/join_tour.html",
+                {"sesion": sesion, "error": exc.message},
+                status=exc.status_code,
+            )
 
         if error:
             return render(
-                request, "tours/join_tour.html", {"sesion": sesion, "error": error}
+                request,
+                "tours/join_tour.html",
+                {"sesion": sesion, "error": error},
+                status=409,
             )
 
         request.session["turista_id"] = turista.id
@@ -103,14 +155,31 @@ def mapa_turista_anonimo(request, token):
     """
     Mapa en vivo para el turista anónimo verificado por cookie.
     """
-    sesion = get_object_or_404(SesionTour, token=token)
+    sesion = SesionTour.objects.filter(token=token).first()
+    if not sesion:
+        return _render_join_error(
+            request,
+            "La sesión solicitada no existe.",
+            404,
+        )
+
+    try:
+        services.validar_sesion_en_curso(sesion, "acceder al mapa en vivo")
+    except services.TourServiceError as exc:
+        return _render_join_error(request, exc.message, exc.status_code)
 
     turista = services.obtener_turista_anonimo(request)
     if not turista:
         return redirect("tours:join_tour", token=token)
 
-    if not TuristaSesion.objects.filter(turista=turista, sesion_tour=sesion).exists():
+    if not TuristaSesion.objects.filter(
+        turista=turista,
+        sesion_tour=sesion,
+        activo=True,
+    ).exists():
         return redirect("tours:join_tour", token=token)
+
+    paradas_json = services.serializar_paradas(sesion)
 
     return render(
         request,
@@ -119,7 +188,7 @@ def mapa_turista_anonimo(request, token):
             "sesion":              sesion,
             "turista":             turista,
             "paradas":             sesion.ruta.paradas.all(),
-            "paradas_json":        services.serializar_paradas(sesion),
+            "paradas_json":        paradas_json,
             # Geometría pre-calculada en BD. None si la ruta aún no tiene
             # geometría guardada (p.ej. < 2 paradas o sin ejecutar recalcular_rutas).
             "geometria_ruta_json": sesion.ruta.geometria_ruta_coords,
@@ -138,33 +207,29 @@ def crear_sesion(request):
     """
     Crea una SesionTour para la ruta indicada en ?ruta_id=X.
     """
-    ruta_id = request.GET.get("ruta_id")
-    if not ruta_id:
+    ruta_id_raw = request.GET.get("ruta_id")
+    if not ruta_id_raw:
         return JsonResponse({"error": "Parámetro ruta_id requerido."}, status=400)
+
+    try:
+        ruta_id = int(ruta_id_raw)
+    except (TypeError, ValueError):
+        return _json_error("Parámetro ruta_id inválido.", 400)
 
     ruta = get_object_or_404(Ruta, id=ruta_id)
 
-    class _RutaProxy:
-        pass
-    proxy = _RutaProxy()
-    proxy.ruta = ruta  # type: ignore
-
-    try:
-        es_guia = ruta.guia.user.user == request.user
-    except AttributeError:
-        es_guia = False
-
-    if not es_guia:
+    if not _es_guia_de_ruta(request.user, ruta):
         return JsonResponse(
             {"error": "No autorizado para crear sesión para esta ruta."}, status=403
         )
 
     sesion = SesionTour.objects.create(
         codigo_acceso=services.generar_codigo_unico(),
-        estado=SesionTour.EN_CURSO,
+        estado=SesionTour.PENDIENTE,
         fecha_inicio=timezone.now(),
         ruta=ruta,
     )
+
     return redirect("tours:guia_sesion", sesion_id=sesion.id)
 
 
@@ -172,9 +237,8 @@ def crear_sesion(request):
 def guia_sesion(request, sesion_id):
     """Panel de control del guía para una sesión activa."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
-
     if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+        return _json_error("No autorizado.", 403)
 
     return render(request, "tours/guia_sesion.html", {"sesion": sesion})
 
@@ -185,12 +249,11 @@ def iniciar_tour(request, sesion_id):
     """Transiciona la sesión de PENDIENTE → EN_CURSO."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if sesion.esta_finalizada:
-        return JsonResponse(
-            {"error": "No se puede iniciar una sesión finalizada."}, status=400
-        )
-
-    services.iniciar_sesion(sesion)
+    try:
+        services.validar_guia_de_sesion(request.user, sesion, "iniciar el tour")
+        services.iniciar_sesion(sesion)
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
     return JsonResponse(
         {
@@ -208,8 +271,15 @@ def regenerar_codigo(request, sesion_id):
     """Genera un nuevo codigo_acceso para que el guía lo comparta."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+    try:
+        services.validar_guia_de_sesion(
+            request.user,
+            sesion,
+            "regenerar el código de acceso",
+        )
+        services.validar_sesion_no_finalizada(sesion, "regenerar el código de acceso")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
     sesion.codigo_acceso = services.generar_codigo_unico()
     sesion.save(update_fields=["codigo_acceso"])
@@ -222,11 +292,13 @@ def cerrar_acceso(request, sesion_id):
     """Finaliza la sesión y desactiva a todos los participantes."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+    try:
+        services.validar_guia_de_sesion(request.user, sesion, "cerrar el acceso")
+        services.cerrar_sesion(sesion)
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
-    services.cerrar_sesion(sesion)
-    return JsonResponse({"status": "cerrado"})
+    return JsonResponse({"status": "cerrado", "estado": sesion.estado})
 
 
 @login_required
@@ -235,8 +307,14 @@ def participantes_sesion(request, sesion_id):
     """Lista de turistas activos en la sesión (solo para el guía)."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+    try:
+        services.validar_guia_de_sesion(
+            request.user,
+            sesion,
+            "consultar participantes",
+        )
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
     participantes = (
         TuristaSesion.objects.filter(sesion_tour=sesion, activo=True)
@@ -266,8 +344,13 @@ def mapa_guia(request, sesion_id):
     """
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+    try:
+        services.validar_guia_de_sesion(request.user, sesion, "acceder al mapa en vivo")
+        services.validar_sesion_no_finalizada(sesion, "acceder al mapa en vivo")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
+
+    paradas_json = services.serializar_paradas(sesion)
 
     return render(
         request,
@@ -275,7 +358,7 @@ def mapa_guia(request, sesion_id):
         {
             "sesion":              sesion,
             "paradas":             sesion.ruta.paradas.all(),
-            "paradas_json":        services.serializar_paradas(sesion),
+            "paradas_json":        paradas_json,
             "geometria_ruta_json": sesion.ruta.geometria_ruta_coords,
             "es_guia":             True,
             "current_user_name":   request.user.username,
@@ -311,15 +394,25 @@ def registrar_ubicacion(request):
     except (TypeError, ValueError):
         return JsonResponse({"error": "Latitud/longitud deben ser numéricas."}, status=400)
 
+    try:
+        sesion_id = int(sesion_id)
+    except (TypeError, ValueError):
+        return _json_error("El campo sesion_id debe ser numérico.", 400)
+
     if not (-90 <= latitud <= 90) or not (-180 <= longitud <= 180):
         return JsonResponse({"error": "Coordenadas fuera de rango válido."}, status=400)
 
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse(
-            {"error": "Solo el guía puede registrar ubicaciones."}, status=403
+    try:
+        services.validar_guia_de_sesion(
+            request.user,
+            sesion,
+            "registrar ubicaciones",
         )
+        services.validar_sesion_en_curso(sesion, "registrar ubicaciones")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
     ubicacion = UbicacionVivo.objects.create(
         coordenadas=Point(longitud, latitud, srid=4326),
@@ -345,12 +438,18 @@ def obtener_ubicacion_guia(request, sesion_id):
     """Última posición GPS del guía (polling desde el mapa del turista)."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return _json_error("Acceso denegado.", 403)
+
+    try:
+        services.validar_sesion_en_curso(sesion, "consultar la ubicación del guía")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
+
     try:
         guia_user = sesion.ruta.guia.user.user
     except AttributeError:
-        return JsonResponse(
-            {"error": "No se pudo identificar al guía de esta ruta."}, status=404
-        )
+        return _json_error("No se pudo identificar al guía de esta ruta.", 404)
 
     ultima_ubi = (
         UbicacionVivo.objects.filter(sesion_tour=sesion, usuario=guia_user)
@@ -361,13 +460,22 @@ def obtener_ubicacion_guia(request, sesion_id):
     if ultima_ubi and ultima_ubi.coordenadas:
         return JsonResponse(
             {
+                "available": True,
                 "lat":       ultima_ubi.coordenadas.y,
                 "lng":       ultima_ubi.coordenadas.x,
                 "timestamp": ultima_ubi.timestamp.isoformat(),
             }
         )
 
-    return JsonResponse({"error": "El guía aún no ha compartido su ubicación."}, status=404)
+    return JsonResponse(
+        {
+            "available": False,
+            "lat": None,
+            "lng": None,
+            "timestamp": None,
+            "message": "El guía aún no ha compartido su ubicación.",
+        }
+    )
 
 
 # ===========================================================================
@@ -382,25 +490,51 @@ def enviar_mensaje(request, sesion_id):
     except json.JSONDecodeError:
         return JsonResponse({"error": "JSON inválido."}, status=400)
 
-    texto = body.get("texto", "").strip()
+    texto_raw = body.get("texto", "")
+    if not isinstance(texto_raw, str):
+        texto_raw = str(texto_raw)
+    texto = texto_raw.strip()
+
     if not texto:
         return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
+
+    if len(texto) > 2000:
+        return _json_error("El mensaje no puede exceder 2000 caracteres.", 400)
 
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
     if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Acceso denegado."}, status=403)
+        return _json_error("Acceso denegado.", 403)
 
-    nombre_remitente = services.obtener_nombre_remitente(request, sesion)
+    try:
+        services.validar_sesion_en_curso(sesion, "enviar mensajes")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
-    MensajeChat.objects.create(
-        sesion_tour=sesion,
-        nombre_remitente=nombre_remitente,
-        texto=texto,
-        momento=timezone.now(),
+    remitente_user, remitente_turista, nombre_remitente, error = (
+        services.determinar_remitente(request, sesion)
+    )
+    if error:
+        return _json_error(error, 403)
+
+    mensaje = services.crear_mensaje(
+        sesion,
+        remitente_user,
+        remitente_turista,
+        nombre_remitente,
+        texto,
     )
 
-    return JsonResponse({"status": "ok"}, status=201)
+    return JsonResponse(
+        {
+            "status": "ok",
+            "id": mensaje.id,
+            "nombre_remitente": mensaje.nombre_remitente,
+            "texto": mensaje.texto,
+            "momento": mensaje.momento.isoformat(),
+        },
+        status=201,
+    )
 
 
 @require_GET
@@ -409,15 +543,29 @@ def obtener_mensajes(request, sesion_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
     if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Acceso denegado."}, status=403)
+        return _json_error("Acceso denegado.", 403)
+
+    try:
+        services.validar_sesion_en_curso(sesion, "consultar mensajes")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
 
     desde_str = request.GET.get("desde")
-    qs = MensajeChat.objects.filter(sesion_tour=sesion).order_by("momento")
+    qs = sesion.mensajes.all().order_by("momento")
 
     if desde_str:
         desde_dt = parse_datetime(desde_str)
-        if desde_dt:
-            qs = qs.filter(momento__gt=desde_dt)
+        if not desde_dt:
+            return _json_error(
+                "Parámetro 'desde' inválido. Usa formato ISO 8601.",
+                400,
+            )
+        if timezone.is_naive(desde_dt):
+            desde_dt = timezone.make_aware(
+                desde_dt,
+                timezone.get_current_timezone(),
+            )
+        qs = qs.filter(momento__gt=desde_dt)
 
     mensajes = [
         {

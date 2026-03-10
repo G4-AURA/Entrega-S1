@@ -16,6 +16,28 @@ from django.utils import timezone
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
 
 
+class TourServiceError(Exception):
+    status_code = 400
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.message = message
+        if status_code is not None:
+            self.status_code = status_code
+
+
+class AccesoSesionDenegadoError(TourServiceError):
+    status_code = 403
+
+
+class EstadoSesionInvalidoError(TourServiceError):
+    status_code = 409
+
+
+class SesionFinalizadaError(TourServiceError):
+    status_code = 410
+
+
 # ---------------------------------------------------------------------------
 # Autorización
 # ---------------------------------------------------------------------------
@@ -30,6 +52,59 @@ def es_guia_de_sesion(user: User, sesion: SesionTour) -> bool:
         return sesion.ruta.guia.user.user == user
     except AttributeError:
         return False
+
+
+def validar_guia_de_sesion(
+    user: User,
+    sesion: SesionTour,
+    accion: str = "realizar esta acción",
+) -> None:
+    if not es_guia_de_sesion(user, sesion):
+        raise AccesoSesionDenegadoError(f"Solo el guía puede {accion}.")
+
+
+def validar_sesion_no_finalizada(
+    sesion: SesionTour,
+    accion: str = "continuar",
+) -> None:
+    if sesion.esta_finalizada:
+        raise SesionFinalizadaError(f"No se puede {accion}: la sesión está finalizada.")
+
+
+def validar_sesion_en_curso(
+    sesion: SesionTour,
+    accion: str = "realizar esta acción",
+) -> None:
+    if sesion.esta_finalizada:
+        raise SesionFinalizadaError(
+            f"No se puede {accion}: la sesión está finalizada."
+        )
+    if sesion.estado != SesionTour.EN_CURSO:
+        raise EstadoSesionInvalidoError(
+            f"No se puede {accion}: la sesión debe estar en curso."
+        )
+
+
+def validar_sesion_iniciable(sesion: SesionTour) -> None:
+    if sesion.esta_finalizada:
+        raise SesionFinalizadaError(
+            "No se puede iniciar una sesión finalizada."
+        )
+    if sesion.estado != SesionTour.PENDIENTE:
+        raise EstadoSesionInvalidoError(
+            "La sesión ya está iniciada o no admite esta transición."
+        )
+
+
+def validar_sesion_activa_para_union(sesion: SesionTour) -> None:
+    if sesion.esta_finalizada:
+        raise SesionFinalizadaError(
+            "No se puede unir a la sesión: ya está finalizada."
+        )
+    if sesion.estado != SesionTour.EN_CURSO:
+        raise EstadoSesionInvalidoError(
+            "No se puede unir a la sesión: aún no está activa."
+        )
 
 
 def obtener_turista_anonimo(request) -> Optional[Turista]:
@@ -118,6 +193,8 @@ def unir_turista_anonimo(
     2. Alias inactivo del mismo usuario (misma cookie) → reactivar.
     3. Cualquier otro caso → crear turista nuevo.
     """
+    validar_sesion_activa_para_union(sesion)
+
     alias_activo_qs = TuristaSesion.objects.filter(
         sesion_tour=sesion, turista__alias=alias, activo=True
     ).select_related("turista")
@@ -194,11 +271,19 @@ def crear_mensaje(
     )
 
 
+def obtener_nombre_remitente(request, sesion: SesionTour) -> str:
+    _, _, nombre_remitente, error = determinar_remitente(request, sesion)
+    if error:
+        raise AccesoSesionDenegadoError(error)
+    return nombre_remitente
+
+
 # ---------------------------------------------------------------------------
 # Gestión de sesiones
 # ---------------------------------------------------------------------------
 
 def iniciar_sesion(sesion: SesionTour) -> None:
+    validar_sesion_iniciable(sesion)
     sesion.estado = SesionTour.EN_CURSO
     sesion.fecha_inicio = timezone.now()
     sesion.codigo_acceso = generar_codigo_unico()
@@ -206,6 +291,8 @@ def iniciar_sesion(sesion: SesionTour) -> None:
 
 
 def cerrar_sesion(sesion: SesionTour) -> None:
+    if sesion.esta_finalizada:
+        raise EstadoSesionInvalidoError("La sesión ya está finalizada.")
     sesion.estado = SesionTour.FINALIZADO
     sesion.save(update_fields=["estado"])
     TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).update(activo=False)
