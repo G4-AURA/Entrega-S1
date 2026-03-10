@@ -19,6 +19,8 @@ class GenerarRutaIAViewTests(TestCase):
             'personas': 6,
             'exigencia': 'media',
             'mood': ['historia', 'gastronomia'],
+            'deseos': [],     # <--- AÑADE ESTO
+            'metadata': {},
         }
 
     def test_rechaza_usuario_no_autenticado(self):
