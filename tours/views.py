@@ -376,57 +376,174 @@ def obtener_ubicacion_guia(request, sesion_id):
 
 @require_POST
 def enviar_mensaje(request, sesion_id):
-    """Envía un mensaje. Acepta turistas anónimos (cookie) y el guía (auth)."""
+    """
+    Envía un mensaje al chat de una sesión.
+    
+    Validaciones implementadas (S2.1-52):
+    - Sesión debe existir (404 si no existe)
+    - Sesión no debe estar finalizada (403)
+    - Usuario debe tener acceso a la sesión (403)
+    - Texto del mensaje no puede estar vacío (400)
+    """
+    # Validar JSON
     try:
         body = json.loads(request.body or "{}")
     except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON inválido."}, status=400)
+        return JsonResponse(
+            {"error": "Formato JSON inválido en el cuerpo de la petición."},
+            status=400
+        )
 
+    # Validar campo texto
     texto = body.get("texto", "").strip()
     if not texto:
-        return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
+        return JsonResponse(
+            {"error": "El campo 'texto' es obligatorio y no puede estar vacío."},
+            status=400
+        )
 
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    # Validar longitud del mensaje
+    if len(texto) > 5000:
+        return JsonResponse(
+            {"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."},
+            status=400
+        )
 
+    # Validar que la sesión existe
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse(
+            {"error": f"La sesión con ID {sesion_id} no existe."},
+            status=404
+        )
+
+    # Validar que la sesión no está finalizada
+    if sesion.esta_finalizada:
+        return JsonResponse(
+            {
+                "error": "No se pueden enviar mensajes a una sesión finalizada.",
+                "estado_sesion": sesion.estado
+            },
+            status=403
+        )
+
+    # Validar que el usuario tiene acceso a la sesión
     if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Acceso denegado."}, status=403)
+        return JsonResponse(
+            {
+                "error": "No tienes permiso para enviar mensajes a esta sesión. "
+                        "Debes ser un turista activo o el guía de esta sesión."
+            },
+            status=403
+        )
 
+    # Obtener nombre del remitente
     nombre_remitente = services.obtener_nombre_remitente(request, sesion)
 
-    MensajeChat.objects.create(
-        sesion_tour=sesion,
-        nombre_remitente=nombre_remitente,
-        texto=texto,
-        momento=timezone.now(),
-    )
-
-    return JsonResponse({"status": "ok"}, status=201)
+    # Crear el mensaje
+    try:
+        mensaje = MensajeChat.objects.create(
+            sesion_tour=sesion,
+            nombre_remitente=nombre_remitente,
+            texto=texto,
+            momento=timezone.now(),
+        )
+        
+        return JsonResponse(
+            {
+                "status": "ok",
+                "mensaje_id": mensaje.id,
+                "momento": mensaje.momento.isoformat()
+            },
+            status=201
+        )
+    except Exception as e:
+        # Log del error para debugging (sin exponer detalles al cliente)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error al crear mensaje en sesión {sesion_id}: {str(e)}")
+        
+        return JsonResponse(
+            {"error": "Error interno al guardar el mensaje. Inténtalo de nuevo."},
+            status=500
+        )
 
 
 @require_GET
 def obtener_mensajes(request, sesion_id):
-    """Devuelve los mensajes de la sesión, con filtro opcional por `desde`."""
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    """
+    Devuelve los mensajes del chat de una sesión.
+    
+    Validaciones implementadas (S2.1-52):
+    - Sesión debe existir (404 si no existe)
+    - Usuario debe tener acceso a la sesión (403)
+    - Parámetro 'desde' debe ser una fecha válida si se proporciona (400)
+    
+    Nota: Se permiten consultas a sesiones finalizadas para ver el historial.
+    """
+    # Validar que la sesión existe
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse(
+            {"error": f"La sesión con ID {sesion_id} no existe."},
+            status=404
+        )
 
+    # Validar que el usuario tiene acceso a la sesión
     if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Acceso denegado."}, status=403)
+        return JsonResponse(
+            {
+                "error": "No tienes permiso para ver los mensajes de esta sesión. "
+                        "Debes ser un turista activo o el guía de esta sesión."
+            },
+            status=403
+        )
 
-    desde_str = request.GET.get("desde")
+    # Construir query base
     qs = MensajeChat.objects.filter(sesion_tour=sesion).order_by("momento")
 
+    # Filtro opcional por fecha 'desde'
+    desde_str = request.GET.get("desde")
     if desde_str:
         desde_dt = parse_datetime(desde_str)
-        if desde_dt:
-            qs = qs.filter(momento__gt=desde_dt)
+        if desde_dt is None:
+            return JsonResponse(
+                {
+                    "error": "El parámetro 'desde' debe ser una fecha ISO válida "
+                            "(formato: YYYY-MM-DDTHH:MM:SS)."
+                },
+                status=400
+            )
+        qs = qs.filter(momento__gt=desde_dt)
 
-    mensajes = [
-        {
-            "id":               m.id,
-            "nombre_remitente": m.nombre_remitente,
-            "texto":            m.texto,
-            "momento":          m.momento.isoformat(),
-        }
-        for m in qs
-    ]
+    # Serializar mensajes
+    try:
+        mensajes = [
+            {
+                "id":               m.id,
+                "nombre_remitente": m.nombre_remitente,
+                "texto":            m.texto,
+                "momento":          m.momento.isoformat(),
+            }
+            for m in qs
+        ]
 
-    return JsonResponse({"mensajes": mensajes})
+        return JsonResponse(
+            {
+                "mensajes": mensajes,
+                "total": len(mensajes),
+                "estado_sesion": sesion.estado
+            }
+        )
+    except Exception as e:
+        # Log del error para debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error al obtener mensajes de sesión {sesion_id}: {str(e)}")
+        
+        return JsonResponse(
+            {"error": "Error interno al recuperar los mensajes."},
+            status=500
+        )
