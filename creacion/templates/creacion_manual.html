@@ -5,145 +5,147 @@
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'css/creacion/creacion_manual.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/route_manual.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="creacion-manual">
-    <div class="container creacion-manual__container">
-        <header class="header">
-            <button class="btn-back" data-action="go-back" type="button">
-                <span class="material-icons-round">arrow_back</span>
-            </button>
-            <div class="header-title">Creación manual</div>
-        </header>
+<div class="manual-container">
 
+    <header class="manual-header">
+        <button class="btn-back-manual" onclick="window.location.href='/crear-ruta/'">
+            <span class="material-icons-round">arrow_back</span>
+        </button>
+        <div class="header-title">Creación manual</div>
+    </header>
+
+    <div class="main-card">
         <div class="form-group">
-            <label class="input-label" for="ruta-titulo">Título del Tour</label>
+            <label class="input-label">Título del Tour</label>
             <input type="text" id="ruta-titulo" class="input-field" value="Ruta Histórica Centro">
         </div>
-
         <div class="form-group">
-            <label class="input-label" for="ruta-descripcion">Descripción</label>
+            <label class="input-label">Descripción</label>
             <textarea id="ruta-descripcion" class="input-field">Un recorrido por los monumentos más emblemáticos...</textarea>
         </div>
-
         <div class="form-row">
-            <div class="form-group form-group-no-margin">
-                <label class="input-label" for="ruta-duracion">Duración (horas)</label>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="input-label">Duración (horas)</label>
                 <input type="number" id="ruta-duracion" class="input-field" step="0.5" min="0.5" value="2.0" placeholder="Ej: 2.5">
             </div>
-
-            <div class="form-group form-group-no-margin">
-                <label class="input-label" for="ruta-personas">Nº Max. Personas</label>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="input-label">Nº Máx. Personas</label>
                 <input type="number" id="ruta-personas" class="input-field" min="1" value="10" placeholder="Ej: 15">
             </div>
-
-            <div class="form-group form-group-no-margin">
-                <label class="input-label" for="ruta-exigencia">Nivel de Exigencia</label>
-                <select id="ruta-exigencia" class="input-field input-select">
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="input-label">Nivel de Exigencia</label>
+                <select id="ruta-exigencia" class="input-field" style="appearance:auto;height:46px;">
                     <option value="Baja">Baja</option>
                     <option value="Media" selected>Media</option>
                     <option value="Alta">Alta</option>
                 </select>
             </div>
         </div>
-
-        <div class="stops-controller">
-            <div class="stops-info">
-                <span class="stops-label">Paradas</span>
-                <span class="counter-number" id="counter-display">2</span>
-            </div>
-            <div class="counter-actions">
-                <button class="btn-counter" data-action="remove-stop" type="button">
-                    <span class="material-icons-round">remove</span>
-                </button>
-                <button class="btn-counter" data-action="add-stop" type="button">
-                    <span class="material-icons-round">add</span>
-                </button>
-            </div>
-        </div>
-
-        <div id="stops-container">
-            <div class="stop-card" id="stop-1">
-                <div class="stop-header">
-                    <span class="stop-number-badge">PARADA 1</span>
-                    <span class="material-icons-round drag-icon">drag_handle</span>
-                </div>
-
-                <div class="image-upload-area" id="img-area-1" data-action="upload-image" data-stop-id="1">
-                    <span class="material-icons-round">add_photo_alternate</span>
-                    <span class="image-upload-text">Cargar Imagen</span>
-                </div>
-                <input type="file" id="file-1" hidden accept="image/*" class="stop-image-input" data-stop-id="1">
-
-                <div class="form-group">
-                    <label class="input-label">Nombre del Lugar</label>
-                    <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
-                </div>
-
-                <div class="form-group form-group-no-margin">
-                    <label class="input-label">Ubicación</label>
-                    <div class="location-group">
-                        <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
-                        <button class="btn-map" type="button"><span class="material-icons-round">map</span></button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="stop-card" id="stop-2">
-                <div class="stop-header">
-                    <span class="stop-number-badge">PARADA 2</span>
-                    <span class="material-icons-round drag-icon">drag_handle</span>
-                </div>
-
-                <div class="image-upload-area" id="img-area-2" data-action="upload-image" data-stop-id="2">
-                    <span class="material-icons-round">add_photo_alternate</span>
-                    <span class="image-upload-text">Cargar Imagen</span>
-                </div>
-                <input type="file" id="file-2" hidden accept="image/*" class="stop-image-input" data-stop-id="2">
-
-                <div class="form-group">
-                    <label class="input-label">Nombre del Lugar</label>
-                    <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
-                </div>
-
-                <div class="form-group form-group-no-margin">
-                    <label class="input-label">Ubicación</label>
-                    <div class="location-group">
-                        <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
-                        <button class="btn-map" type="button"><span class="material-icons-round">map</span></button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
-    <div class="footer-action">
-        <div class="footer-content">
-            <button class="btn-save" id="btn-guardar-tour" type="button">
-                <span class="material-icons-round">save</span>
-                Guardar
+    <div class="stops-controller">
+        <div class="stops-info">
+            <span class="stops-label">Paradas</span>
+            <span class="counter-number" id="counter-display">2</span>
+        </div>
+        <div class="counter-actions">
+            <button class="btn-counter" onclick="removeStop()">
+                <span class="material-icons-round">remove</span>
+            </button>
+            <button class="btn-counter" onclick="addStop()">
+                <span class="material-icons-round">add</span>
             </button>
         </div>
     </div>
 
-    <div class="map-modal-overlay" id="map-modal-overlay">
-        <div class="map-modal">
-            <div class="map-modal-header">
-                <h3>Elige la ubicación de la parada</h3>
-                <button class="btn-close" id="close-map-btn" type="button">&times;</button>
+    <div id="stops-container">
+        <div class="stop-card" id="stop-1">
+            <div class="stop-header">
+                <span class="stop-number-badge">PARADA 1</span>
+                <span class="material-icons-round" style="color:var(--text-muted);cursor:grab;">drag_handle</span>
             </div>
-            <div id="leaflet-map"></div>
-            <div class="map-modal-footer">
-                <button class="btn-secondary" id="cancel-map-btn" type="button">Cancelar</button>
-                <button class="btn-save btn-confirm-map" id="confirm-map-btn" type="button">Confirmar</button>
+            <div class="image-upload-area" id="img-area-1" onclick="document.getElementById('file-1').click()">
+                <span class="material-icons-round">add_photo_alternate</span>
+                <span class="image-upload-text">Cargar Imagen</span>
             </div>
+            <input type="file" id="file-1" hidden accept="image/*" onchange="previewImage(this, 1)">
+            <div class="form-group">
+                <label class="input-label">Nombre del Lugar</label>
+                <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="input-label">Ubicación</label>
+                <div class="location-group">
+                    <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
+                    <button class="btn-map"><span class="material-icons-round">map</span></button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stop-card" id="stop-2">
+            <div class="stop-header">
+                <span class="stop-number-badge">PARADA 2</span>
+                <span class="material-icons-round" style="color:var(--text-muted);cursor:grab;">drag_handle</span>
+            </div>
+            <div class="image-upload-area" id="img-area-2" onclick="document.getElementById('file-2').click()">
+                <span class="material-icons-round">add_photo_alternate</span>
+                <span class="image-upload-text">Cargar Imagen</span>
+            </div>
+            <input type="file" id="file-2" hidden accept="image/*" onchange="previewImage(this, 2)">
+            <div class="form-group">
+                <label class="input-label">Nombre del Lugar</label>
+                <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="input-label">Ubicación</label>
+                <div class="location-group">
+                    <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
+                    <button class="btn-map"><span class="material-icons-round">map</span></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="footer-action">
+    <div class="footer-content">
+        <button class="btn-save" id="btn-guardar-tour">
+            <span class="material-icons-round">save</span>
+            Guardar
+        </button>
+    </div>
+</div>
+
+<div class="map-modal-overlay" id="map-modal-overlay">
+    <div class="map-modal">
+        <div class="map-modal-header">
+            <h3>Elige la ubicación de la parada</h3>
+            <button class="btn-close-modal" id="close-map-btn">&times;</button>
+        </div>
+        <div id="leaflet-map"></div>
+        <div class="map-modal-footer">
+            <button class="btn-modal-secondary" id="cancel-map-btn">Cancelar</button>
+            <button class="btn-save" id="confirm-map-btn" style="width:auto;padding:10px 20px;">Confirmar</button>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/creacion/creacion_manual.js' %}"></script>
+<script id="creacion-manual-config" type="application/json">
+{
+    "csrfToken": "{{ csrf_token }}",
+    "urls": {
+        "guardarManual": "{% url 'creacion:guardar_ruta_manual' %}",
+        "volver": "{% url 'creacion:seleccion_tipo_ruta' %}",
+        "catalogo": "{% url 'catalogo' %}"
+    }
+}
+</script>
+<script src="{% static 'js/pages/route_manual.js' %}"></script>
 {% endblock %}

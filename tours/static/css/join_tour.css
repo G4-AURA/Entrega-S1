@@ -1,0 +1,45 @@
+/* ── Página de unirse ────────────────────────────────────────────────– */
+.join-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 80px);
+    padding: 2rem 1rem;
+}
+
+.join-card {
+    width: 100%;
+    max-width: 500px;
+}
+
+/* ── Tour badge (información de la sesión) ────────────────────────── */
+.tour-badge {
+    background: linear-gradient(135deg, var(--brand-light), rgba(79, 70, 229, 0.05));
+    border: 1px solid var(--brand-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    color: var(--brand-color);
+    position: relative;
+    overflow: hidden;
+}
+
+.tour-badge::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+    animation: moveBackground 20s linear infinite;
+}
+
+@keyframes moveBackground {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translate(20px, 20px);
+    }
+}

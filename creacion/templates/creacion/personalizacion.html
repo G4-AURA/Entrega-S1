@@ -1,10 +1,11 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load static %}
 
 {% block title %}AURA - Personalización de Ruta{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/creacion/personalizacion.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/route_personalization.css' %}">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 {% endblock %}
 
@@ -105,7 +106,7 @@
                 <br>
 
                 <div class="col-12 d-flex justify-content-end">
-                    <button id="btn-generar-ruta" type="submit" class="btn btn-primary px-5">Generar la ruta</button>
+                    <button id="btn-generar-ruta" type="submit" class="btn btn-brand px-5">Generar la ruta</button>
                 </div>
             </form>
         </div>
@@ -135,7 +136,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/creacion/mapa_creacion.js' %}"></script>
+<script src="{% static 'js/pages/route_map.js' %}"></script>
 <script id="personalizacion-config" type="application/json">
 {
     "csrfToken": "{{ csrf_token }}",
@@ -145,5 +146,5 @@
     }
 }
 </script>
-<script src="{% static 'js/creacion/personalizacion_ruta.js' %}"></script>
+<script src="{% static 'js/pages/route_personalization.js' %}"></script>
 {% endblock %}
