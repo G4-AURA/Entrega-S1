@@ -159,9 +159,17 @@ def generar_paradas_ia(request, ruta_id):
     except (json.JSONDecodeError, UnicodeDecodeError):
         return JsonResponse({'status': 'ERROR', 'mensaje': 'El cuerpo de la petición no es JSON válido.'}, status=400)
 
-    cantidad = body.get('cantidad', 3)
+    cantidad_raw = body.get('cantidad', 3)
     try:
-        resultado = services.generar_candidatos_paradas_ia(ruta=ruta, cantidad=int(cantidad))
+        cantidad = int(cantidad_raw)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'El parámetro cantidad debe ser un número entero.'},
+            status=400,
+        )
+
+    try:
+        resultado = services.generar_candidatos_paradas_ia(ruta=ruta, cantidad=cantidad)
     except services.ErrorValidacionRuta as exc:
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=400)
     except services.ErrorIntegracionIA as exc:

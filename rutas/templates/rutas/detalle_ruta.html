@@ -794,8 +794,8 @@ function renderSugerenciasIAEnParada(paradaId, candidatos) {
     }).join('');
 }
 
-function aplicarSugerenciaAParada(paradaId, candidato) {
-    const form = document.getElementById(`form-editar-parada-${paradaId}`);
+function agregarSugerenciaComoNuevaParada(candidato) {
+    const form = document.getElementById('form-agregar-parada');
     if (!form) return;
 
     const nameInput = form.querySelector('input[name="nombre"]');
@@ -878,11 +878,11 @@ document.addEventListener('click', (event) => {
     const lon = coords[1];
 
     const confirmacion = window.confirm(
-        'Esta sugerencia reemplazará la parada seleccionada. ¿Quieres continuar?',
+        'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
     );
     if (!confirmacion) return;
 
-    aplicarSugerenciaAParada(paradaId, { nombre: candidato?.nombre || '', lat, lon });
+    agregarSugerenciaComoNuevaParada({ nombre: candidato?.nombre || '', lat, lon });
 });
 
 mapa.on('click', (event) => {

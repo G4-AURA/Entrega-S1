@@ -174,3 +174,14 @@ class GenerarParadasIAViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'OK')
         mock_generar.assert_called_once()
+
+    @patch('creacion.views.services.generar_candidatos_paradas_ia')
+    def test_retorna_400_si_cantidad_no_es_numerica(self, mock_generar):
+        self.client.force_login(self.user)
+
+        response = self.client.post(self.url, data=json.dumps({'cantidad': 'abc'}), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertIn('cantidad', response.json()['mensaje'])
+        mock_generar.assert_not_called()

@@ -353,6 +353,14 @@ def _esta_en_contexto_geografico(coordenadas, contexto_geo):
     return _distancia_haversine_km(coordenadas, contexto_geo['centro']) <= contexto_geo['radio_km']
 
 
+def _normalizar_nombre_para_dedupe(nombre):
+    return ' '.join(str(nombre or '').strip().lower().split())
+
+
+def _clave_coordenadas_para_dedupe(coordenadas):
+    return (round(float(coordenadas[0]), 5), round(float(coordenadas[1]), 5))
+
+
 def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     if cantidad < 1 or cantidad > 10:
         raise ErrorValidacionRuta('La cantidad de sugerencias debe estar entre 1 y 10.')
@@ -393,6 +401,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
 
         ## Criterios
         - Evita sugerir puntos duplicados respecto a las paradas existentes.
+        - Evita también duplicados entre las propias sugerencias.
         - Mantén coherencia temática con la ruta.
         - Propón coordenadas plausibles dentro de la ciudad indicada.
         - REGLA ESTRICTA: NO propongas paradas fuera del área geográfica de la ruta.
@@ -417,15 +426,39 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     if not isinstance(respuesta_ia, list):
         raise ErrorIntegracionIA('La IA devolvió un formato inválido para las sugerencias de paradas.')
 
+    nombres_existentes = {
+        _normalizar_nombre_para_dedupe(p.get('nombre'))
+        for p in paradas_existentes
+        if _normalizar_nombre_para_dedupe(p.get('nombre'))
+    }
+    coords_existentes = {
+        _clave_coordenadas_para_dedupe(p.get('coordenadas'))
+        for p in paradas_existentes
+        if isinstance(p.get('coordenadas'), list) and len(p.get('coordenadas')) >= 2
+    }
+
+    nombres_vistos = set(nombres_existentes)
+    coords_vistas = set(coords_existentes)
     candidatos = []
     for idx, candidato in enumerate(respuesta_ia, start=1):
         normalizado = _normalizar_candidato_parada(candidato, idx)
-        if normalizado and _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
-            candidatos.append(normalizado)
+        if not normalizado:
+            continue
+        if not _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
+            continue
+
+        nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
+        coords_key = _clave_coordenadas_para_dedupe(normalizado.get('coordenadas'))
+        if nombre_key in nombres_vistos or coords_key in coords_vistas:
+            continue
+
+        nombres_vistos.add(nombre_key)
+        coords_vistas.add(coords_key)
+        candidatos.append(normalizado)
 
     if not candidatos:
         raise ErrorIntegracionIA(
-            'La IA no devolvió candidatos geográficamente válidos para esta ruta.'
+            'La IA no devolvió candidatos válidos y no duplicados para esta ruta.'
         )
 
     return {

@@ -197,6 +197,45 @@ class GenerarCandidatosParadasIATests(TestCase):
             with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
                 with self.assertRaisesMessage(
                     services.ErrorIntegracionIA,
-                    'La IA no devolvió candidatos geográficamente válidos para esta ruta.',
+                    'La IA no devolvió candidatos válidos y no duplicados para esta ruta.',
                 ):
                     services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
+
+    def test_descarta_candidatos_duplicados_existentes_y_entre_sugerencias(self):
+        mocked = [
+            {
+                'nombre': 'Catedral',  # duplicado por nombre con parada existente
+                'coordenadas': [37.3900, -5.9900],
+                'categoria': 'historia',
+                'nivel_confianza': 0.9,
+                'justificacion': 'Duplicado de prueba.',
+            },
+            {
+                'nombre': 'Archivo de Indias',
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'historia',
+                'nivel_confianza': 0.91,
+                'justificacion': 'Candidato válido.',
+            },
+            {
+                'nombre': 'Archivo de Indias',  # duplicado entre candidatos
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'historia',
+                'nivel_confianza': 0.88,
+                'justificacion': 'Duplicado entre sugerencias.',
+            },
+            {
+                'nombre': 'Plaza Nueva',  # duplicado por coordenadas con candidato válido
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'local',
+                'nivel_confianza': 0.86,
+                'justificacion': 'Mismas coordenadas con otro nombre.',
+            },
+        ]
+        with self.settings(GEMINI_API_KEY='test-key'):
+            from unittest.mock import patch
+            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=4)
+
+        self.assertEqual(len(resultado['candidatos']), 1)
+        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')
