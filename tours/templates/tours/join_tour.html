@@ -12,10 +12,7 @@
         align-items: center;
         justify-content: center;
     }
-    .join-card {
-        max-width: 500px;
-        width: 100%;
-    }
+    .join-card { max-width: 500px; width: 100%; }
     .tour-info-badge {
         background: linear-gradient(135deg, var(--brand-color), var(--brand-hover));
         color: white;
@@ -29,15 +26,17 @@
 {% block content %}
 <div class="join-container">
     <div class="join-card">
+
         <div class="text-center mb-4">
-            <div class="bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" 
+            <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
                  style="width: 80px; height: 80px; background-color: #EEF2FF; color: var(--brand-color);">
                 <span class="material-icons-round" style="font-size:42px">tour</span>
             </div>
             <h2 class="fw-bold mb-2">Únete al Tour</h2>
-            <p class="text-muted">Ingresa tu nombre para comenzar la experiencia</p>
+            <p class="text-muted">Elige un alias para que tu guía te identifique</p>
         </div>
 
+        <!-- Información de la sesión -->
         <div class="tour-info-badge text-center shadow-sm">
             <div class="d-flex align-items-center justify-content-center gap-2 mb-2">
                 <span class="material-icons-round" style="font-size:20px">explore</span>
@@ -45,11 +44,11 @@
             </div>
             <div class="small opacity-75">
                 <span class="material-icons-round" style="font-size:16px; vertical-align: middle;">event</span>
-                {{ sesion.fecha_inicio|date:"d M, Y" }} • {{ sesion.fecha_inicio|time:"H:i" }}
+                {{ sesion.fecha_inicio|date:"d M, Y" }} · {{ sesion.fecha_inicio|time:"H:i" }}
             </div>
             <div class="mt-2 small">
                 <span class="badge bg-white bg-opacity-25 px-3 py-2 rounded-pill">
-                    Estado: {{ sesion.get_estado_display }}
+                    {{ sesion.get_estado_display }}
                 </span>
             </div>
         </div>
@@ -68,24 +67,26 @@
                     <span class="material-icons-round me-1" style="font-size:18px; vertical-align: middle;">badge</span>
                     Tu nombre o alias
                 </label>
-                <input 
-                    type="text" 
-                    class="form-control form-control-lg border-2 rounded-3" 
-                    id="alias" 
-                    name="alias" 
-                    placeholder="Ej: Juan Pérez" 
-                    maxlength="255"
+                <input
+                    type="text"
+                    class="form-control form-control-lg border-2 rounded-3"
+                    id="alias"
+                    name="alias"
+                    placeholder="Ej: Juan Pérez"
+                    minlength="2"
+                    maxlength="50"
                     required
                     autofocus
                 >
                 <div class="form-text mt-2">
                     <span class="material-icons-round text-muted" style="font-size:14px; vertical-align: middle;">info</span>
-                    Este nombre será visible para tu guía durante el tour
+                    Este alias será visible para tu guía durante el tour (2–50 caracteres)
                 </div>
             </div>
 
             <div class="d-grid gap-3">
-                <button type="submit" class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3 d-flex align-items-center justify-content-center gap-2">
+                <button type="submit"
+                        class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3 d-flex align-items-center justify-content-center gap-2">
                     <span class="material-icons-round">login</span>
                     Unirse al Tour
                 </button>
@@ -94,6 +95,7 @@
                 </a>
             </div>
         </form>
+
     </div>
 </div>
 {% endblock %}

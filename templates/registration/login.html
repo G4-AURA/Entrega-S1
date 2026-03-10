@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}AURA - Iniciar Sesión{% endblock %}
+{% block title %}AURA - Iniciar Sesión (Guías){% endblock %}
 
 {% block extra_css %}
 <style>
@@ -19,17 +19,9 @@
         box-shadow: 0 10px 25px rgba(0,0,0,0.05);
         background-color: #ffffff;
     }
-    .auth-header {
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .auth-header h2 {
-        font-weight: 700;
-        color: #1F2937;
-    }
-    .auth-header p {
-        color: #6B7280;
-    }
+    .auth-header { text-align: center; margin-bottom: 2rem; }
+    .auth-header h2 { font-weight: 700; color: #1F2937; }
+    .auth-header p  { color: #6B7280; }
     .form-control {
         border-radius: 0.5rem;
         padding: 0.75rem 1rem;
@@ -37,7 +29,7 @@
     }
     .form-control:focus {
         border-color: #4F46E5;
-        box-shadow: 0 0 0 0.25rem rgba(79, 70, 229, 0.25);
+        box-shadow: 0 0 0 0.25rem rgba(79,70,229,0.25);
     }
     .btn-brand {
         background-color: #4F46E5;
@@ -54,7 +46,7 @@
         color: white;
         transform: translateY(-1px);
     }
-    /* Botón flotante para acceso compartido */
+    /* Botón flotante de acceso a tour para turistas */
     .fab-button {
         position: fixed;
         bottom: 2rem;
@@ -63,7 +55,7 @@
         padding: 0.875rem 1.5rem;
         border-radius: 50px;
         background: linear-gradient(135deg, #4F46E5, #3730A3);
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+        box-shadow: 0 4px 12px rgba(79,70,229,0.4);
         transition: transform 0.2s, box-shadow 0.2s;
         border: none;
         color: white;
@@ -73,13 +65,10 @@
     }
     .fab-button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(79, 70, 229, 0.6);
+        box-shadow: 0 8px 20px rgba(79,70,229,0.6);
         color: white;
     }
-    .fab-button svg {
-        margin-right: 0.5rem;
-    }
-    .input-token {
+    .input-code {
         font-family: monospace;
         letter-spacing: 3px;
         text-transform: uppercase;
@@ -91,79 +80,95 @@
 <div class="auth-wrapper">
     <div class="card auth-card p-4 p-md-5">
         <div class="auth-header">
-            <h2>Bienvenido de nuevo</h2>
-            <p>Inicia sesión en AURA para continuar</p>
+            <h2>Bienvenido, Guía</h2>
+            <p>Inicia sesión para gestionar tus rutas y sesiones</p>
         </div>
-        
+
         {% if form.errors %}
         <div class="alert alert-danger rounded-3" role="alert">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-circle-fill me-2" viewBox="0 0 16 16">
-                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8 4a.905.905 0 0 0-.9.995l.35 3.507a.552.552 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 4zm.002 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>
-            </svg>
             Usuario o contraseña incorrectos.
         </div>
         {% endif %}
 
-        <form method="post" action="{% url 'login' %}" class="needs-validation">
+        <form method="post" action="{% url 'login' %}">
             {% csrf_token %}
             <div class="mb-3">
-                <label for="{{ form.username.id_for_label }}" class="form-label fw-semibold text-secondary">Usuario</label>
+                <label for="{{ form.username.id_for_label }}" class="form-label fw-semibold text-secondary">
+                    Usuario
+                </label>
                 {{ form.username }}
             </div>
             <div class="mb-4">
-                <label for="{{ form.password.id_for_label }}" class="form-label fw-semibold text-secondary">Contraseña</label>
+                <label for="{{ form.password.id_for_label }}" class="form-label fw-semibold text-secondary">
+                    Contraseña
+                </label>
                 {{ form.password }}
             </div>
             <div class="d-grid">
-                <button type="submit" class="btn btn-brand">Entrar a mi cuenta</button>
+                <button type="submit" class="btn btn-brand">Entrar</button>
             </div>
         </form>
 
         <div class="text-center mt-4">
-            <p class="text-muted mb-0">¿No tienes cuenta? <a href="{% url 'registro' %}" class="text-decoration-none" style="color: #4F46E5; font-weight: 600;">Regístrate aquí</a></p>
+            <p class="text-muted mb-0">
+                ¿No tienes cuenta?
+                <a href="{% url 'registro' %}" class="text-decoration-none fw-semibold"
+                   style="color: #4F46E5;">Regístrate como Guía</a>
+            </p>
         </div>
+
+        {# Separador para turistas #}
+        <hr class="my-4">
+        <p class="text-center text-muted small mb-0">
+            ¿Eres turista? Usa el botón
+            <strong>Acceder a Tour</strong> o introduce el código que te dio tu guía.
+        </p>
     </div>
 </div>
 
-<!-- Botón flotante para acceso a tour compartido -->
-<button class="fab-button btn d-flex align-items-center" 
-        data-bs-toggle="modal" 
+<!-- Botón flotante: punto de entrada para turistas anónimos -->
+<button class="fab-button btn d-flex align-items-center gap-2"
+        data-bs-toggle="modal"
         data-bs-target="#joinTourModal"
-        title="Acceder a tour compartido">
+        title="Acceder a tour como turista">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
         <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
     </svg>
-    <span>Acceder a Tour compartido</span>
+    <span>Acceder a Tour</span>
 </button>
 
-<!-- Modal para acceso a tour compartido -->
+<!-- Modal de acceso rápido por código -->
 <div class="modal fade" id="joinTourModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-4 border-0 shadow-lg">
             <div class="modal-body p-4 p-md-5 text-center">
-                <div class="bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-4" 
+                <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-4"
                      style="width: 70px; height: 70px; background-color: #EEF2FF; color: #4F46E5;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" viewBox="0 0 16 16">
                         <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
                     </svg>
                 </div>
-                
-                <h3 class="fw-bold mb-2">Acceder a Tour Compartido</h3>
-                <p class="text-muted mb-4">Ingresa el código de acceso que te proporcionó tu guía</p>
-                
-                <div id="mensaje-token" class="alert d-none small text-start mb-4 rounded-3" role="alert"></div>
-                
-                <input type="text" 
-                       id="token-input" 
-                       class="form-control form-control-lg text-center input-token fw-bold mb-4 bg-light border-2 py-3" 
-                       placeholder="DEMO123" 
-                       maxlength="100">
-                
+
+                <h3 class="fw-bold mb-2">Acceder a Tour</h3>
+                <p class="text-muted mb-4">
+                    Introduce el código de acceso que te proporcionó tu guía
+                </p>
+
+                <div id="mensaje-codigo" class="alert d-none small text-start mb-4 rounded-3" role="alert"></div>
+
+                <input type="text"
+                       id="codigo-input"
+                       class="form-control form-control-lg text-center input-code fw-bold mb-4 bg-light border-2 py-3"
+                       placeholder="ABC123"
+                       maxlength="10"
+                       autocomplete="off">
+
                 <div class="d-grid gap-2">
                     <button id="btn-ir-tour" class="btn btn-brand btn-lg rounded-pill fw-bold shadow-sm py-3">
-                        Continuar
+                        Continuar al Tour
                     </button>
-                    <button class="btn btn-link text-muted text-decoration-none fw-semibold mt-2" data-bs-dismiss="modal">
+                    <button class="btn btn-link text-muted text-decoration-none fw-semibold mt-1"
+                            data-bs-dismiss="modal">
                         Cancelar
                     </button>
                 </div>
@@ -173,54 +178,46 @@
 </div>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const inputs = document.querySelectorAll('.auth-card input:not([type="hidden"])');
-        inputs.forEach(input => {
-            input.classList.add('form-control');
-        });
-
-        // Lógica para acceso a tour compartido
-        const btnIrTour = document.getElementById('btn-ir-tour');
-        const tokenInput = document.getElementById('token-input');
-        const mensajeDiv = document.getElementById('mensaje-token');
-
-        if (btnIrTour) {
-            btnIrTour.addEventListener('click', function() {
-                const codigoValor = tokenInput.value.trim().toUpperCase();
-                
-                // Resetear mensajes
-                mensajeDiv.classList.add('d-none');
-                mensajeDiv.classList.remove('alert-success', 'alert-danger');
-                
-                if (!codigoValor) {
-                    mensajeDiv.innerText = "Por favor, ingresa un código válido.";
-                    mensajeDiv.classList.add('alert-danger');
-                    mensajeDiv.classList.remove('d-none');
-                    return;
-                }
-                
-                // Determinar si es UUID o código de acceso
-                const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                let joinUrl;
-                
-                if (uuidPattern.test(codigoValor)) {
-                    // Es un UUID (token)
-                    joinUrl = `/tours/live/${codigoValor}/`;
-                } else {
-                    // Es un código de acceso corto
-                    joinUrl = `/tours/live/code/${codigoValor}/`;
-                }
-                
-                window.location.href = joinUrl;
-            });
-
-            // Permitir enviar con Enter
-            tokenInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    btnIrTour.click();
-                }
-            });
-        }
+document.addEventListener("DOMContentLoaded", function () {
+    // Aplicar clases Bootstrap a los inputs del formulario de Django
+    document.querySelectorAll('.auth-card input:not([type="hidden"])').forEach(function (el) {
+        el.classList.add('form-control');
     });
+
+    // Acceso al tour por código — redirige a la vista join_tour_by_code
+    const btnIrTour   = document.getElementById('btn-ir-tour');
+    const codigoInput = document.getElementById('codigo-input');
+    const mensajeDiv  = document.getElementById('mensaje-codigo');
+
+    function mostrarError(msg) {
+        mensajeDiv.textContent = msg;
+        mensajeDiv.className = 'alert alert-danger small text-start mb-4 rounded-3';
+    }
+
+    function irAlTour() {
+        const codigo = codigoInput.value.trim().toUpperCase();
+        mensajeDiv.className = 'alert d-none';
+
+        if (!codigo) {
+            mostrarError('Por favor, introduce un código válido.');
+            return;
+        }
+
+        // join_tour_by_code valida el código en servidor y redirige al formulario de alias
+        window.location.href = `/tours/live/code/${codigo}/`;
+    }
+
+    btnIrTour.addEventListener('click', irAlTour);
+
+    // Permitir Intro dentro del input
+    codigoInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); irAlTour(); }
+    });
+
+    // Limpiar error al escribir
+    codigoInput.addEventListener('input', function () {
+        mensajeDiv.className = 'alert d-none';
+    });
+});
 </script>
 {% endblock %}

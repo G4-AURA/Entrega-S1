@@ -43,7 +43,7 @@ class ChatGuideTouristE2ETests(TestCase):
         self.turista_client.force_login(self.turista_user)
 
     def test_e2e_guia_envia_alerta_y_turista_recibe_notificacion_y_mensaje(self):
-        mapa_response = self.turista_client.get(reverse('tours:mapa_turista', args=[self.sesion.id]))
+        mapa_response = self.turista_client.get(reverse('tours:mapa_turista_anonimo', args=[self.sesion.id]))
         self.assertEqual(mapa_response.status_code, 200)
         self.assertContains(mapa_response, 'id="chat-badge"')
 

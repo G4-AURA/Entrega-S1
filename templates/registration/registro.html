@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}AURA - Crear Cuenta{% endblock %}
+{% block title %}AURA - Registro de Guía{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -19,22 +19,12 @@
         box-shadow: 0 10px 25px rgba(0,0,0,0.05);
         background-color: #ffffff;
     }
-    .auth-header {
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .auth-header h2 {
-        font-weight: 700;
-        color: #1F2937;
-    }
-    .auth-header p {
-        color: #6B7280;
-    }
-    
+    .auth-header { text-align: center; margin-bottom: 2rem; }
+    .auth-header h2 { font-weight: 700; color: #1F2937; }
+    .auth-header p  { color: #6B7280; }
+
     /* Estilos para el formulario generado por Django */
-    .django-form p {
-        margin-bottom: 1.25rem;
-    }
+    .django-form p { margin-bottom: 1.25rem; }
     .django-form label {
         display: block;
         margin-bottom: 0.5rem;
@@ -55,39 +45,18 @@
         margin-top: 0.5rem;
         margin-bottom: 0;
     }
-    
     .form-control, .form-select {
         border-radius: 0.5rem;
         padding: 0.75rem 1rem;
         border: 1px solid #D1D5DB;
         width: 100%;
-        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        transition: border-color 0.15s, box-shadow 0.15s;
     }
     .form-control:focus, .form-select:focus {
         border-color: #4F46E5;
         outline: 0;
-        box-shadow: 0 0 0 0.25rem rgba(79, 70, 229, 0.25);
+        box-shadow: 0 0 0 0.25rem rgba(79,70,229,0.25);
     }
-    
-    /* Estilos para los Radio Buttons del tipo de cuenta */
-    .django-form ul {
-        list-style: none;
-        padding-left: 0;
-    }
-    .django-form ul li label {
-        font-weight: normal;
-        display: inline-flex;
-        align-items: center;
-        cursor: pointer;
-    }
-    .django-form input[type="radio"] {
-        margin-right: 0.5rem;
-        cursor: pointer;
-        width: 1.1rem;
-        height: 1.1rem;
-        accent-color: #4F46E5;
-    }
-
     .btn-brand {
         background-color: #4F46E5;
         border-color: #4F46E5;
@@ -96,6 +65,7 @@
         border-radius: 0.5rem;
         font-weight: 600;
         transition: all 0.2s;
+        width: 100%;
     }
     .btn-brand:hover {
         background-color: #3730A3;
@@ -110,42 +80,40 @@
 <div class="auth-wrapper">
     <div class="card auth-card p-4 p-md-5">
         <div class="auth-header">
-            <h2>Únete a AURA</h2>
-            <p>Crea tu cuenta como Guía turístico</p>
+            <h2>Crear cuenta de Guía</h2>
+            <p>Regístrate para crear y gestionar tus tours en AURA</p>
         </div>
-        
+
         <form method="post" class="django-form">
             {% csrf_token %}
-            
             {{ form.as_p }}
-            
-            <div class="d-grid mt-4">
-                <button type="submit" class="btn btn-brand">Completar registro</button>
-            </div>
+            <button type="submit" class="btn btn-brand mt-2">
+                Crear cuenta
+            </button>
         </form>
-        
-        <div class="text-center mt-4 pt-3 border-top">
-            <p class="text-muted mb-0">¿Ya tienes cuenta? <a href="{% url 'login' %}" class="text-decoration-none" style="color: #4F46E5; font-weight: 600;">Inicia sesión aquí</a></p>
+
+        <div class="text-center mt-4">
+            <p class="text-muted mb-0">
+                ¿Ya tienes cuenta?
+                <a href="{% url 'login' %}" class="text-decoration-none fw-semibold"
+                   style="color: #4F46E5;">Inicia sesión</a>
+            </p>
         </div>
+
+        <hr class="my-4">
+        <p class="text-center text-muted small mb-0">
+            ¿Eres turista? No necesitas cuenta.
+            Pide el código de acceso a tu guía y accede desde
+            <a href="{% url 'login' %}" class="text-decoration-none" style="color: #4F46E5;">aquí</a>.
+        </p>
     </div>
 </div>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const inputs = document.querySelectorAll('.django-form input[type="text"], .django-form input[type="password"], .django-form input[type="email"], .django-form input[type="file"]');
-        
-        inputs.forEach(input => {
-            input.classList.add('form-control');
-            
-            if(input.type !== 'file' && !input.placeholder && input.previousElementSibling && input.previousElementSibling.tagName === 'LABEL') {
-                input.placeholder = "Introduce tu " + input.previousElementSibling.innerText.toLowerCase().replace(':', '');
-            }
-        });
-        
-        const selects = document.querySelectorAll('.django-form select');
-        selects.forEach(select => {
-            select.classList.add('form-select');
-        });
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll('.django-form input:not([type="hidden"]), .django-form select').forEach(function (el) {
+        el.classList.add('form-control');
     });
+});
 </script>
 {% endblock %}

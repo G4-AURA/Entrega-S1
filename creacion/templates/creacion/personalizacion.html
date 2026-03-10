@@ -1,85 +1,11 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}AURA - Personalización de Ruta{% endblock %}
 
 {% block extra_css %}
-<style>
-    .personalizacion-wrapper {
-        max-width: 960px;
-        margin: 0 auto;
-    }
-
-    .gradient-card {
-        border: 0;
-        border-radius: 1rem;
-        background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%);
-    }
-
-    .form-label {
-        font-weight: 600;
-    }
-
-    .map-container-ruta {
-        height: 500px;
-        width: 100%;
-        border-radius: 1rem;
-        border: 1px solid #dee2e6;
-    }
-
-    .list-paradas-container {
-        max-height: 500px;
-        overflow-y: auto;
-    }
-
-    .loading-overlay {
-        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
-        z-index: 1080; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px);
-    }
-
-    .loading-overlay__card {
-        width: min(92vw, 420px);
-        border-radius: 1rem;
-    }
-
-    .loading-overlay__spinner {
-        width: 3.5rem;
-        height: 3.5rem;
-    }
-
-    .mood-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .mood-btn {
-        padding: 0.5rem 1rem;
-        border: 2px solid #dee2e6;
-        border-radius: 2rem;
-        background: white;
-        color: #6c757d;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-size: 0.95rem;
-        user-select: none;
-    }
-
-    .mood-btn:hover {
-        border-color: #0d6efd;
-        color: #0d6efd;
-    }
-
-    .mood-btn.active {
-        background: #0d6efd;
-        color: white;
-        border-color: #0d6efd;
-    }
-
-    .mood-btn input[type="checkbox"] {
-        display: none;
-    }
-
-</style>
+<link rel="stylesheet" href="{% static 'css/creacion/personalizacion.css' %}">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -89,28 +15,26 @@
             <div class="mb-4">
                 <h2 class="h3 mb-2">Personalización de Ruta</h2>
                 <p id="ruta-meta" class="text-muted mb-3 d-none"></p>
-                <p class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
+                <p id="subtitulo-form" class="text-muted mb-0">Configura los parámetros del grupo para generar una ruta personalizada con IA.</p>
             </div>
 
             <div id="estado-respuesta" class="alert d-none" role="alert"></div>
 
-            <form id="form-personalizacion-ruta" class="row g-3 g-md-4">
+            <form id="form-personalizacion-ruta" class="row g-3 g-md-4" data-csrf-token="{{ csrf_token }}" data-mapbox-token="{{ MAPBOX_ACCESS_TOKEN }}">
                 <div class="col-12">
                     <label for="ciudad" class="form-label">¿Qué ciudad quieres recorrer?</label>
                     <input type="text" id="ciudad" name="ciudad" class="form-control form-control-lg" required>
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="duracion" class="form-label">Duración (horas)</label>
-                    <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" 
-                           min="1" max="24" step="1" placeholder="Ej: 2" required>
+                    <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" min="1" max="24" step="1" placeholder="Ej: 2" required>
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="personas" class="form-label">Número de Personas</label>
-                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" 
-                           min="1" max="100" step="1" placeholder="Ej: 4" required>
+                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" min="1" max="100" step="1" placeholder="Ej: 4" required>
                 </div>
                 <div class="col-12 col-md-6">
-                    <label class="form-label">Exigencia</label>
+                    <label class="form-label" for="exigencia">Exigencia</label>
                     <select id="exigencia" name="exigencia" class="form-select" required>
                         <option value="baja">Baja</option>
                         <option value="media" selected>Media</option>
@@ -159,6 +83,27 @@
                         </label>
                     </div>
                 </div>
+
+                <div class="col-12">
+                    <div class="deseos-section">
+                        <div class="deseos-header">
+                            <label class="form-label mb-0">Deseos personalizados</label>
+                            <span class="deseos-counter"><span id="deseos-count">0</span>/5</span>
+                        </div>
+                        <p class="form-text mt-1 mb-3">
+                            Añade hasta 5 indicaciones breves para guiar a la IA en la creación de la ruta
+                            (ej: "evitar escaleras", "incluir una parada con vistas al río").
+                        </p>
+                        <div id="deseos-lista" class="deseos-lista"></div>
+                        <button type="button" id="btn-añadir-deseo" class="btn-añadir-deseo">
+                            <span class="material-icons-round" aria-hidden="true">add_circle_outline</span>
+                            Añadir deseo
+                        </button>
+                    </div>
+                </div>
+
+                <br>
+
                 <div class="col-12 d-flex justify-content-end">
                     <button id="btn-generar-ruta" type="submit" class="btn btn-primary px-5">Generar la ruta</button>
                 </div>
@@ -176,157 +121,29 @@
         </div>
         <div class="col-12 col-lg-4">
             <h4 class="h5 mb-3">Itinerario de la Ruta</h4>
-            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
-                </div>
+            <div id="lista-paradas" class="list-group list-paradas-container shadow-sm"></div>
         </div>
     </div>
 </section>
 
 <div id="pantalla-carga" class="loading-overlay">
-    <div class="card p-5 text-center shadow-lg border-0" style="max-width: 400px;">
-        <div class="spinner-border text-primary mx-auto mb-4" style="width: 3rem; height: 3rem;"></div>
+    <div class="card p-5 text-center shadow-lg border-0 loading-overlay__card">
+        <div class="spinner-border text-primary mx-auto mb-4 loading-overlay__spinner"></div>
         <h5>Generando...</h5>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script>
-    const form = document.getElementById('form-personalizacion-ruta');
-    const boton = document.getElementById('btn-generar-ruta');
-    const estado = document.getElementById('estado-respuesta');
-    const pantallaCarga = document.getElementById('pantalla-carga');
-    const rutaMeta = document.getElementById('ruta-meta');
-    
-    let leafletMap = null;
-
-    function setCargando(estaCargando) {
-        if (estaCargando) {
-            pantallaCarga.style.display = 'flex';
-            boton.disabled = true;
-            boton.textContent = 'Generando...';
-        } else {
-            pantallaCarga.style.display = 'none';
-            boton.disabled = false;
-            boton.textContent = 'Generar la ruta';
-        }
+<script src="{% static 'js/creacion/mapa_creacion.js' %}"></script>
+<script id="personalizacion-config" type="application/json">
+{
+    "csrfToken": "{{ csrf_token }}",
+    "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN }}",
+    "urls": {
+        "generar": "{% url 'creacion:generar_ruta_ia' %}"
     }
-
-    function renderizarRuta(datos) {
-        document.getElementById('seccion-resultados').classList.remove('d-none');
-        const lista = document.getElementById('lista-paradas');
-        
-        // Limpiar lista anterior
-        lista.innerHTML = '';
-
-        // Mostrar metadatos de la ruta
-        rutaMeta.classList.remove('d-none');
-        rutaMeta.textContent = `${datos.titulo || 'Ruta generada'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Exigencia ${datos.nivel_exigencia || '-'}`;
-
-        // Reiniciar Mapa si ya existe para evitar errores de instancias múltiples
-        if (leafletMap) {
-            leafletMap.remove();
-        }
-
-        const mapboxToken = "{{ MAPBOX_ACCESS_TOKEN }}"; 
-        
-        // Determinar centro del mapa
-        const primeraParada = (datos.paradas && datos.paradas[0]) || null;
-        const coordenadaInicial = (primeraParada && (primeraParada.coordenadas || primeraParada.coords)) 
-                                  ? (primeraParada.coordenadas || primeraParada.coords) 
-                                  : [40.4167, -3.7037]; // Default si falla
-
-        // Crear mapa
-        leafletMap = L.map('mapa-ruta').setView(coordenadaInicial, 14);
-        
-        L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
-            attribution: '© Mapbox'
-        }).addTo(leafletMap);
-
-        const puntos = [];
-        
-        // Dibujar paradas
-        if (datos.paradas && datos.paradas.length > 0) {
-            datos.paradas.forEach((p, idx) => {
-                // Normalizar coordenadas (pueden venir como 'coords' o 'coordenadas')
-                const coords = p.coordenadas || p.coords;
-                if(!coords) return;
-
-                puntos.push(coords);
-                
-                // Marcador en el mapa
-                L.marker(coords).addTo(leafletMap)
-                    .bindPopup(`<b>${p.orden || idx + 1}. ${p.nombre}</b>`);
-
-                // Elemento en la lista lateral
-                lista.innerHTML += `
-                    <div class="list-group-item border-start border-primary border-4 mb-2">
-                        <div class="fw-bold text-primary">Parada ${p.orden || idx + 1}: ${p.nombre}</div>
-                        <div class="small text-muted">${p.descripcion || p.desc || 'Sin descripción'}</div>
-                    </div>`;
-            });
-
-            // Dibujar línea de conexión y ajustar vista
-            if (puntos.length > 1) {
-                L.polyline(puntos, {color: '#0d6efd', weight: 4, opacity: 0.7}).addTo(leafletMap);
-                leafletMap.fitBounds(puntos, {padding: [50, 50]});
-            }
-        }
-    }
-
-    // Manejar la activación visual de los botones de mood
-    document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            this.closest('.mood-btn').classList.toggle('active', this.checked);
-        });
-    });
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        // Limpiar estados anteriores
-        estado.classList.add('d-none');
-        setCargando(true);
-
-        const moodSeleccionados = Array.from(form.querySelectorAll('input[name="mood"]:checked'))
-            .map(checkbox => checkbox.value);
-
-        const payload = {
-            ciudad: document.getElementById('ciudad').value,
-            duracion: document.getElementById('duracion').value,
-            personas: document.getElementById('personas').value,
-            exigencia: document.getElementById('exigencia').value,
-            mood: moodSeleccionados,
-        };
-
-        try {
-            const response = await fetch('/crear-ruta/api/generar/', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify(payload),
-            });
-
-            const data = await response.json();
-
-            if (response.ok && data.status === "OK") {
-                renderizarRuta(data.datos_ruta);
-                estado.className = "alert alert-success mt-3";
-                estado.textContent = data.mensaje;
-                estado.classList.remove('d-none');
-            } else {
-                throw new Error(data.mensaje || "Error desconocido al generar la ruta");
-            }
-        } catch (error) {
-            console.error(error);
-            estado.className = "alert alert-danger mt-3";
-            estado.textContent = "Error: " + error.message;
-            estado.classList.remove('d-none');
-        } finally {
-            setCargando(false);
-        }
-    });
+}
 </script>
+<script src="{% static 'js/creacion/personalizacion_ruta.js' %}"></script>
 {% endblock %}
