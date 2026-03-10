@@ -57,6 +57,8 @@ class GenerarRutaIAViewTests(TestCase):
             'personas': 6,
             'exigencia': Ruta.Exigencia.MEDIA,
             'mood': [Ruta.Mood.HISTORIA, Ruta.Mood.GASTRONOMIA],
+            'deseos': [],     
+            'metadata': {} 
         })
         mock_get_guia.assert_called_once_with(user)
         mock_guardar.assert_called_once()
