@@ -31,12 +31,28 @@ GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH') or None
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 # DEBUG: En la nube será False. En local (si está en .env) será True.
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.run.app').split(',')
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,https://*.run.app').split(',')
+# 1. ALLOWED_HOSTS: El punto al principio (.run.app) es la clave para subdominios
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.run.app', # Permite tu-app.run.app y sprint-1---tu-app.run.app
+]
+# Si prefieres usar la variable de entorno, asegúrate de incluir el punto:
+env_hosts = os.getenv('ALLOWED_HOSTS')
+if env_hosts:
+    ALLOWED_HOSTS += env_hosts.split(',')
 
-
+# 2. CSRF_TRUSTED_ORIGINS: Muy importante el comodín con el protocolo https://
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+    'https://*.run.app', # <--- El asterisco permite CUALQUIER etiqueta de Cloud Run
+]
+env_csrf = os.getenv('CSRF_TRUSTED_ORIGINS')
+if env_csrf:
+    CSRF_TRUSTED_ORIGINS += env_csrf.split(',')
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',

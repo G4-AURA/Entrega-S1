@@ -64,7 +64,9 @@ jobs:
         MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
         GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
         GEMINI_API_KEY: dummy_gemini_key_para_tests_github
+
+        SECURE_SSL_REDIRECT: 'False'
         
       run: |
         # Django creará una base de datos temporal llamada "test_mi_db_espacial"
-        python manage.py test || true
+        python manage.py test
