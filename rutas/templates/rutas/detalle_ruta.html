@@ -166,6 +166,14 @@
         font-size: 0.8rem;
         color: #6b7280;
     }
+
+    .ia-suggestions-inline {
+        margin-top: 0.75rem;
+    }
+
+    .ia-suggestion-item__actions {
+        margin-top: 0.5rem;
+    }
 </style>
 {% endblock %}
 
@@ -329,16 +337,6 @@
                         id="btn-agregar-parada">Agregar parada</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm"
                         id="btn-reordenar-paradas">Editar orden</button>
-                <button type="button" class="btn btn-outline-success btn-sm"
-                        id="btn-sugerir-paradas-ia">✨ Sugerir con IA</button>
-            </div>
-
-            <div id="panel-sugerencias-ia" class="ia-suggestions-panel d-none" aria-live="polite">
-                <div class="d-flex align-items-center justify-content-between">
-                    <strong class="small">Sugerencias IA</strong>
-                    <span id="estado-sugerencias-ia" class="ia-suggestion-meta"></span>
-                </div>
-                <div id="lista-sugerencias-ia"></div>
             </div>
 
             <form method="post" id="form-reordenar-paradas" class="d-none mb-2">
@@ -418,6 +416,11 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm btn-editar-parada"
                                 data-parada-id="{{ parada.id }}">Editar</button>
+                        <button type="button"
+                                class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
+                                data-parada-id="{{ parada.id }}">
+                            ✨ IA
+                        </button>
                         <form method="post" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
@@ -427,6 +430,15 @@
                                 Eliminar
                             </button>
                         </form>
+                    </div>
+
+                    <div class="ia-suggestions-panel ia-suggestions-inline d-none"
+                         id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <strong class="small">Sugerencias IA para esta parada</strong>
+                            <span id="estado-sugerencias-ia-{{ parada.id }}" class="ia-suggestion-meta"></span>
+                        </div>
+                        <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
                     </div>
 
                     <form method="post" class="parada-edit-form d-none"
@@ -665,10 +677,6 @@ const formReordenarParadas= document.getElementById('form-reordenar-paradas');
 const btnCancelarReorden  = document.getElementById('btn-cancelar-reorden');
 const stopOrderInput      = document.getElementById('stop-order-input');
 const listaParadas        = document.getElementById('lista-paradas');
-const btnSugerirParadasIA = document.getElementById('btn-sugerir-paradas-ia');
-const panelSugerenciasIA  = document.getElementById('panel-sugerencias-ia');
-const listaSugerenciasIA  = document.getElementById('lista-sugerencias-ia');
-const estadoSugerenciasIA = document.getElementById('estado-sugerencias-ia');
 
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
 if (btnEditarMeta)      btnEditarMeta.addEventListener('click', () => formEditarMeta?.classList.toggle('d-none'));
@@ -728,36 +736,91 @@ function activateAddStopMode() {
 }
 
 
-function renderSugerenciasIA(candidatos) {
-    if (!listaSugerenciasIA) return;
+function getPanelSugerenciasParada(paradaId) {
+    return {
+        panel: document.getElementById(`panel-sugerencias-ia-${paradaId}`),
+        estado: document.getElementById(`estado-sugerencias-ia-${paradaId}`),
+        lista: document.getElementById(`lista-sugerencias-ia-${paradaId}`),
+    };
+}
+
+const sugerenciasCachePorParada = new Map();
+
+function cerrarTodosLosPanelesIASugerencias() {
+    document.querySelectorAll('.ia-suggestions-inline').forEach((panel) => {
+        panel.classList.add('d-none');
+    });
+}
+
+function renderSugerenciasIAEnParada(paradaId, candidatos) {
+    const { lista } = getPanelSugerenciasParada(paradaId);
+    if (!lista) return;
     if (!Array.isArray(candidatos) || !candidatos.length) {
-        listaSugerenciasIA.innerHTML = '<div class="small text-muted mt-2">No se recibieron sugerencias válidas.</div>';
+        sugerenciasCachePorParada.set(String(paradaId), []);
+        lista.innerHTML = '<div class="small text-muted mt-2">No se recibieron sugerencias válidas.</div>';
         return;
     }
 
-    listaSugerenciasIA.innerHTML = candidatos.map((c) => {
+    sugerenciasCachePorParada.set(String(paradaId), candidatos);
+
+    lista.innerHTML = candidatos.map((c, idx) => {
         const [lat, lon] = Array.isArray(c.coordenadas) ? c.coordenadas : [null, null];
-        const coordsText = (lat !== null && lon !== null)
-            ? `${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}`
-            : 'Sin coordenadas';
+        const latNum = Number(lat);
+        const lonNum = Number(lon);
+        const hasCoords = Number.isFinite(latNum) && Number.isFinite(lonNum);
+        const coordsText = hasCoords ? `${latNum.toFixed(5)}, ${lonNum.toFixed(5)}` : 'Sin coordenadas';
+
         return `
             <div class="ia-suggestion-item">
-                <div class="fw-semibold">${c.nombre || 'Parada sugerida'}</div>
+                <div class="fw-semibold">${c.nombre || `Parada sugerida ${idx + 1}`}</div>
                 <div class="ia-suggestion-meta">${coordsText}</div>
                 <div class="ia-suggestion-meta">Categoría: ${c.categoria || 'general'} · Confianza: ${Math.round((Number(c.nivel_confianza || 0) * 100))}%</div>
                 <div class="small mt-1">${c.justificacion || 'Sin justificación proporcionada.'}</div>
+                <div class="ia-suggestion-item__actions">
+                    <button type="button"
+                            class="btn btn-success btn-sm btn-usar-sugerencia-ia"
+                            data-parada-id="${paradaId}"
+                            data-candidate-index="${idx}"
+                            ${hasCoords ? '' : 'disabled'}>
+                        Usar esta parada
+                    </button>
+                </div>
             </div>
         `;
     }).join('');
 }
 
-async function cargarSugerenciasIA() {
-    if (!btnSugerirParadasIA || !panelSugerenciasIA || !estadoSugerenciasIA) return;
+function aplicarSugerenciaAParada(paradaId, candidato) {
+    const form = document.getElementById(`form-editar-parada-${paradaId}`);
+    if (!form) return;
 
-    panelSugerenciasIA.classList.remove('d-none');
-    estadoSugerenciasIA.textContent = 'Generando...';
-    if (listaSugerenciasIA) listaSugerenciasIA.innerHTML = '';
-    btnSugerirParadasIA.disabled = true;
+    const nameInput = form.querySelector('input[name="nombre"]');
+    const latInput = form.querySelector('input[name="lat"]');
+    const lonInput = form.querySelector('input[name="lon"]');
+
+    const lat = Number(candidato.lat);
+    const lon = Number(candidato.lon);
+    if (!nameInput || !latInput || !lonInput || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return;
+    }
+
+    nameInput.value = candidato.nombre || nameInput.value;
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lon.toFixed(6);
+
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+}
+
+async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
+    const { panel, estado, lista } = getPanelSugerenciasParada(paradaId);
+    if (!panel || !estado || !lista || !triggerButton) return;
+
+    cerrarTodosLosPanelesIASugerencias();
+    panel.classList.remove('d-none');
+    estado.textContent = 'Generando...';
+    lista.innerHTML = '';
+    triggerButton.disabled = true;
 
     try {
         const response = await fetch(sugerenciasIaUrl, {
@@ -772,31 +835,50 @@ async function cargarSugerenciasIA() {
         const payload = await response.json();
 
         if (!response.ok || payload.status !== 'OK') {
-            estadoSugerenciasIA.textContent = payload?.mensaje || `Error ${response.status}`;
-            if (listaSugerenciasIA) {
-                listaSugerenciasIA.innerHTML = '<div class="small text-danger mt-2">No se pudieron generar sugerencias en este momento.</div>';
-            }
+            estado.textContent = payload?.mensaje || `Error ${response.status}`;
+            lista.innerHTML = '<div class="small text-danger mt-2">No se pudieron generar sugerencias en este momento.</div>';
             return;
         }
 
-        estadoSugerenciasIA.textContent = `${payload.datos?.candidatos?.length || 0} sugerencias generadas`;
-        renderSugerenciasIA(payload.datos?.candidatos || []);
+        const candidatos = payload.datos?.candidatos || [];
+        estado.textContent = `${candidatos.length} sugerencias generadas`;
+        renderSugerenciasIAEnParada(paradaId, candidatos);
     } catch (_error) {
-        estadoSugerenciasIA.textContent = 'Error de red';
-        if (listaSugerenciasIA) {
-            listaSugerenciasIA.innerHTML = '<div class="small text-danger mt-2">No se pudo contactar con el servidor.</div>';
-        }
+        estado.textContent = 'Error de red';
+        lista.innerHTML = '<div class="small text-danger mt-2">No se pudo contactar con el servidor.</div>';
     } finally {
-        btnSugerirParadasIA.disabled = false;
+        triggerButton.disabled = false;
     }
 }
-
-if (btnSugerirParadasIA) btnSugerirParadasIA.addEventListener('click', cargarSugerenciasIA);
 
 if (btnAgregarParada) btnAgregarParada.addEventListener('click', activateAddStopMode);
 
 document.querySelectorAll('.btn-editar-parada').forEach(btn => {
     btn.addEventListener('click', () => activateParadaEditMode(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
+    btn.addEventListener('click', () => cargarSugerenciasIAParaParada(btn.dataset.paradaId, btn));
+});
+
+document.addEventListener('click', (event) => {
+    const usarBtn = event.target.closest('.btn-usar-sugerencia-ia');
+    if (!usarBtn) return;
+
+    const paradaId = usarBtn.dataset.paradaId;
+    const candidateIndex = Number(usarBtn.dataset.candidateIndex);
+    const candidatos = sugerenciasCachePorParada.get(String(paradaId)) || [];
+    const candidato = candidatos[candidateIndex];
+    const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
+    const lat = coords[0];
+    const lon = coords[1];
+
+    const confirmacion = window.confirm(
+        'Esta sugerencia reemplazará la parada seleccionada. ¿Quieres continuar?',
+    );
+    if (!confirmacion) return;
+
+    aplicarSugerenciaAParada(paradaId, { nombre: candidato?.nombre || '', lat, lon });
 });
 
 mapa.on('click', (event) => {
