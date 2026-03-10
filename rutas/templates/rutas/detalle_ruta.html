@@ -145,6 +145,27 @@
         cursor: grab;
         border: 1px dashed #6366f1 !important;
     }
+
+    .ia-suggestions-panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .ia-suggestion-item {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+        padding: 0.6rem;
+        margin-top: 0.5rem;
+    }
+
+    .ia-suggestion-meta {
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
 </style>
 {% endblock %}
 
@@ -308,6 +329,16 @@
                         id="btn-agregar-parada">Agregar parada</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm"
                         id="btn-reordenar-paradas">Editar orden</button>
+                <button type="button" class="btn btn-outline-success btn-sm"
+                        id="btn-sugerir-paradas-ia">✨ Sugerir con IA</button>
+            </div>
+
+            <div id="panel-sugerencias-ia" class="ia-suggestions-panel d-none" aria-live="polite">
+                <div class="d-flex align-items-center justify-content-between">
+                    <strong class="small">Sugerencias IA</strong>
+                    <span id="estado-sugerencias-ia" class="ia-suggestion-meta"></span>
+                </div>
+                <div id="lista-sugerencias-ia"></div>
             </div>
 
             <form method="post" id="form-reordenar-paradas" class="d-none mb-2">
@@ -456,6 +487,7 @@ const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-json').
 const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId        = {{ ruta.id }};
 const csrfToken     = '{{ csrf_token }}';
+const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
 const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
@@ -633,6 +665,10 @@ const formReordenarParadas= document.getElementById('form-reordenar-paradas');
 const btnCancelarReorden  = document.getElementById('btn-cancelar-reorden');
 const stopOrderInput      = document.getElementById('stop-order-input');
 const listaParadas        = document.getElementById('lista-paradas');
+const btnSugerirParadasIA = document.getElementById('btn-sugerir-paradas-ia');
+const panelSugerenciasIA  = document.getElementById('panel-sugerencias-ia');
+const listaSugerenciasIA  = document.getElementById('lista-sugerencias-ia');
+const estadoSugerenciasIA = document.getElementById('estado-sugerencias-ia');
 
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
 if (btnEditarMeta)      btnEditarMeta.addEventListener('click', () => formEditarMeta?.classList.toggle('d-none'));
@@ -690,6 +726,72 @@ function activateAddStopMode() {
         mapEditHint.textContent = 'Haz clic en el mapa para elegir la ubicación de la nueva parada.';
     }
 }
+
+
+function renderSugerenciasIA(candidatos) {
+    if (!listaSugerenciasIA) return;
+    if (!Array.isArray(candidatos) || !candidatos.length) {
+        listaSugerenciasIA.innerHTML = '<div class="small text-muted mt-2">No se recibieron sugerencias válidas.</div>';
+        return;
+    }
+
+    listaSugerenciasIA.innerHTML = candidatos.map((c) => {
+        const [lat, lon] = Array.isArray(c.coordenadas) ? c.coordenadas : [null, null];
+        const coordsText = (lat !== null && lon !== null)
+            ? `${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}`
+            : 'Sin coordenadas';
+        return `
+            <div class="ia-suggestion-item">
+                <div class="fw-semibold">${c.nombre || 'Parada sugerida'}</div>
+                <div class="ia-suggestion-meta">${coordsText}</div>
+                <div class="ia-suggestion-meta">Categoría: ${c.categoria || 'general'} · Confianza: ${Math.round((Number(c.nivel_confianza || 0) * 100))}%</div>
+                <div class="small mt-1">${c.justificacion || 'Sin justificación proporcionada.'}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function cargarSugerenciasIA() {
+    if (!btnSugerirParadasIA || !panelSugerenciasIA || !estadoSugerenciasIA) return;
+
+    panelSugerenciasIA.classList.remove('d-none');
+    estadoSugerenciasIA.textContent = 'Generando...';
+    if (listaSugerenciasIA) listaSugerenciasIA.innerHTML = '';
+    btnSugerirParadasIA.disabled = true;
+
+    try {
+        const response = await fetch(sugerenciasIaUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({ cantidad: 3 }),
+        });
+
+        const payload = await response.json();
+
+        if (!response.ok || payload.status !== 'OK') {
+            estadoSugerenciasIA.textContent = payload?.mensaje || `Error ${response.status}`;
+            if (listaSugerenciasIA) {
+                listaSugerenciasIA.innerHTML = '<div class="small text-danger mt-2">No se pudieron generar sugerencias en este momento.</div>';
+            }
+            return;
+        }
+
+        estadoSugerenciasIA.textContent = `${payload.datos?.candidatos?.length || 0} sugerencias generadas`;
+        renderSugerenciasIA(payload.datos?.candidatos || []);
+    } catch (_error) {
+        estadoSugerenciasIA.textContent = 'Error de red';
+        if (listaSugerenciasIA) {
+            listaSugerenciasIA.innerHTML = '<div class="small text-danger mt-2">No se pudo contactar con el servidor.</div>';
+        }
+    } finally {
+        btnSugerirParadasIA.disabled = false;
+    }
+}
+
+if (btnSugerirParadasIA) btnSugerirParadasIA.addEventListener('click', cargarSugerenciasIA);
 
 if (btnAgregarParada) btnAgregarParada.addEventListener('click', activateAddStopMode);
 

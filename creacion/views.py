@@ -3,11 +3,13 @@ import logging
 
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from creacion import services
 from creacion.services import consultar_langgraph
+from rutas.models import Ruta
 
 logger = logging.getLogger(__name__)
 
@@ -132,3 +134,37 @@ def guardar_ruta_manual(request):
     except services.ErrorPersistenciaRuta as exc:
         logger.exception('Error de persistencia en guardar_ruta_manual')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
+
+
+@csrf_exempt
+@require_POST
+def generar_paradas_ia(request, ruta_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes iniciar sesión.'}, status=401)
+
+    if hasattr(request.user, 'turista'):
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Solo los guías pueden generar nuevas paradas.'}, status=403)
+
+    try:
+        guia = _obtener_guia_para_usuario(request.user)
+    except services.ErrorPermisosRuta as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=403)
+    except services.ErrorPersistenciaRuta as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
+
+    ruta = get_object_or_404(Ruta, id=ruta_id, guia=guia)
+
+    try:
+        body = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'El cuerpo de la petición no es JSON válido.'}, status=400)
+
+    cantidad = body.get('cantidad', 3)
+    try:
+        resultado = services.generar_candidatos_paradas_ia(ruta=ruta, cantidad=int(cantidad))
+    except services.ErrorValidacionRuta as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=400)
+    except services.ErrorIntegracionIA as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
+
+    return JsonResponse({'status': 'OK', 'datos': resultado}, status=200)
