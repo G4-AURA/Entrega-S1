@@ -31,7 +31,7 @@ GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH') or None
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 # DEBUG: En la nube será False. En local (si está en .env) será True.
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
 
 # 1. ALLOWED_HOSTS: El punto al principio (.run.app) es la clave para subdominios
 ALLOWED_HOSTS = [
