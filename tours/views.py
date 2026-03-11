@@ -376,7 +376,7 @@ def obtener_ubicacion_guia(request, sesion_id):
 
 @require_POST
 def enviar_mensaje(request, sesion_id):
-    """Envía un mensaje. Acepta turistas anónimos (cookie) y el guía (auth)."""
+    """Envía un mensaje al chat de una sesión."""
     try:
         body = json.loads(request.body or "{}")
     except json.JSONDecodeError:
@@ -386,16 +386,29 @@ def enviar_mensaje(request, sesion_id):
     if not texto:
         return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
 
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    if len(texto) > 5000:
+        return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
 
-    if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Acceso denegado."}, status=403)
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
 
-    remitente_user, remitente_turista, nombre_remitente, error_remitente = services.determinar_remitente(
+    if sesion.esta_finalizada:
+        return JsonResponse(
+            {
+                "error": "No se pueden enviar mensajes a una sesión finalizada.",
+                "estado_sesion": sesion.estado,
+            },
+            status=403,
+        )
+
+
+    remitente_user, remitente_turista, nombre_remitente, error = services.determinar_remitente(
         request, sesion
     )
-    if error_remitente:
-        return JsonResponse({"error": error_remitente}, status=403)
+    if error:
+        return JsonResponse({"error": error}, status=403)
 
     mensaje = services.crear_mensaje(
         sesion=sesion,
@@ -407,8 +420,10 @@ def enviar_mensaje(request, sesion_id):
 
     return JsonResponse(
         {
-            "id": mensaje.id,
             "status": "ok",
+            "mensaje_id": mensaje.id,
+            "id": mensaje.id,
+
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
             "momento": mensaje.momento.isoformat(),
@@ -419,19 +434,39 @@ def enviar_mensaje(request, sesion_id):
 
 @require_GET
 def obtener_mensajes(request, sesion_id):
-    """Devuelve los mensajes de la sesión, con filtro opcional por `desde`."""
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    """Devuelve los mensajes de la sesión con filtro opcional por `desde` y `limite`."""
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
 
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
     desde_str = request.GET.get("desde")
-    qs = MensajeChat.objects.filter(sesion_tour=sesion).order_by("momento")
+    limite_str = request.GET.get("limite", "50")
+
+    try:
+        limite = int(limite_str)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "El parámetro limite debe ser un entero."}, status=400)
+
+    if limite < 1 or limite > 200:
+        return JsonResponse({"error": "El parámetro limite debe estar entre 1 y 200."}, status=400)
+
+    qs = MensajeChat.objects.filter(sesion_tour=sesion)
 
     if desde_str:
         desde_dt = parse_datetime(desde_str)
-        if desde_dt:
-            qs = qs.filter(momento__gt=desde_dt)
+        if not desde_dt:
+            return JsonResponse(
+                {"error": "El parámetro desde debe ser una fecha ISO-8601 válida."},
+                status=400,
+            )
+        qs = qs.filter(momento__gt=desde_dt)
+
+    mensajes_qs = qs.order_by("-momento", "-id")[:limite]
+    mensajes_ordenados = list(reversed(list(mensajes_qs)))
 
     mensajes = [
         {
@@ -440,7 +475,15 @@ def obtener_mensajes(request, sesion_id):
             "texto":            m.texto,
             "momento":          m.momento.isoformat(),
         }
-        for m in qs
+        for m in mensajes_ordenados
     ]
 
-    return JsonResponse({"mensajes": mensajes, "total": len(mensajes)})
+
+    return JsonResponse(
+        {
+            "mensajes": mensajes,
+            "total": len(mensajes),
+            "estado_sesion": sesion.estado,
+        }
+    )
+
