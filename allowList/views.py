@@ -122,13 +122,13 @@ def api_buscar_osm(request):
 
     ciudad     = str(datos.get('ciudad') or '').strip()
     categorias = datos.get('categorias') or []
-    radio_km   = datos.get('radio_km', 10.0)
+    pais       = str(datos.get('pais') or '').strip()
 
     if not isinstance(categorias, list):
         return JsonResponse({'status': 'ERROR', 'mensaje': 'categorias debe ser una lista.'}, status=400)
 
     try:
-        resultados = services.buscar_pois_osm(ciudad, categorias, radio_km)
+        resultados = services.buscar_pois_osm(ciudad, categorias, pais=pais)
     except services.ErrorValidacionPOI as exc:
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=400)
     except services.ErrorIntegracionOSM as exc:

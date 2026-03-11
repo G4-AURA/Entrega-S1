@@ -8,6 +8,7 @@ Módulos:
   2. Creación manual: valida y persiste POIs individuales.
   3. Consulta: serialización y filtrado para el motor de rutas.
 """
+import math
 import logging
 from typing import Any
 
@@ -16,6 +17,7 @@ from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
 
 from .models import CategoriaOSM, POI
+from .paises import resolver_iso_pais
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ class ErrorPersistenciaPOI(ErrorAllowlistBase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
-OVERPASS_TIMEOUT = 25          # segundos
+OVERPASS_TIMEOUT = 30          # segundos
 MAX_RESULTADOS_OSM = 100       # límite de elementos por búsqueda
 
 # Mapa de CategoriaOSM.value → (clave_osm, valor_osm) para construir la query
@@ -59,7 +61,32 @@ for _choice_value, _ in CategoriaOSM.choices:
 # Módulo 1 – Curación asistida OSM
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _construir_overpass_query(area_nombre: str, categorias: list[str], radio_km: float) -> str:
+def _normalizar_nombre_lugar(nombre: str) -> str:
+    """
+    Normaliza el nombre de una ciudad o área.
+
+    Aplica capitalización tipo título respetando partículas cortas habituales
+    en topónimos españoles/latinos (de, del, la, el, los, las, y) que se
+    mantienen en minúsculas salvo que sean la primera palabra.
+
+    Ejemplos:
+        "sevilla"                 → "Sevilla"
+        "CÓRDOBA"                 → "Córdoba"
+        "santiago de compostela"  → "Santiago de Compostela"
+        "la coruña"               → "La Coruña"
+    """
+    particulas = {'de', 'del', 'la', 'el', 'los', 'las', 'y', 'i', 'of', 'the'}
+    palabras = nombre.strip().split()
+    resultado = []
+    for i, palabra in enumerate(palabras):
+        if i == 0 or palabra.lower() not in particulas:
+            resultado.append(palabra.capitalize())
+        else:
+            resultado.append(palabra.lower())
+    return ' '.join(resultado)
+
+
+def _construir_overpass_query(area_nombre: str, categorias: list[str], pais: str = '') -> str:
     """
     Genera una query Overpass QL a partir de los filtros del administrador.
 
@@ -72,22 +99,36 @@ def _construir_overpass_query(area_nombre: str, categorias: list[str], radio_km:
     Args:
         area_nombre:  Nombre de ciudad o área (ej. "Sevilla").
         categorias:   Lista de valores de CategoriaOSM (ej. ["tourism=museum"]).
-        radio_km:     Radio de búsqueda en kilómetros desde el centroide del área.
+        pais:         País o región para desambiguar (ej. "España"). Opcional.
     Returns:
         String con la query Overpass QL lista para enviar.
     """
-    radio_m = int(radio_km * 1000)
-    bloques = []
 
+    iso = resolver_iso_pais(pais) if pais else None
+
+    if iso:
+        cabecera = (
+            f'area["ISO3166-1"="{iso}"]["admin_level"="2"]->.countryArea;\n'
+            f'area[name="{area_nombre}"]->.searchArea;\n'
+        )
+        filtro_area = '(area.searchArea)(area.countryArea)'
+    else:
+        if pais:
+            logger.warning('País "%s" no reconocido; se buscará sin filtro de país.', pais)
+        cabecera = f'area[name="{area_nombre}"]->.searchArea;\n'
+        filtro_area = '(area.searchArea)'
+
+    bloques = []
     for cat in categorias:
         tag = _CATEGORIA_A_TAG.get(cat)
         if not tag:
             continue
         k, v = tag
         filtro = f'["{k}"="{v}"]'
-        bloques.append(f'  node{filtro}(area.searchArea);')
-        bloques.append(f'  way{filtro}(area.searchArea);')
-        bloques.append(f'  relation{filtro}(area.searchArea);')
+        
+        bloques.append(f'  node{filtro}{filtro_area};')
+        bloques.append(f'  way{filtro}{filtro_area};')
+        bloques.append(f'  relation{filtro}{filtro_area};')
 
     if not bloques:
         raise ErrorValidacionPOI('Debes seleccionar al menos una categoría válida.')
@@ -96,12 +137,13 @@ def _construir_overpass_query(area_nombre: str, categorias: list[str], radio_km:
 
     query = (
         f'[out:json][timeout:{OVERPASS_TIMEOUT}];\n'
-        f'area[name="{area_nombre}"]->.searchArea;\n'
+        f'{cabecera}'
         f'(\n'
         f'{cuerpo}\n'
         f');\n'
         f'out center {MAX_RESULTADOS_OSM};'
     )
+    print(query)
     return query
 
 
@@ -136,32 +178,24 @@ def _normalizar_categoria_desde_tags(tags: dict) -> str:
     return CategoriaOSM.OTRO
 
 
-def buscar_pois_osm(ciudad: str, categorias: list[str], radio_km: float = 10.0) -> list[dict]:
+def buscar_pois_osm(ciudad: str, categorias: list[str], pais: str = '') -> list[dict]:
     """
     Ejecuta una búsqueda en la Overpass API y devuelve los resultados normalizados.
 
     Args:
         ciudad:     Nombre de la ciudad o área geográfica.
         categorias: Lista de valores CategoriaOSM seleccionados.
-        radio_km:   Radio de búsqueda en km (por defecto 10 km).
     Returns:
         Lista de dicts con estructura homogénea para renderizado en el panel.
     Raises:
         ErrorValidacionPOI:  Parámetros de entrada incorrectos.
         ErrorIntegracionOSM: Fallo HTTP o de red con la Overpass API.
     """
-    ciudad = str(ciudad or '').strip()
+    ciudad = _normalizar_nombre_lugar(str(ciudad or '').strip())
     if not ciudad:
         raise ErrorValidacionPOI('Debes indicar una ciudad o área geográfica.')
 
-    try:
-        radio_km = float(radio_km)
-        if radio_km <= 0 or radio_km > 100:
-            raise ValueError
-    except (TypeError, ValueError):
-        raise ErrorValidacionPOI('El radio de búsqueda debe ser un número entre 0 y 100 km.')
-
-    query = _construir_overpass_query(ciudad, categorias, radio_km)
+    query = _construir_overpass_query(ciudad, categorias, pais=pais)
 
     try:
         respuesta = requests.post(
@@ -386,7 +420,6 @@ def listar_pois(
             'osm_id':    poi.osm_id,
         })
 
-    import math
     return {
         'results':      resultados,
         'total':        total,

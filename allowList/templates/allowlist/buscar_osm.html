@@ -245,13 +245,8 @@
         <label class="osm-field-label" for="osm-ciudad">Ciudad / Área</label>
         <input type="text" id="osm-ciudad" class="osm-input" placeholder="Ej: Sevilla, Granada…">
 
-        <label class="osm-field-label">Radio de búsqueda</label>
-        <select id="osm-radio" class="osm-input">
-            <option value="3">3 km</option>
-            <option value="5" selected>5 km</option>
-            <option value="10">10 km</option>
-            <option value="20">20 km</option>
-        </select>
+        <label class="osm-field-label" for="osm-pais">País / Región <span style="font-weight:400;color:var(--text-muted);">(opcional)</span></label>
+        <input type="text" id="osm-pais" class="osm-input" placeholder="Ej: España, Argentina…">
 
         <label class="osm-field-label">Categorías</label>
         <button class="btn-selall" type="button" id="btn-all-cats">Seleccionar todo</button>
@@ -471,7 +466,7 @@
     // ── Búsqueda OSM ──
     document.getElementById('btn-buscar').addEventListener('click', async () => {
         const ciudad = document.getElementById('osm-ciudad').value.trim();
-        const radio  = parseFloat(document.getElementById('osm-radio').value);
+        const pais   = document.getElementById('osm-pais').value.trim();
         const cats   = [...document.querySelectorAll('.cat-item.selected')]
                         .map(el => el.dataset.value);
 
@@ -491,7 +486,7 @@
             const resp = await fetch('{% url "allowlist:api_buscar_osm" %}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-                body: JSON.stringify({ ciudad, categorias: cats, radio_km: radio }),
+                body: JSON.stringify({ ciudad, pais, categorias: cats }),
             });
             const data = await resp.json();
             if (!resp.ok || data.status !== 'OK') {
