@@ -35,7 +35,12 @@
 
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    {% if user.is_authenticated %}
+                    {% if user.is_superuser %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'allowlist:panel' %}">Allowlist POIs</a>
+                    </li>
+                    {% endif %}
+                     {% if user.is_authenticated %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'catalogo' %}">Mis Rutas</a>
                     </li>
