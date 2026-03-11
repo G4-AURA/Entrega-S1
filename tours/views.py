@@ -376,7 +376,7 @@ def obtener_ubicacion_guia(request, sesion_id):
 
 @require_POST
 def enviar_mensaje(request, sesion_id):
-    """Envía un mensaje. Acepta turistas anónimos (cookie) y el guía (auth)."""
+    """Envía un mensaje al chat de una sesión."""
     try:
         body = json.loads(request.body or "{}")
     except json.JSONDecodeError:
@@ -386,7 +386,22 @@ def enviar_mensaje(request, sesion_id):
     if not texto:
         return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
 
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    if len(texto) > 5000:
+        return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
+
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
+
+    if sesion.esta_finalizada:
+        return JsonResponse(
+            {
+                "error": "No se pueden enviar mensajes a una sesión finalizada.",
+                "estado_sesion": sesion.estado,
+            },
+            status=403,
+        )
 
     remitente_user, remitente_turista, nombre_remitente, error = services.determinar_remitente(
         request, sesion
@@ -404,6 +419,8 @@ def enviar_mensaje(request, sesion_id):
 
     return JsonResponse(
         {
+            "status": "ok",
+            "mensaje_id": mensaje.id,
             "id": mensaje.id,
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
@@ -415,8 +432,11 @@ def enviar_mensaje(request, sesion_id):
 
 @require_GET
 def obtener_mensajes(request, sesion_id):
-    """Devuelve los mensajes de la sesión, con filtro opcional por `desde`."""
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    """Devuelve los mensajes de la sesión con filtro opcional por `desde` y `limite`."""
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
 
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
@@ -456,4 +476,10 @@ def obtener_mensajes(request, sesion_id):
         for m in mensajes_ordenados
     ]
 
-    return JsonResponse({"mensajes": mensajes, "total": len(mensajes)})
+    return JsonResponse(
+        {
+            "mensajes": mensajes,
+            "total": len(mensajes),
+            "estado_sesion": sesion.estado,
+        }
+    )
