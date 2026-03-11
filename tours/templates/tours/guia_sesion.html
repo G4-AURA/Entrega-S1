@@ -1,240 +1,130 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Panel de Sesión - Guía{% endblock %}
+{% block title %}Panel de sesión - AURA{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/guia_sesion.css' %}">
+{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-center" style="min-height:60vh;">
-    <div class="w-100" style="max-width:1100px;">
-        <div class="row g-3">
-            <div class="col-md-7">
-                <div class="card shadow-sm p-4 h-100">
-                    <h3 class="fw-bold mb-3">Sesión creada</h3>
-                    
-                    <div class="mb-3">
-                        <p class="mb-2"><strong>Estado:</strong></p>
-                        <span id="sesion-estado" class="badge 
-                            {% if sesion.estado == 'en_curso' %}bg-success
-                            {% elif sesion.estado == 'pendiente' %}bg-warning
-                            {% else %}bg-secondary{% endif %} px-3 py-2">
-                            {{ sesion.get_estado_display|upper }}
-                        </span>
-                    </div>
-                    
-                    <p class="mb-2"><strong>Código de acceso:</strong></p>
-                    <h4 class="mb-3" id="sesion-code">{{ sesion.codigo_acceso }}</h4>
+<div class="session-dashboard">
 
-                    {% url 'tours:join_tour_by_code' sesion.codigo_acceso as join_path %}
-                    {% with full_url=request.scheme|add:'://'|add:request.get_host|add:join_path %}
-                    <div class="d-flex justify-content-start mb-2">
-                        <img id="qr-code" alt="QR código de acceso" style="width:220px; height:220px;" 
-                            src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ full_url|urlencode }}" />
-                    </div>
-                    {% endwith %}
+    <!-- Header -->
+    <div class="d-flex align-items-center justify-content-between mb-4 pt-3">
+        <div>
+            <p style="font-size:.7rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-muted);margin-bottom:.25rem;">
+                Sesión de tour
+            </p>
+            <h1 class="session-title">{{ sesion.ruta.titulo }}</h1>
+        </div>
+        <a href="{% url 'tours:mapa_guia' sesion.id %}"
+           class="btn btn-brand fw-bold px-4 d-flex align-items-center gap-2"
+           style="border-radius:var(--radius);">
+            <span class="material-icons-round" style="font-size:18px;">map</span>
+            Ver mapa
+        </a>
+    </div>
 
-                    <div class="d-flex flex-wrap gap-2 mb-3">
-                        {% if sesion.estado == 'pendiente' %}
-                        <button id="iniciar-tour" class="btn btn-success">🚀 Iniciar Tour</button>
-                        {% endif %}
-                        <button id="copy-code" class="btn btn-outline-primary">Copiar código de acceso</button>
-                        <button id="regenerate-code" class="btn btn-outline-secondary">Generar nuevo código</button>
-                        <button id="close-access" class="btn btn-danger">Cerrar acceso</button>
-                    </div>
+    <div class="row g-3">
 
-                    <div class="mt-auto pt-2">
-                        <a href="{% url 'tours:mapa_guia' sesion.id %}" class="btn btn-success">
-                            Acceder a la sesión
-                        </a>
-                    </div>
+        <!-- Left: session info + controls -->
+        <div class="col-lg-7">
+            <div class="session-card">
+
+                <!-- Status -->
+                <div class="session-status-row">
+                    <div class="status-dot status-dot--{% if sesion.estado == 'en_curso' %}active{% elif sesion.estado == 'pendiente' %}pending{% else %}closed{% endif %}"
+                         id="status-dot"></div>
+                    <span id="sesion-estado"
+                          class="sesion-estado-label sesion-estado--{% if sesion.estado == 'en_curso' %}active{% elif sesion.estado == 'pendiente' %}pending{% else %}closed{% endif %}">
+                        {{ sesion.get_estado_display|upper }}
+                    </span>
                 </div>
-            </div>
 
-            <div class="col-md-5">
-                <div class="card shadow-sm p-3 h-100">
-                    <h5 class="mb-3">Turistas presentes <small id="participantes-count" class="text-muted">(0)</small></h5>
-                    <ul id="participantes-list" class="list-group" style="max-height:420px; overflow:auto;"></ul>
+                <!-- Access code -->
+                <p style="font-size:.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);margin-bottom:.35rem;">
+                    Código de acceso
+                </p>
+                <div class="session-code-display" id="sesion-code">{{ sesion.codigo_acceso }}</div>
+
+                <!-- QR code -->
+                {% url 'tours:join_tour_by_code' sesion.codigo_acceso as join_path %}
+                {% with full_url=request.scheme|add:'://'|add:request.get_host|add:join_path %}
+                <div class="mb-4 qr-center">
+                    <img id="qr-code"
+                         alt="QR de acceso"
+                         style="width:200px;height:200px;border-radius:var(--radius-md);border:1px solid var(--border-color);display:block;"
+                         src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ full_url|urlencode }}" />
+                </div>
+                {% endwith %}
+
+                <!-- Action buttons -->
+                <div class="action-btn-row">
+                    {% if sesion.estado == 'pendiente' %}
+                    <button id="iniciar-tour"
+                            class="btn btn-brand fw-bold d-flex align-items-center gap-1"
+                            style="border-radius:var(--radius);font-size:.875rem;">
+                        <span class="material-icons-round" style="font-size:17px;">rocket_launch</span>
+                        Iniciar Tour
+                    </button>
+                    {% endif %}
+                    <button id="copy-code"
+                            class="btn fw-semibold d-flex align-items-center gap-1"
+                            style="border:1px solid var(--border-color);border-radius:var(--radius);font-size:.875rem;color:var(--text-secondary);background:var(--bg-surface);">
+                        <span class="material-icons-round" style="font-size:16px;">content_copy</span>
+                        Copiar código
+                    </button>
+                    <button id="regenerate-code"
+                            class="btn fw-semibold d-flex align-items-center gap-1"
+                            style="border:1px solid var(--border-color);border-radius:var(--radius);font-size:.875rem;color:var(--text-secondary);background:var(--bg-surface);">
+                        <span class="material-icons-round" style="font-size:16px;">refresh</span>
+                        Nuevo código
+                    </button>
+                </div>
+
+                <div class="d-flex justify-content-center mt-3">
+                    <button id="close-access"
+                            class="btn fw-semibold d-flex align-items-center gap-1"
+                            style="border:1px solid rgba(239,68,68,.25);border-radius:var(--radius);font-size:.875rem;color:var(--danger);background:var(--danger-light);">
+                        <span class="material-icons-round" style="font-size:16px;">lock</span>
+                        Cerrar acceso
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Right: participants -->
+        <div class="col-lg-5">
+            <div class="session-card">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <p style="font-family:'Manrope',sans-serif;font-weight:700;font-size:.9rem;color:var(--text-primary);margin:0;">
+                        Turistas presentes
+                    </p>
+                    <span id="participantes-count"
+                          style="background:var(--brand-light);color:var(--brand-color);font-size:.72rem;font-weight:700;font-family:'Manrope',sans-serif;border-radius:var(--radius-pill);padding:.2rem .65rem;">
+                        0
+                    </span>
+                </div>
+                <div id="participantes-list" style="max-height:420px;overflow-y:auto;">
+                    <p id="empty-msg" style="color:var(--text-muted);font-size:.875rem;text-align:center;padding:2rem 0;">
+                        Esperando participantes...
+                    </p>
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
-<script>
-function copyText(id) {
-    const text = document.getElementById(id).innerText;
-    if (!navigator.clipboard) {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        alert('Copiado al portapapeles');
-        return;
-    }
-    navigator.clipboard.writeText(text).then(() => {
-        alert('Copiado al portapapeles');
-    }).catch(() => alert('Error copiando'));
-}
+<meta name="participants-url" content="{% url 'tours:participantes_sesion' sesion.id %}">
+<meta name="start-tour-url" content="{% url 'tours:iniciar_tour' sesion.id %}">
+<meta name="regenerate-code-url" content="{% url 'tours:regenerar_codigo' sesion.id %}">
+<meta name="close-access-url" content="{% url 'tours:cerrar_acceso' sesion.id %}">
 
-document.addEventListener('DOMContentLoaded', function() {
-    const participantesList = document.getElementById('participantes-list');
-    const participantesCount = document.getElementById('participantes-count');
-    
-    async function fetchParticipants() {
-        try {
-            const resp = await fetch('{% url "tours:participantes_sesion" sesion.id %}');
-            if (!resp.ok) return;
-            const data = await resp.json();
-            const list = data.participantes || [];
-            participantesList.innerHTML = '';
-            list.forEach(p => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.textContent = p.alias;
-                const span = document.createElement('small');
-                span.className = 'text-muted';
-                try { span.textContent = new Date(p.fecha_union).toLocaleTimeString(); } catch(e){ span.textContent = ''; }
-                li.appendChild(span);
-                participantesList.appendChild(li);
-            });
-            participantesCount.innerText = `(${list.length})`;
-        } catch (e) {
-            console.error('Error fetch participants', e);
-        }
-    }
+{% endblock %}
 
-    fetchParticipants();
-    const participantesInterval = setInterval(fetchParticipants, 4000);
-
-    // Iniciar tour
-    const iniciarBtn = document.getElementById('iniciar-tour');
-    if (iniciarBtn) {
-        iniciarBtn.addEventListener('click', async () => {
-            if (!confirm('¿Iniciar el tour? Los turistas podrán comenzar a seguirte.')) return;
-
-            const csrftoken = (function() {
-                const name = 'csrftoken=';
-                const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith(name));
-                return c ? c.substring(name.length) : '';
-            })();
-
-            try {
-                const resp = await fetch('{% url "tours:iniciar_tour" sesion.id %}', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrftoken,
-                        'Accept': 'application/json'
-                    }
-                });
-
-                if (!resp.ok) {
-                    const txt = await resp.text();
-                    alert('Error iniciando el tour: ' + resp.status + '\n' + txt);
-                    return;
-                }
-
-                const data = await resp.json();
-                if (data.estado === 'en_curso') {
-                    const estadoBadge = document.getElementById('sesion-estado');
-                    if (estadoBadge) {
-                        estadoBadge.className = 'badge bg-success px-3 py-2';
-                        estadoBadge.textContent = 'EN CURSO';
-                    }
-                    iniciarBtn.remove();
-                    alert('¡Tour iniciado! Ya puedes acceder a la sesión y usar el chat.');
-                } else {
-                    alert('Respuesta inesperada del servidor.');
-                }
-            } catch (e) {
-                console.error(e);
-                alert('Error conectando con el servidor.');
-            }
-        });
-    }
-
-    document.getElementById('copy-code').addEventListener('click', () => copyText('sesion-code'));
-
-    document.getElementById('regenerate-code').addEventListener('click', async () => {
-        if (!confirm('¿Generar un nuevo código de acceso para esta sesión?')) return;
-
-        const csrftoken = (function() {
-            const name = 'csrftoken=';
-            const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith(name));
-            return c ? c.substring(name.length) : '';
-        })();
-
-        try {
-            const resp = await fetch('{% url "tours:regenerar_codigo" sesion.id %}', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrftoken,
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (!resp.ok) {
-                const txt = await resp.text();
-                alert('Error regenerando código: ' + resp.status + '\n' + txt);
-                return;
-            }
-
-            const data = await resp.json();
-            if (data.codigo_acceso) {
-                document.getElementById('sesion-code').innerText = data.codigo_acceso;
-                const joinUrl = `${window.location.origin}/tours/live/code/${encodeURIComponent(data.codigo_acceso)}/`;
-                const qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(joinUrl);
-                const qrEl = document.getElementById('qr-code');
-                if (qrEl) qrEl.src = qrSrc;
-                alert('Código regenerado correctamente.');
-            } else {
-                alert('Respuesta inesperada del servidor.');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Error conectando con el servidor.');
-        }
-    });
-
-    document.getElementById('close-access').addEventListener('click', async () => {
-        if (!confirm('¿Cerrar el acceso a esta sesión? Esto finalizará la sesión para todos los participantes.')) return;
-
-        const csrftoken = (function() {
-            const name = 'csrftoken=';
-            const c = document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith(name));
-            return c ? c.substring(name.length) : '';
-        })();
-
-        try {
-            const resp = await fetch('{% url "tours:cerrar_acceso" sesion.id %}', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrftoken,
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (!resp.ok) {
-                const txt = await resp.text();
-                alert('Error cerrando acceso: ' + resp.status + '\n' + txt);
-                return;
-            }
-
-            const data = await resp.json();
-            if (data.status === 'cerrado') {
-                document.getElementById('sesion-code').innerText = 'ACCESO CERRADO';
-                const qrEl = document.getElementById('qr-code'); if (qrEl) qrEl.style.opacity = '0.25';
-                document.getElementById('regenerate-code').disabled = true;
-                document.getElementById('copy-code').disabled = true;
-                document.getElementById('close-access').disabled = true;
-                alert('Acceso cerrado.');
-            } else {
-                alert('Respuesta inesperada del servidor.');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Error conectando con el servidor.');
-        }
-    });
-});
-</script>
+{% block extra_js %}
+<script src="{% static 'js/guia_sesion.js' %}"></script>
 {% endblock %}

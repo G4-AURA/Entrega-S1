@@ -24,3 +24,5 @@ celerybeat-schedule.*
 celerybeat.pid
 
 CLAUDE.md
+.claude/
+.github/instructions/

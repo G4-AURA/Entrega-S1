@@ -403,6 +403,7 @@ def enviar_mensaje(request, sesion_id):
             status=403,
         )
 
+
     remitente_user, remitente_turista, nombre_remitente, error = services.determinar_remitente(
         request, sesion
     )
@@ -422,6 +423,7 @@ def enviar_mensaje(request, sesion_id):
             "status": "ok",
             "mensaje_id": mensaje.id,
             "id": mensaje.id,
+
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
             "momento": mensaje.momento.isoformat(),
@@ -476,6 +478,7 @@ def obtener_mensajes(request, sesion_id):
         for m in mensajes_ordenados
     ]
 
+
     return JsonResponse(
         {
             "mensajes": mensajes,
@@ -483,3 +486,4 @@ def obtener_mensajes(request, sesion_id):
             "estado_sesion": sesion.estado,
         }
     )
+

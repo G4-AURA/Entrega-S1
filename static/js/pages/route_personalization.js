@@ -11,6 +11,11 @@
 
     let leafletMap = null;
 
+    // ── Geolocalización anticipada ────────────────────────────────────────────
+    // Se lanza en cuanto el módulo se carga, sin esperar al submit.
+    const metadataPromise = recogerMetadata();
+    // ─────────────────────────────────────────────────────────────────────────
+
     function setCargando(estaCargando) {
         pantallaCarga.style.display = estaCargando ? 'flex' : 'none';
         boton.disabled = estaCargando;
@@ -132,7 +137,7 @@
             (checkbox) => checkbox.value,
         );
 
-        const [metadata] = await Promise.all([recogerMetadata()]);
+        const metadata = await metadataPromise;
 
         return {
             ciudad: document.getElementById('ciudad').value,

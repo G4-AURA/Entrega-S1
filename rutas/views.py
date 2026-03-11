@@ -6,21 +6,16 @@ Vistas delgadas: validan HTTP y delegan al módulo rutas/services.
 Roles:
   - Guía: autenticado con Django Auth (@login_required)
 
-S2.1-28/32: Tras cada modificación de paradas se dispara recalcular_ruta_graphhopper.
-S2.1-32:    Endpoint AJAX para recalcular sin recargar la página completa.
+S2.1-32: endpoint AJAX para recalcular bajo demanda.
 """
-import logging
-
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from .models import Parada, Ruta
 from . import services
-
-logger = logging.getLogger(__name__)
+from .models import Parada, Ruta
 MAX_RUTAS_PAGE_SIZE = 9
 
 
@@ -33,29 +28,13 @@ def es_guia(user):
     Comprueba si el usuario autenticado tiene un perfil de Guia asociado.
     Ruta de modelos: User -> AuthUser (auth_profile) -> Guia (guia)
     """
+    if user.is_superuser:
+        return True
     if user.is_authenticated:
         if hasattr(user, 'auth_profile') and hasattr(user.auth_profile, 'guia'):
             if user.auth_profile.guia is not None:
                 return True
     raise PermissionDenied("Acceso denegado: área exclusiva para guías.")
-
-
-# ================================================
-# Helper: recalcular GraphHopper sin bloquear
-# ================================================
-
-def _recalcular_silencioso(ruta) -> None:
-    """
-    Dispara el recálculo GraphHopper de forma que nunca interrumpa la vista.
-    Los errores ya son capturados y logueados dentro del servicio.
-    """
-    try:
-        services.recalcular_ruta_graphhopper(ruta)
-    except Exception:
-        # Última barrera: la excepción ya fue logueada en services
-        logger.exception(
-            "Error inesperado en recálculo externo GraphHopper para Ruta(id=%d)", ruta.id
-        )
 
 
 # ================================================
@@ -117,7 +96,7 @@ def eliminar_ruta_view(request, ruta_id):
 
 
 # ================================================
-# DETALLE Y EDICIÓN DE RUTA (S2.1-32: recálculo tras modificaciones)
+# DETALLE Y EDICIÓN DE RUTA
 # ================================================
 
 @login_required
@@ -152,24 +131,17 @@ def ruta_detalle_view(request, ruta_id):
             except ValueError:
                 return redirect(f"{request.path}?meta_error=1")
 
-        # ── Eliminar parada → recalcular (S2.1-32) ───────────────────────────
+        # ── Eliminar parada ───────────────────────────────────────────────────
         if form_type == "stop_delete":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
             services.eliminar_parada_y_reordenar(ruta, parada)
-            _recalcular_silencioso(ruta)
             return redirect(f"{request.path}?stop_deleted=1")
 
-        # ── Editar parada → recalcular solo si cambian coordenadas (S2.1-32) ─
+        # ── Editar parada ─────────────────────────────────────────────────────
         if form_type == "stop_edit":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
-
-            # Guardar coordenadas antes de editar para detectar cambios
-            coords_antes = (
-                (parada.coordenadas.y, parada.coordenadas.x)
-                if parada.coordenadas else None
-            )
             try:
                 services.editar_parada(
                     parada,
@@ -180,18 +152,9 @@ def ruta_detalle_view(request, ruta_id):
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
-            # Refrescar para comparar coordenadas guardadas
-            parada.refresh_from_db()
-            coords_despues = (
-                (parada.coordenadas.y, parada.coordenadas.x)
-                if parada.coordenadas else None
-            )
-            if coords_antes != coords_despues:
-                _recalcular_silencioso(ruta)
-
             return redirect(f"{request.path}?stop_updated=1")
 
-        # ── Añadir parada → recalcular (S2.1-32) ────────────────────────────
+        # ── Añadir parada ─────────────────────────────────────────────────────
         if form_type == "stop_add":
             try:
                 services.añadir_parada(
@@ -203,10 +166,9 @@ def ruta_detalle_view(request, ruta_id):
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
-            _recalcular_silencioso(ruta)
             return redirect(f"{request.path}?stop_added=1")
 
-        # ── Reordenar paradas → recalcular (S2.1-32) ─────────────────────────
+        # ── Reordenar paradas ─────────────────────────────────────────────────
         if form_type == "stop_reorder":
             raw_order = (request.POST.get("stop_order") or "").strip()
             try:
@@ -224,8 +186,6 @@ def ruta_detalle_view(request, ruta_id):
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
-            # El cambio de orden modifica la ruta óptima
-            _recalcular_silencioso(ruta)
             return redirect(f"{request.path}?stop_reordered=1")
 
         # ── Etiquetas mood (sin efecto en la geometría) ───────────────────────
@@ -236,7 +196,6 @@ def ruta_detalle_view(request, ruta_id):
         return redirect(request.path)
 
     # ── GET: construir contexto ────────────────────────────────────────────────
-    # refresh_from_db garantiza que se leen los campos de GraphHopper recién guardados
     ruta.refresh_from_db()
     paradas = sorted(ruta.paradas.all(), key=lambda p: p.orden)
     paradas_json = services.obtener_paradas_json(paradas)
@@ -300,5 +259,4 @@ def recalcular_ruta_api(request, ruta_id):
     services.recalcular_ruta_graphhopper(ruta)
 
     return JsonResponse(services.serializar_resultado_graphhopper(ruta))
-
 

@@ -34,6 +34,10 @@ class ErrorPersistenciaRuta(ErrorRutaBase):
     """Errores al persistir rutas o su historial en base de datos."""
 
 
+class ErrorIntegracionIA(ErrorRutaBase):
+    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
+
+
 MAPA_MOOD_RUTA = {
     'historia': Ruta.Mood.HISTORIA,
     'gastronomia': Ruta.Mood.GASTRONOMIA,
@@ -57,6 +61,122 @@ MAPA_EXIGENCIA_RUTA = {
     'medio': Ruta.Exigencia.MEDIA,
     'alta': Ruta.Exigencia.ALTA,
 }
+
+MAX_POIS_ALLOWLIST_EN_PROMPT = 15
+
+_MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
+    'historia': [
+        'historic=monument', 'historic=castle', 'historic=ruins',
+        'tourism=museum', 'amenity=place_of_worship',
+    ],
+    'gastronomia': [
+        'amenity=restaurant', 'amenity=cafe', 'amenity=bar', 'amenity=marketplace',
+    ],
+    'naturaleza': [
+        'leisure=park', 'tourism=viewpoint',
+    ],
+    'misterio-leyendas': [
+        'historic=monument', 'historic=ruins', 'historic=castle',
+        'amenity=place_of_worship',
+    ],
+    'misterio y leyendas': [
+        'historic=monument', 'historic=ruins', 'historic=castle',
+        'amenity=place_of_worship',
+    ],
+    'local': [
+        'amenity=marketplace', 'place=square', 'amenity=restaurant',
+        'amenity=cafe', 'amenity=bar',
+    ],
+    'cine-series': [
+        'amenity=cinema', 'tourism=museum', 'historic=monument',
+    ],
+    'cine y series': [
+        'amenity=cinema', 'tourism=museum', 'historic=monument',
+    ],
+    'religioso-espiritual': [
+        'amenity=place_of_worship', 'historic=monument', 'historic=castle',
+    ],
+    'religioso y espiritual': [
+        'amenity=place_of_worship', 'historic=monument', 'historic=castle',
+    ],
+    'arquitectura-diseno': [
+        'tourism=museum', 'historic=monument', 'historic=castle',
+        'tourism=gallery', 'amenity=theatre',
+    ],
+    'arquitectura y diseño': [
+        'tourism=museum', 'historic=monument', 'historic=castle',
+        'tourism=gallery', 'amenity=theatre',
+    ],
+    'ocio-cultural': [
+        'amenity=theatre', 'amenity=cinema', 'amenity=library',
+        'tourism=gallery', 'tourism=museum', 'leisure=stadium',
+    ],
+    'ocio/cultural': [
+        'amenity=theatre', 'amenity=cinema', 'amenity=library',
+        'tourism=gallery', 'tourism=museum', 'leisure=stadium',
+    ],
+}
+
+
+def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
+    """
+    Consulta la allowlist y devuelve hasta MAX_POIS_ALLOWLIST_EN_PROMPT POIs
+    filtrados por ciudad y por las categorías OSM relevantes para los moods dados.
+
+    Importa el modelo POI de forma diferida para evitar dependencias circulares
+    y para que el módulo sea importable sin Django configurado en tests unitarios.
+
+    Devuelve lista vacía si la allowlist está vacía o hay error de BD.
+    """
+    try:
+        from allowList.models import POI  # importación diferida intencionada
+    except ImportError:
+        logger.warning('No se pudo importar el modelo POI de allowList; se omiten recomendaciones.')
+        return []
+
+    # Reunir categorías relevantes para todos los moods seleccionados
+    categorias_relevantes: set[str] = set()
+    for mood in moods:
+        clave = str(mood).strip().lower()
+        categorias_relevantes.update(_MOOD_A_CATEGORIAS_OSM.get(clave, []))
+
+    try:
+        qs = POI.objects.filter(ciudad__icontains=ciudad.strip())
+        if categorias_relevantes:
+            qs = qs.filter(categoria__in=categorias_relevantes)
+        qs = qs.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT]
+
+        return [
+            {
+                'nombre': poi.nombre,
+                'coords': [poi.lat, poi.lon],
+                'categoria': poi.get_categoria_display(),
+            }
+            for poi in qs
+        ]
+    except Exception as exc:
+        logger.warning('Error al consultar la allowlist de POIs: %s', exc)
+        return []
+    
+
+def _construir_bloque_allowlist(pois: list[dict]) -> str:
+    """
+    Formatea los POIs de la allowlist como un bloque de texto para el prompt.
+    Devuelve cadena vacía si no hay POIs.
+    """
+    if not pois:
+        return ''
+
+    lineas = [
+        '\n## Puntos de Interés recomendados (allowlist curada)',
+        'Los siguientes lugares han sido verificados y aprobados para esta ciudad.',
+        'Inclúyelos en la ruta siempre que encajen con la temática solicitada:',
+    ]
+    for poi in pois:
+        lat, lon = poi['coords']
+        lineas.append(f'  - {poi["nombre"]} ({poi["categoria"]}) — coords: [{lat}, {lon}]')
+
+    return '\n'.join(lineas)
 
 
 def normalizar_moods(moods_sin_normalizar):
@@ -278,6 +398,192 @@ def guardar_ruta_manual(guia, payload):
         raise ErrorPersistenciaRuta('No se pudo guardar la ruta manual en la base de datos.') from exc
 
     return ruta
+
+
+def _normalizar_candidato_parada(candidato, idx):
+    if not isinstance(candidato, dict):
+        return None
+
+    nombre = str(candidato.get('nombre') or '').strip()
+    if not nombre:
+        return None
+
+    coordenadas = _normalizar_coordenadas(
+        candidato.get('coordenadas') or candidato.get('coords'),
+        lat=candidato.get('lat'),
+        lon=candidato.get('lon'),
+    )
+    if not coordenadas:
+        return None
+
+    confianza_raw = candidato.get('nivel_confianza', candidato.get('confianza', 0.0))
+    try:
+        nivel_confianza = max(0.0, min(1.0, float(confianza_raw)))
+    except (TypeError, ValueError):
+        nivel_confianza = 0.0
+
+    return {
+        'id_sugerencia': idx,
+        'nombre': nombre,
+        'coordenadas': coordenadas,
+        'categoria': str(candidato.get('categoria') or 'general').strip()[:60],
+        'nivel_confianza': round(nivel_confianza, 2),
+        'justificacion': str(candidato.get('justificacion') or '').strip()[:500],
+    }
+
+
+def _distancia_haversine_km(coord_a, coord_b):
+    lat1, lon1 = coord_a
+    lat2, lon2 = coord_b
+    radio_tierra_km = 6371.0
+
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radio_tierra_km * c
+
+
+def _calcular_contexto_geografico(paradas_existentes):
+    coords = [p['coordenadas'] for p in paradas_existentes if isinstance(p.get('coordenadas'), list)]
+    if not coords:
+        return {'centro': [0.0, 0.0], 'radio_km': 8.0}
+
+    centro_lat = sum(c[0] for c in coords) / len(coords)
+    centro_lon = sum(c[1] for c in coords) / len(coords)
+    centro = [centro_lat, centro_lon]
+
+    radio_actual_km = max(_distancia_haversine_km(centro, c) for c in coords)
+    radio_permitido_km = min(30.0, max(8.0, radio_actual_km + 10.0))
+
+    return {'centro': centro, 'radio_km': radio_permitido_km}
+
+
+def _esta_en_contexto_geografico(coordenadas, contexto_geo):
+    return _distancia_haversine_km(coordenadas, contexto_geo['centro']) <= contexto_geo['radio_km']
+
+
+def _normalizar_nombre_para_dedupe(nombre):
+    return ' '.join(str(nombre or '').strip().lower().split())
+
+
+def _clave_coordenadas_para_dedupe(coordenadas):
+    return (round(float(coordenadas[0]), 5), round(float(coordenadas[1]), 5))
+
+
+def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
+    if cantidad < 1 or cantidad > 10:
+        raise ErrorValidacionRuta('La cantidad de sugerencias debe estar entre 1 y 10.')
+
+    paradas_existentes = []
+    for parada in ruta.paradas.order_by('orden'):
+        paradas_existentes.append({
+            'orden': parada.orden,
+            'nombre': parada.nombre,
+            'coordenadas': [parada.coordenadas.y, parada.coordenadas.x],
+        })
+
+    if not paradas_existentes:
+        raise ErrorValidacionRuta('La ruta no tiene paradas actuales para aportar contexto a la IA.')
+
+    contexto_geo = _calcular_contexto_geografico(paradas_existentes)
+    ciudad_contexto = str(ruta.titulo or '').split(' ')[0] or 'Sin ciudad'
+    preferencias = {
+        'duracion_horas': float(ruta.duracion_horas),
+        'num_personas': int(ruta.num_personas),
+        'nivel_exigencia': ruta.nivel_exigencia,
+        'mood': ruta.mood,
+        'descripcion': ruta.descripcion or '',
+    }
+
+    prompt = f"""
+        Eres un asistente experto en diseño de rutas turísticas.
+
+        Debes proponer {cantidad} nuevas paradas para complementar una ruta existente.
+
+        ## Contexto de la ruta
+        - Ciudad: {ciudad_contexto}
+        - Temática(s): {', '.join(ruta.mood)}
+        - Preferencias: {json.dumps(preferencias, ensure_ascii=False)}
+        - Paradas existentes: {json.dumps(paradas_existentes, ensure_ascii=False)}
+        - Centro geográfico aproximado de la ruta: {json.dumps(contexto_geo['centro'], ensure_ascii=False)}
+        - Distancia máxima permitida desde el centro: {round(contexto_geo['radio_km'], 2)} km
+
+        ## Criterios
+        - Evita sugerir puntos duplicados respecto a las paradas existentes.
+        - Evita también duplicados entre las propias sugerencias.
+        - Mantén coherencia temática con la ruta.
+        - Propón coordenadas plausibles dentro de la ciudad indicada.
+        - REGLA ESTRICTA: NO propongas paradas fuera del área geográfica de la ruta.
+
+        Responde únicamente JSON válido (sin texto adicional) como lista de objetos con esta estructura:
+        [
+          {{
+            "nombre": "Nombre de la parada",
+            "coordenadas": [lat, lon],
+            "categoria": "Categoría turística",
+            "nivel_confianza": 0.0,
+            "justificacion": "Motivo breve de por qué encaja en la ruta"
+          }}
+        ]
+    """
+
+    try:
+        respuesta_ia = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+    except Exception as exc:
+        raise ErrorIntegracionIA('No se pudieron generar nuevas paradas con IA en este momento.') from exc
+
+    if not isinstance(respuesta_ia, list):
+        raise ErrorIntegracionIA('La IA devolvió un formato inválido para las sugerencias de paradas.')
+
+    nombres_existentes = {
+        _normalizar_nombre_para_dedupe(p.get('nombre'))
+        for p in paradas_existentes
+        if _normalizar_nombre_para_dedupe(p.get('nombre'))
+    }
+    coords_existentes = {
+        _clave_coordenadas_para_dedupe(p.get('coordenadas'))
+        for p in paradas_existentes
+        if isinstance(p.get('coordenadas'), list) and len(p.get('coordenadas')) >= 2
+    }
+
+    nombres_vistos = set(nombres_existentes)
+    coords_vistas = set(coords_existentes)
+    candidatos = []
+    for idx, candidato in enumerate(respuesta_ia, start=1):
+        normalizado = _normalizar_candidato_parada(candidato, idx)
+        if not normalizado:
+            continue
+        if not _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
+            continue
+
+        nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
+        coords_key = _clave_coordenadas_para_dedupe(normalizado.get('coordenadas'))
+        if nombre_key in nombres_vistos or coords_key in coords_vistas:
+            continue
+
+        nombres_vistos.add(nombre_key)
+        coords_vistas.add(coords_key)
+        candidatos.append(normalizado)
+
+    if not candidatos:
+        raise ErrorIntegracionIA(
+            'La IA no devolvió candidatos válidos y no duplicados para esta ruta.'
+        )
+
+    return {
+        'ruta_id': ruta.id,
+        'ciudad': ciudad_contexto,
+        'tematicas': ruta.mood,
+        'paradas_existentes': paradas_existentes,
+        'candidatos': candidatos,
+    }
 
 class State(TypedDict):
     usuario_input: dict 
@@ -528,6 +834,12 @@ def nodo_seleccion_sitios(state: State):
     bloque_metadata = _construir_bloque_metadata(datos.get('metadata') or {})
     bloque_deseos = _construir_bloque_deseos(datos.get('deseos') or [])
 
+    pois_allowlist = _obtener_pois_allowlist(
+        ciudad=datos.get('ciudad', ''),
+        moods=datos.get('mood') or [],
+    )
+    bloque_allowlist = _construir_bloque_allowlist(pois_allowlist)
+
     prompt = f"""
         Eres un guía turístico experto. Tu tarea es seleccionar los mejores Puntos de Interés (POIs) para
         una ruta en {datos.get('ciudad')}.
@@ -539,16 +851,22 @@ def nodo_seleccion_sitios(state: State):
         - Temática(s): {', '.join(datos.get('mood') or [])}
         {bloque_metadata}
         {bloque_deseos}
+        {bloque_allowlist}
 
         ## Instrucción
         Genera una lista de 5 a 8 POIs adecuados para estos parámetros. Ten en cuenta el contexto del
         solicitante y sus preferencias específicas si las hay.
+        Si se han proporcionado POIs recomendados (allowlist), dales prioridad frente a otros lugares
+        siempre que encajen con la temática. Puedes complementar con otros POIs si son necesarios para
+        completar la ruta.
 
         Responde ÚNICAMENTE con un JSON válido (sin texto extra) con esta estructura:
         [
             {{"nombre": "Nombre del sitio", "coords": [lat, lon], "desc": "Breve descripción del lugar"}}
         ]
         """
+    
+    print(prompt)
 
     pois = llamar_gemini_bypass(prompt, api_key)
     return {"pois_seleccionados": pois}

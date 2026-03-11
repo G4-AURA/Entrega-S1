@@ -59,6 +59,7 @@ class GenerarRutaIAViewTests(TestCase):
             'mood': [Ruta.Mood.HISTORIA, Ruta.Mood.GASTRONOMIA],
             'deseos': [],
             'metadata': {}
+
         })
         mock_get_guia.assert_called_once_with(user)
         mock_guardar.assert_called_once()
@@ -139,3 +140,49 @@ class GuardarRutaManualViewTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['status'], 'ERROR')
+
+
+class GenerarParadasIAViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='guia_paradas', password='1234')
+        auth_profile = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=auth_profile)
+        self.ruta = Ruta.objects.create(
+            titulo='Sevilla Cultural',
+            descripcion='Ruta base',
+            duracion_horas=2,
+            num_personas=8,
+            nivel_exigencia=Ruta.Exigencia.MEDIA,
+            mood=[Ruta.Mood.HISTORIA],
+            es_generada_ia=False,
+            guia=self.guia,
+        )
+        self.url = reverse('creacion:generar_paradas_ia', kwargs={'ruta_id': self.ruta.id})
+
+    def test_requiere_autenticacion(self):
+        response = self.client.post(self.url, data='{}', content_type='application/json')
+
+        self.assertEqual(response.status_code, 401)
+
+    @patch('creacion.views.services.generar_candidatos_paradas_ia')
+    def test_retorna_candidatos_cuando_servicio_responde_ok(self, mock_generar):
+        self.client.force_login(self.user)
+        mock_generar.return_value = {'ruta_id': self.ruta.id, 'candidatos': [{'nombre': 'Archivo'}]}
+
+        response = self.client.post(self.url, data=json.dumps({'cantidad': 2}), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'OK')
+        mock_generar.assert_called_once()
+
+    @patch('creacion.views.services.generar_candidatos_paradas_ia')
+    def test_retorna_400_si_cantidad_no_es_numerica(self, mock_generar):
+        self.client.force_login(self.user)
+
+        response = self.client.post(self.url, data=json.dumps({'cantidad': 'abc'}), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertIn('cantidad', response.json()['mensaje'])
+        mock_generar.assert_not_called()

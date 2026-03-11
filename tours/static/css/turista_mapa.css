@@ -1,0 +1,301 @@
+/* Hide navbar and reset layout for full-screen map */
+.aura-navbar {
+    display: none !important;
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+main.container {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.25;
+    }
+    70% {
+        transform: scale(2.4);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0;
+    }
+}
+
+/* ── Botón volver ──────────────────────────────────────────────────– */
+.btn-back {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    z-index: 1001;
+    text-decoration: none;
+    color: var(--text-primary);
+}
+
+.btn-back:hover {
+    background: var(--bg-white);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn-back .material-icons-round {
+    font-size: 20px;
+}
+
+/* ── Panel de tour ────────────────────────────────────────────────– */
+.tour-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    background: var(--bg-surface) !important;
+    border-top: 1px solid var(--border-color);
+    border-radius: 24px 24px 0 0;
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+}
+
+.panel-header {
+    padding: 12px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-surface) !important;
+}
+
+.panel-drag-handle {
+    width: 32px;
+    height: 4px;
+    background: #cbd5e1;
+    border-radius: 2px;
+    margin: 0 auto;
+    cursor: grab;
+}
+
+.panel-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-surface) !important;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    color: var(--brand-color);
+    border-bottom-color: var(--brand-color);
+}
+
+.tab-btn .material-icons-round {
+    font-size: 18px;
+}
+
+.chat-badge {
+    width: 20px;
+    height: 20px;
+    background: var(--danger);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: none !important;
+}
+
+/* ── Contenido de pestañas ────────────────────────────────────────– */
+.panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: var(--bg-surface) !important;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* ── Timeline (itinerario) ────────────────────────────────────────– */
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.timeline-item {
+    padding: 10px 12px;
+    border-left: 3px solid #e2e8f0;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    transition: all 0.2s;
+}
+
+.timeline-item.active {
+    border-left-color: var(--brand-color);
+    background: var(--brand-light);
+}
+
+.timeline-item h6 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+}
+
+.timeline-item p {
+    margin: 0;
+    font-size: 0.75rem;
+}
+
+/* ── Chat ──────────────────────────────────────────────────────── */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 12px;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+}
+
+.chat-empty .material-icons-round {
+    font-size: 40px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+.chat-empty p {
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+.chat-message {
+    max-width: 90%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.chat-message.mine {
+    align-self: flex-end;
+    background: var(--brand-light);
+    color: var(--brand-color);
+}
+
+.chat-message.other {
+    align-self: flex-start;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.chat-input-container {
+    display: flex;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.chat-input {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: var(--brand-color);
+    box-shadow: 0 0 0 3px var(--brand-light);
+}
+
+.chat-send-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: none;
+    background: var(--brand-color);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.chat-send-btn:hover {
+    background: var(--brand-hover);
+}
+
+.chat-send-btn .material-icons-round {
+    font-size: 18px;
+}
+
+/* ── Mapa ────────────────────────────────────────────────────────– */
+#mapa-tour {
+    width: 100%;
+    height: 100%;
+}
