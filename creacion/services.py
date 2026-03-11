@@ -62,6 +62,122 @@ MAPA_EXIGENCIA_RUTA = {
     'alta': Ruta.Exigencia.ALTA,
 }
 
+MAX_POIS_ALLOWLIST_EN_PROMPT = 15
+
+_MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
+    'historia': [
+        'historic=monument', 'historic=castle', 'historic=ruins',
+        'tourism=museum', 'amenity=place_of_worship',
+    ],
+    'gastronomia': [
+        'amenity=restaurant', 'amenity=cafe', 'amenity=bar', 'amenity=marketplace',
+    ],
+    'naturaleza': [
+        'leisure=park', 'tourism=viewpoint',
+    ],
+    'misterio-leyendas': [
+        'historic=monument', 'historic=ruins', 'historic=castle',
+        'amenity=place_of_worship',
+    ],
+    'misterio y leyendas': [
+        'historic=monument', 'historic=ruins', 'historic=castle',
+        'amenity=place_of_worship',
+    ],
+    'local': [
+        'amenity=marketplace', 'place=square', 'amenity=restaurant',
+        'amenity=cafe', 'amenity=bar',
+    ],
+    'cine-series': [
+        'amenity=cinema', 'tourism=museum', 'historic=monument',
+    ],
+    'cine y series': [
+        'amenity=cinema', 'tourism=museum', 'historic=monument',
+    ],
+    'religioso-espiritual': [
+        'amenity=place_of_worship', 'historic=monument', 'historic=castle',
+    ],
+    'religioso y espiritual': [
+        'amenity=place_of_worship', 'historic=monument', 'historic=castle',
+    ],
+    'arquitectura-diseno': [
+        'tourism=museum', 'historic=monument', 'historic=castle',
+        'tourism=gallery', 'amenity=theatre',
+    ],
+    'arquitectura y diseño': [
+        'tourism=museum', 'historic=monument', 'historic=castle',
+        'tourism=gallery', 'amenity=theatre',
+    ],
+    'ocio-cultural': [
+        'amenity=theatre', 'amenity=cinema', 'amenity=library',
+        'tourism=gallery', 'tourism=museum', 'leisure=stadium',
+    ],
+    'ocio/cultural': [
+        'amenity=theatre', 'amenity=cinema', 'amenity=library',
+        'tourism=gallery', 'tourism=museum', 'leisure=stadium',
+    ],
+}
+
+
+def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
+    """
+    Consulta la allowlist y devuelve hasta MAX_POIS_ALLOWLIST_EN_PROMPT POIs
+    filtrados por ciudad y por las categorías OSM relevantes para los moods dados.
+
+    Importa el modelo POI de forma diferida para evitar dependencias circulares
+    y para que el módulo sea importable sin Django configurado en tests unitarios.
+
+    Devuelve lista vacía si la allowlist está vacía o hay error de BD.
+    """
+    try:
+        from allowList.models import POI  # importación diferida intencionada
+    except ImportError:
+        logger.warning('No se pudo importar el modelo POI de allowList; se omiten recomendaciones.')
+        return []
+
+    # Reunir categorías relevantes para todos los moods seleccionados
+    categorias_relevantes: set[str] = set()
+    for mood in moods:
+        clave = str(mood).strip().lower()
+        categorias_relevantes.update(_MOOD_A_CATEGORIAS_OSM.get(clave, []))
+
+    try:
+        qs = POI.objects.filter(ciudad__icontains=ciudad.strip())
+        if categorias_relevantes:
+            qs = qs.filter(categoria__in=categorias_relevantes)
+        qs = qs.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT]
+
+        return [
+            {
+                'nombre': poi.nombre,
+                'coords': [poi.lat, poi.lon],
+                'categoria': poi.get_categoria_display(),
+            }
+            for poi in qs
+        ]
+    except Exception as exc:
+        logger.warning('Error al consultar la allowlist de POIs: %s', exc)
+        return []
+    
+
+def _construir_bloque_allowlist(pois: list[dict]) -> str:
+    """
+    Formatea los POIs de la allowlist como un bloque de texto para el prompt.
+    Devuelve cadena vacía si no hay POIs.
+    """
+    if not pois:
+        return ''
+
+    lineas = [
+        '\n## Puntos de Interés recomendados (allowlist curada)',
+        'Los siguientes lugares han sido verificados y aprobados para esta ciudad.',
+        'Inclúyelos en la ruta siempre que encajen con la temática solicitada:',
+    ]
+    for poi in pois:
+        lat, lon = poi['coords']
+        lineas.append(f'  - {poi["nombre"]} ({poi["categoria"]}) — coords: [{lat}, {lon}]')
+
+    return '\n'.join(lineas)
+
 
 def normalizar_moods(moods_sin_normalizar):
     if isinstance(moods_sin_normalizar, str):
@@ -718,6 +834,12 @@ def nodo_seleccion_sitios(state: State):
     bloque_metadata = _construir_bloque_metadata(datos.get('metadata') or {})
     bloque_deseos = _construir_bloque_deseos(datos.get('deseos') or [])
 
+    pois_allowlist = _obtener_pois_allowlist(
+        ciudad=datos.get('ciudad', ''),
+        moods=datos.get('mood') or [],
+    )
+    bloque_allowlist = _construir_bloque_allowlist(pois_allowlist)
+
     prompt = f"""
         Eres un guía turístico experto. Tu tarea es seleccionar los mejores Puntos de Interés (POIs) para
         una ruta en {datos.get('ciudad')}.
@@ -729,16 +851,22 @@ def nodo_seleccion_sitios(state: State):
         - Temática(s): {', '.join(datos.get('mood') or [])}
         {bloque_metadata}
         {bloque_deseos}
+        {bloque_allowlist}
 
         ## Instrucción
         Genera una lista de 5 a 8 POIs adecuados para estos parámetros. Ten en cuenta el contexto del
         solicitante y sus preferencias específicas si las hay.
+        Si se han proporcionado POIs recomendados (allowlist), dales prioridad frente a otros lugares
+        siempre que encajen con la temática. Puedes complementar con otros POIs si son necesarios para
+        completar la ruta.
 
         Responde ÚNICAMENTE con un JSON válido (sin texto extra) con esta estructura:
         [
             {{"nombre": "Nombre del sitio", "coords": [lat, lon], "desc": "Breve descripción del lugar"}}
         ]
         """
+    
+    print(prompt)
 
     pois = llamar_gemini_bypass(prompt, api_key)
     return {"pois_seleccionados": pois}
