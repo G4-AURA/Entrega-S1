@@ -12,7 +12,6 @@ from tours.models import SESION_TOUR, TURISTA
 class ChatGuideTouristE2ETests(TestCase):
     def setUp(self):
         self.guia_user = User.objects.create_user(username='guia_e2e', password='1234')
-        self.turista_user = User.objects.create_user(username='turista_e2e', password='1234')
 
         auth_guia = AuthUser.objects.create(user=self.guia_user)
         guia = Guia.objects.create(user=auth_guia)
@@ -33,17 +32,22 @@ class ChatGuideTouristE2ETests(TestCase):
             ruta=ruta,
         )
 
-        self.turista = TURISTA.objects.create(user=self.turista_user, alias='turista-e2e')
+        self.turista = TURISTA.objects.create(alias='turista-e2e')
         self.sesion.turistas.add(self.turista)
 
         self.guia_client = Client()
         self.guia_client.force_login(self.guia_user)
 
         self.turista_client = Client()
-        self.turista_client.force_login(self.turista_user)
+        session = self.turista_client.session
+        session['turista_id'] = self.turista.id
+        session['turista_alias'] = self.turista.alias
+        session.save()
 
     def test_e2e_guia_envia_alerta_y_turista_recibe_notificacion_y_mensaje(self):
-        mapa_response = self.turista_client.get(reverse('tours:mapa_turista_anonimo', args=[self.sesion.id]))
+        mapa_response = self.turista_client.get(
+            reverse('tours:mapa_turista_anonimo', kwargs={'token': self.sesion.token})
+        )
         self.assertEqual(mapa_response.status_code, 200)
         self.assertContains(mapa_response, 'id="chat-badge"')
 

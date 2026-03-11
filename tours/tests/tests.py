@@ -2,10 +2,11 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from datetime import timedelta
 
 from rutas.models import AuthUser, Guia, Ruta
 from tours.tasks import barrido_mensajes_efimeros
-from tours.models import MENSAJE_CHAT, SESION_TOUR, TURISTA, UBICACION_VIVO
+from tours.models import MENSAJE_CHAT, SESION_TOUR, TURISTA, TURISTASESION, UBICACION_VIVO
 
 
 class SessionLogicEndpointsTests(TestCase):
@@ -255,3 +256,87 @@ class ChatCeleryTestCase(TestCase):
         resultado = barrido_mensajes_efimeros(self.sesion.id)
         self.assertEqual(MENSAJE_CHAT.objects.count(), 1)
         self.assertIn("Operación cancelada", resultado)
+
+
+class ChatApiValidationTests(TestCase):
+    def setUp(self):
+        self.guia_user = User.objects.create_user(username='chat_guia', password='1234')
+        self.no_participante = User.objects.create_user(username='chat_intruso', password='1234')
+
+        auth_guia = AuthUser.objects.create(user=self.guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Chat API',
+            descripcion='Validaciones de chat',
+            duracion_horas=1.5,
+            num_personas=10,
+            mood=['Historia'],
+            guia=guia,
+        )
+
+        self.sesion = SESION_TOUR.objects.create(
+            codigo_acceso='CHAT01',
+            estado='en_curso',
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+
+        self.turista = TURISTA.objects.create(alias='anon-chat')
+        TURISTASESION.objects.create(turista=self.turista, sesion_tour=self.sesion, activo=True)
+
+        self.guia_client = Client()
+        self.guia_client.force_login(self.guia_user)
+
+        self.anon_client = Client()
+        session = self.anon_client.session
+        session['turista_id'] = self.turista.id
+        session['turista_alias'] = self.turista.alias
+        session.save()
+
+        self.intruso_client = Client()
+        self.intruso_client.force_login(self.no_participante)
+
+    def test_enviar_mensaje_rechaza_texto_vacio(self):
+        response = self.guia_client.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion.id]),
+            data='{"texto": "   "}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_enviar_mensaje_rechaza_usuario_sin_permiso(self):
+        response = self.intruso_client.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion.id]),
+            data='{"texto": "mensaje"}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_obtener_mensajes_aplica_limite_y_orden_cronologico(self):
+        base = timezone.now() - timedelta(minutes=5)
+        textos = ['m1', 'm2', 'm3']
+        for idx, texto in enumerate(textos):
+            mensaje = MENSAJE_CHAT.objects.create(
+                sesion_tour=self.sesion,
+                nombre_remitente='chat_guia',
+                texto=texto,
+            )
+            MENSAJE_CHAT.objects.filter(id=mensaje.id).update(momento=base + timedelta(minutes=idx))
+
+        response = self.anon_client.get(
+            reverse('tours:obtener_mensajes', args=[self.sesion.id]),
+            {'limite': '2'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['total'], 2)
+        self.assertEqual([m['texto'] for m in payload['mensajes']], ['m2', 'm3'])
+
+    def test_obtener_mensajes_rechaza_limite_invalido(self):
+        response = self.anon_client.get(
+            reverse('tours:obtener_mensajes', args=[self.sesion.id]),
+            {'limite': '0'},
+        )
+        self.assertEqual(response.status_code, 400)

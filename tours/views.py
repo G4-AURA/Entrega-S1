@@ -388,19 +388,29 @@ def enviar_mensaje(request, sesion_id):
 
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.tiene_acceso_a_sesion(request, sesion):
-        return JsonResponse({"error": "Acceso denegado."}, status=403)
+    remitente_user, remitente_turista, nombre_remitente, error = services.determinar_remitente(
+        request, sesion
+    )
+    if error:
+        return JsonResponse({"error": error}, status=403)
 
-    nombre_remitente = services.obtener_nombre_remitente(request, sesion)
-
-    MensajeChat.objects.create(
-        sesion_tour=sesion,
+    mensaje = services.crear_mensaje(
+        sesion=sesion,
+        remitente_user=remitente_user,
+        remitente_turista=remitente_turista,
         nombre_remitente=nombre_remitente,
         texto=texto,
-        momento=timezone.now(),
     )
 
-    return JsonResponse({"status": "ok"}, status=201)
+    return JsonResponse(
+        {
+            "id": mensaje.id,
+            "nombre_remitente": mensaje.nombre_remitente,
+            "texto": mensaje.texto,
+            "momento": mensaje.momento.isoformat(),
+        },
+        status=201,
+    )
 
 
 @require_GET
@@ -412,12 +422,29 @@ def obtener_mensajes(request, sesion_id):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
     desde_str = request.GET.get("desde")
-    qs = MensajeChat.objects.filter(sesion_tour=sesion).order_by("momento")
+    limite_str = request.GET.get("limite", "50")
+
+    try:
+        limite = int(limite_str)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "El parámetro limite debe ser un entero."}, status=400)
+
+    if limite < 1 or limite > 200:
+        return JsonResponse({"error": "El parámetro limite debe estar entre 1 y 200."}, status=400)
+
+    qs = MensajeChat.objects.filter(sesion_tour=sesion)
 
     if desde_str:
         desde_dt = parse_datetime(desde_str)
-        if desde_dt:
-            qs = qs.filter(momento__gt=desde_dt)
+        if not desde_dt:
+            return JsonResponse(
+                {"error": "El parámetro desde debe ser una fecha ISO-8601 válida."},
+                status=400,
+            )
+        qs = qs.filter(momento__gt=desde_dt)
+
+    mensajes_qs = qs.order_by("-momento", "-id")[:limite]
+    mensajes_ordenados = list(reversed(list(mensajes_qs)))
 
     mensajes = [
         {
@@ -426,7 +453,7 @@ def obtener_mensajes(request, sesion_id):
             "texto":            m.texto,
             "momento":          m.momento.isoformat(),
         }
-        for m in qs
+        for m in mensajes_ordenados
     ]
 
-    return JsonResponse({"mensajes": mensajes})
+    return JsonResponse({"mensajes": mensajes, "total": len(mensajes)})
