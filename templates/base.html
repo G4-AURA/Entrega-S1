@@ -36,10 +36,18 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     {% if user.is_superuser %}
-+                   <li class="nav-item">
-+                       <a class="nav-link" href="{% url 'allowlist:panel' %}">Allowlist POIs</a>
-+                   </li>
-+                   {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'allowlist:panel' %}">Allowlist POIs</a>
+                    </li>
+                    {% endif %}
+                     {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'catalogo' %}">Mis Rutas</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'creacion:seleccion_tipo_ruta' %}">Crear Ruta</a>
+                    </li>
+                    {% endif %}
                 </ul>
 
                 {% if user.is_authenticated %}
