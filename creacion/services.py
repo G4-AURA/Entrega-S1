@@ -12,6 +12,11 @@ from langgraph.graph import StateGraph, END
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
+from creacion.geo_clients import MapboxGeocodingClient, OSMGeocodingClient
+from creacion.geo_validation import (
+    NoConvergenciaCoordenadasError,
+    completar_lista_paradas_validadas,
+)
 from creacion.models import Historial_ia
 from rutas.models import AuthUser, Guia, Parada, Ruta
 
@@ -63,6 +68,8 @@ MAPA_EXIGENCIA_RUTA = {
 }
 
 MAX_POIS_ALLOWLIST_EN_PROMPT = 15
+MIN_PARADAS_IA = 5
+MAX_PARADAS_IA = 8
 
 _MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
     'historia': [
@@ -260,6 +267,8 @@ def normalizar_payload_ia(datos):
 def generar_ruta_con_ia(payload):
     try:
         ruta_generada = consultar_langgraph(payload)
+    except ErrorIntegracionIA:
+        raise
     except Exception as exc:
         raise ErrorPersistenciaRuta('No se pudo generar la ruta con IA en este momento.') from exc
 
@@ -273,6 +282,7 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
     raw_paradas = ruta_generada.get('paradas')
     if not isinstance(raw_paradas, list) or not raw_paradas:
         raise ErrorValidacionRuta('La ruta generada no contiene paradas válidas para guardar.')
+    objetivo_paradas = len(raw_paradas)
 
     exigencia_normalizada = MAPA_EXIGENCIA_RUTA.get(
         str(ruta_generada.get('nivel_exigencia') or payload.get('exigencia') or '').lower(),
@@ -304,10 +314,14 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
                 elif isinstance(coordenadas, (list, tuple)) and len(coordenadas) >= 2:
                     lat, lon = coordenadas[0], coordenadas[1]
                 else:
-                    continue
+                    raise ErrorValidacionRuta(
+                        'La ruta generada contiene paradas sin coordenadas válidas.'
+                    )
 
                 if lat is None or lon is None:
-                    continue
+                    raise ErrorValidacionRuta(
+                        'La ruta generada contiene paradas sin coordenadas válidas.'
+                    )
 
                 Parada.objects.create(
                     ruta=ruta,
@@ -316,16 +330,23 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
                     coordenadas=Point(float(lon), float(lat), srid=4326),
                 )
 
-                paradas_normalizadas.append(
-                    {
-                        'orden': parada.get('orden') or idx,
-                        'nombre': parada.get('nombre') or f'Parada {idx}',
-                        'coordenadas': [float(lat), float(lon)],
-                    }
-                )
+                parada_payload = {
+                    'orden': parada.get('orden') or idx,
+                    'nombre': parada.get('nombre') or f'Parada {idx}',
+                    'coordenadas': [float(lat), float(lon)],
+                }
+                for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):
+                    if parada.get(meta_key) is not None:
+                        parada_payload[meta_key] = parada.get(meta_key)
+
+                paradas_normalizadas.append(parada_payload)
 
             if not paradas_normalizadas:
                 raise ErrorValidacionRuta('No se han podido guardar coordenadas válidas para las paradas.')
+            if len(paradas_normalizadas) != objetivo_paradas:
+                raise ErrorValidacionRuta(
+                    'No se pudo preservar el tamaño objetivo de la ruta generada al guardar las paradas.'
+                )
     except ErrorValidacionRuta:
         raise
     except (DatabaseError, IntegrityError, TypeError, ValueError) as exc:
@@ -477,6 +498,123 @@ def _clave_coordenadas_para_dedupe(coordenadas):
     return (round(float(coordenadas[0]), 5), round(float(coordenadas[1]), 5))
 
 
+def _formatear_exclusiones_para_prompt(
+    nombres_excluidos: set[str],
+    coords_excluidas: set[tuple[float, float]],
+) -> str:
+    nombres = sorted([n for n in nombres_excluidos if n])[:40]
+    coords = [[lat, lon] for lat, lon in sorted(coords_excluidas)[:40]]
+    return json.dumps(
+        {
+            'nombres': nombres,
+            'coordenadas': coords,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _construir_prompt_candidatos_paradas(
+    *,
+    cantidad: int,
+    ciudad_contexto: str,
+    ruta: Ruta,
+    preferencias: dict,
+    paradas_existentes: list[dict],
+    contexto_geo: dict,
+    nombres_excluidos: set[str],
+    coords_excluidas: set[tuple[float, float]],
+) -> str:
+    exclusiones = _formatear_exclusiones_para_prompt(nombres_excluidos, coords_excluidas)
+    return f"""
+        Eres un asistente experto en diseño de rutas turísticas.
+
+        Debes proponer EXACTAMENTE {cantidad} nuevas paradas para complementar una ruta existente.
+
+        ## Contexto de la ruta
+        - Ciudad: {ciudad_contexto}
+        - Temática(s): {', '.join(ruta.mood)}
+        - Preferencias: {json.dumps(preferencias, ensure_ascii=False)}
+        - Paradas existentes: {json.dumps(paradas_existentes, ensure_ascii=False)}
+        - Centro geográfico aproximado de la ruta: {json.dumps(contexto_geo['centro'], ensure_ascii=False)}
+        - Distancia máxima permitida desde el centro: {round(contexto_geo['radio_km'], 2)} km
+        - Exclusiones obligatorias (NO repetir): {exclusiones}
+
+        ## Criterios
+        - Evita sugerir puntos duplicados respecto a las paradas existentes.
+        - Evita también duplicados entre las propias sugerencias.
+        - NO sugieras ningún nombre o coordenada de la lista de exclusiones.
+        - Mantén coherencia temática con la ruta.
+        - Propón coordenadas plausibles dentro de la ciudad indicada.
+        - REGLA ESTRICTA: NO propongas paradas fuera del área geográfica de la ruta.
+
+        Responde únicamente JSON válido (sin texto adicional) como lista de objetos con esta estructura:
+        [
+          {{
+            "nombre": "Nombre de la parada",
+            "coordenadas": [lat, lon],
+            "categoria": "Categoría turística",
+            "nivel_confianza": 0.0,
+            "justificacion": "Motivo breve de por qué encaja en la ruta"
+          }}
+        ]
+    """
+
+
+def _solicitar_candidatos_paradas_ia(
+    *,
+    cantidad: int,
+    ciudad_contexto: str,
+    ruta: Ruta,
+    preferencias: dict,
+    paradas_existentes: list[dict],
+    contexto_geo: dict,
+    nombres_excluidos: set[str],
+    coords_excluidas: set[tuple[float, float]],
+) -> list[dict]:
+    prompt = _construir_prompt_candidatos_paradas(
+        cantidad=cantidad,
+        ciudad_contexto=ciudad_contexto,
+        ruta=ruta,
+        preferencias=preferencias,
+        paradas_existentes=paradas_existentes,
+        contexto_geo=contexto_geo,
+        nombres_excluidos=nombres_excluidos,
+        coords_excluidas=coords_excluidas,
+    )
+    try:
+        respuesta = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+    except ErrorIntegracionIA:
+        respuesta = None
+
+    if isinstance(respuesta, list):
+        return respuesta
+
+    fallback_pois = _construir_pois_fallback_allowlist(
+        ciudad=ciudad_contexto,
+        moods=ruta.mood,
+        cantidad_objetivo=cantidad,
+        nombres_excluidos=set(nombres_excluidos),
+        coords_excluidas=set(coords_excluidas),
+    )
+    if fallback_pois:
+        logger.warning(
+            'Se usan %s sugerencias fallback de allowlist por indisponibilidad de Gemini.',
+            len(fallback_pois),
+        )
+        return [
+            {
+                'nombre': poi['nombre'],
+                'coordenadas': poi['coords'],
+                'categoria': poi.get('categoria', 'general'),
+                'nivel_confianza': 0.95,
+                'justificacion': poi.get('desc', 'Sugerencia de fallback allowlist.'),
+            }
+            for poi in fallback_pois
+        ]
+
+    raise ErrorIntegracionIA('No se pudieron generar nuevas paradas con IA ni con fallback de allowlist.')
+
+
 def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     if cantidad < 1 or cantidad > 10:
         raise ErrorValidacionRuta('La cantidad de sugerencias debe estar entre 1 y 10.')
@@ -502,80 +640,52 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
         'descripcion': ruta.descripcion or '',
     }
 
-    prompt = f"""
-        Eres un asistente experto en diseño de rutas turísticas.
+    mapbox_client = MapboxGeocodingClient()
+    osm_client = OSMGeocodingClient()
 
-        Debes proponer {cantidad} nuevas paradas para complementar una ruta existente.
+    respuesta_ia = _solicitar_candidatos_paradas_ia(
+        cantidad=cantidad,
+        ciudad_contexto=ciudad_contexto,
+        ruta=ruta,
+        preferencias=preferencias,
+        paradas_existentes=paradas_existentes,
+        contexto_geo=contexto_geo,
+        nombres_excluidos=set(),
+        coords_excluidas=set(),
+    )
 
-        ## Contexto de la ruta
-        - Ciudad: {ciudad_contexto}
-        - Temática(s): {', '.join(ruta.mood)}
-        - Preferencias: {json.dumps(preferencias, ensure_ascii=False)}
-        - Paradas existentes: {json.dumps(paradas_existentes, ensure_ascii=False)}
-        - Centro geográfico aproximado de la ruta: {json.dumps(contexto_geo['centro'], ensure_ascii=False)}
-        - Distancia máxima permitida desde el centro: {round(contexto_geo['radio_km'], 2)} km
-
-        ## Criterios
-        - Evita sugerir puntos duplicados respecto a las paradas existentes.
-        - Evita también duplicados entre las propias sugerencias.
-        - Mantén coherencia temática con la ruta.
-        - Propón coordenadas plausibles dentro de la ciudad indicada.
-        - REGLA ESTRICTA: NO propongas paradas fuera del área geográfica de la ruta.
-
-        Responde únicamente JSON válido (sin texto adicional) como lista de objetos con esta estructura:
-        [
-          {{
-            "nombre": "Nombre de la parada",
-            "coordenadas": [lat, lon],
-            "categoria": "Categoría turística",
-            "nivel_confianza": 0.0,
-            "justificacion": "Motivo breve de por qué encaja en la ruta"
-          }}
-        ]
-    """
+    def _proveedor_candidatos_adicionales(
+        cantidad_solicitada: int,
+        nombres_excluidos: set[str],
+        coords_excluidas: set[tuple[float, float]],
+    ) -> list[dict]:
+        return _solicitar_candidatos_paradas_ia(
+            cantidad=cantidad_solicitada,
+            ciudad_contexto=ciudad_contexto,
+            ruta=ruta,
+            preferencias=preferencias,
+            paradas_existentes=paradas_existentes,
+            contexto_geo=contexto_geo,
+            nombres_excluidos=nombres_excluidos,
+            coords_excluidas=coords_excluidas,
+        )
 
     try:
-        respuesta_ia = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
-    except Exception as exc:
-        raise ErrorIntegracionIA('No se pudieron generar nuevas paradas con IA en este momento.') from exc
-
-    if not isinstance(respuesta_ia, list):
-        raise ErrorIntegracionIA('La IA devolvió un formato inválido para las sugerencias de paradas.')
-
-    nombres_existentes = {
-        _normalizar_nombre_para_dedupe(p.get('nombre'))
-        for p in paradas_existentes
-        if _normalizar_nombre_para_dedupe(p.get('nombre'))
-    }
-    coords_existentes = {
-        _clave_coordenadas_para_dedupe(p.get('coordenadas'))
-        for p in paradas_existentes
-        if isinstance(p.get('coordenadas'), list) and len(p.get('coordenadas')) >= 2
-    }
-
-    nombres_vistos = set(nombres_existentes)
-    coords_vistas = set(coords_existentes)
-    candidatos = []
-    for idx, candidato in enumerate(respuesta_ia, start=1):
-        normalizado = _normalizar_candidato_parada(candidato, idx)
-        if not normalizado:
-            continue
-        if not _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
-            continue
-
-        nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
-        coords_key = _clave_coordenadas_para_dedupe(normalizado.get('coordenadas'))
-        if nombre_key in nombres_vistos or coords_key in coords_vistas:
-            continue
-
-        nombres_vistos.add(nombre_key)
-        coords_vistas.add(coords_key)
-        candidatos.append(normalizado)
-
-    if not candidatos:
-        raise ErrorIntegracionIA(
-            'La IA no devolvió candidatos válidos y no duplicados para esta ruta.'
+        candidatos = completar_lista_paradas_validadas(
+            cantidad_objetivo=cantidad,
+            candidatos_iniciales=respuesta_ia,
+            normalizador_candidato=_normalizar_candidato_parada,
+            proveedor_candidatos=_proveedor_candidatos_adicionales,
+            paradas_existentes=paradas_existentes,
+            ciudad=ciudad_contexto,
+            contexto_geo=contexto_geo,
+            mapbox_client=mapbox_client,
+            osm_client=osm_client,
         )
+    except NoConvergenciaCoordenadasError as exc:
+        raise ErrorIntegracionIA(
+            'No fue posible completar la cantidad solicitada de paradas válidas y no duplicadas para esta ruta.'
+        ) from exc
 
     return {
         'ruta_id': ruta.id,
@@ -716,7 +826,16 @@ def serializar_ruta_creada(ruta, paradas):
 
 
 ### --- FUNCIONES AUXILIARES --- ###
+def _leer_int_env(nombre: str, default: int) -> int:
+    try:
+        return int(os.getenv(nombre, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 def llamar_gemini_bypass(prompt, api_key):
+    if not api_key:
+        raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
@@ -728,36 +847,71 @@ def llamar_gemini_bypass(prompt, api_key):
             "response_mime_type": "application/json"
         }
     }
+    timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
+    max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
+    http_reintentable = {408, 409, 425, 429, 500, 502, 503, 504}
 
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=20)
-        response.raise_for_status()
+    ultimo_error: Exception | None = None
+    for intento in range(max_reintentos + 1):
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
+            if response.status_code in http_reintentable and intento < max_reintentos:
+                logger.warning(
+                    'Gemini devolvió status=%s (reintento %s/%s).',
+                    response.status_code,
+                    intento + 1,
+                    max_reintentos,
+                )
+                continue
 
-        resultado = response.json()
-        texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
-        return json.loads(texto_json)
-    except requests.HTTPError as e:
-        status_code = e.response.status_code if e.response is not None else "desconocido"
-        print(f"ERROR HTTP al llamar a Gemini (status={status_code}): {e}")
-    except requests.RequestException as e:
-        print(f"ERROR de conexión al llamar a Gemini: {e}")
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
-        print(f"ERROR procesando la respuesta de Gemini: {e}")
-    except Exception as e:
-        print(f"ERROR inesperado al llamar a la API: {e}")
+            response.raise_for_status()
+            resultado = response.json()
+            texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
+            return json.loads(texto_json)
+        except requests.Timeout as exc:
+            ultimo_error = exc
+            if intento < max_reintentos:
+                logger.warning(
+                    'Timeout al llamar a Gemini (reintento %s/%s, timeout=%ss).',
+                    intento + 1,
+                    max_reintentos,
+                    timeout_s,
+                )
+                continue
+            raise ErrorIntegracionIA(
+                f'La conexión con Gemini agotó el tiempo de espera tras {max_reintentos + 1} intentos.'
+            ) from exc
+        except requests.HTTPError as exc:
+            ultimo_error = exc
+            status_code = exc.response.status_code if exc.response is not None else 'desconocido'
+            if status_code in http_reintentable and intento < max_reintentos:
+                logger.warning(
+                    'Error HTTP de Gemini (status=%s) reintentando %s/%s.',
+                    status_code,
+                    intento + 1,
+                    max_reintentos,
+                )
+                continue
+            raise ErrorIntegracionIA(
+                f'Error HTTP al llamar a Gemini (status={status_code}).'
+            ) from exc
+        except requests.RequestException as exc:
+            ultimo_error = exc
+            if intento < max_reintentos:
+                logger.warning(
+                    'Error de red al llamar a Gemini (reintento %s/%s): %s',
+                    intento + 1,
+                    max_reintentos,
+                    exc,
+                )
+                continue
+            raise ErrorIntegracionIA('Error de red al conectar con Gemini.') from exc
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ErrorIntegracionIA('Respuesta no válida de Gemini.') from exc
+        except Exception as exc:
+            raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
-    # Si se llega aquí, devolvemos datos de fallback.
-    # Nota: un 429 (Too Many Requests) entra en requests.HTTPError y dispara este retorno.
-        
-    #Datos de prueba por si la conexión a la IA falla.
-        
-    return [
-            {"nombre": f"Centro Histórico", "coords": [40.4167, -3.7037], "desc": "Punto de interés principal recomendado."},
-            {"nombre": "Parque Principal", "coords": [40.4233, -3.6827], "desc": "Zona verde ideal para el descanso del grupo."},
-            {"nombre": "Museo de Arte", "coords": [40.4137, -3.6921], "desc": "Parada cultural imprescindible."},
-            {"nombre": "Mirador de la Ciudad", "coords": [40.4070, -3.7115], "desc": "Las mejores vistas para fotografías."},
-            {"nombre": "Zona Gastronómica", "coords": [40.4150, -3.7070], "desc": "Lugar perfecto para degustar platos locales."}
-        ]
+    raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
 
 def calcular_distancia(coord1, coord2):
     """Calcula distancia euclidiana entre dos puntos [lat, lon]"""
@@ -825,11 +979,252 @@ def _construir_bloque_deseos(deseos: list) -> str:
     return f'\n## Preferencias específicas del guía\n{items}'
 
 
+def _calcular_objetivo_paradas_ia(datos: dict) -> int:
+    try:
+        duracion_horas = float(datos.get('duracion') or 2.0)
+    except (TypeError, ValueError):
+        duracion_horas = 2.0
+
+    estimado = int(round(duracion_horas * 2))
+    return max(MIN_PARADAS_IA, min(MAX_PARADAS_IA, estimado))
+
+
+def _construir_pois_fallback_allowlist(
+    *,
+    ciudad: str,
+    moods: list[str],
+    cantidad_objetivo: int,
+    nombres_excluidos: set[str] | None = None,
+    coords_excluidas: set[tuple[float, float]] | None = None,
+) -> list[dict]:
+    nombres_excluidos = nombres_excluidos or set()
+    coords_excluidas = coords_excluidas or set()
+    pois_allowlist = _obtener_pois_allowlist(ciudad=ciudad, moods=moods)
+
+    candidatos = []
+    for poi in pois_allowlist:
+        coords = poi.get('coords')
+        if not isinstance(coords, list) or len(coords) < 2:
+            continue
+
+        nombre = str(poi.get('nombre') or '').strip()
+        if not nombre:
+            continue
+
+        nombre_key = _normalizar_nombre_para_dedupe(nombre)
+        coord_key = _clave_coordenadas_para_dedupe(coords)
+        if nombre_key in nombres_excluidos or coord_key in coords_excluidas:
+            continue
+
+        candidatos.append(
+            {
+                'nombre': nombre,
+                'coords': [float(coords[0]), float(coords[1])],
+                'desc': f'POI curado en allowlist ({poi.get("categoria", "general")}).',
+                'categoria': str(poi.get('categoria') or 'general'),
+            }
+        )
+
+        nombres_excluidos.add(nombre_key)
+        coords_excluidas.add(coord_key)
+        if len(candidatos) >= cantidad_objetivo:
+            break
+
+    return candidatos
+
+
+def _normalizar_poi_generado_para_validacion(candidato, idx):
+    if not isinstance(candidato, dict):
+        return None
+
+    nombre = str(candidato.get('nombre') or '').strip()
+    if not nombre:
+        return None
+
+    coordenadas = _normalizar_coordenadas(
+        candidato.get('coordenadas') or candidato.get('coords'),
+        lat=candidato.get('lat'),
+        lon=candidato.get('lon'),
+    )
+    if not coordenadas:
+        return None
+
+    descripcion = str(candidato.get('desc') or candidato.get('descripcion') or '').strip()
+
+    return {
+        'id_sugerencia': idx,
+        'nombre': nombre,
+        'coordenadas': coordenadas,
+        'categoria': str(candidato.get('categoria') or 'general').strip()[:60],
+        'nivel_confianza': 1.0,
+        'justificacion': descripcion[:500],
+        'descripcion': descripcion[:500],
+    }
+
+
+def _normalizar_lista_pois(pois):
+    normalizados = []
+    for idx, candidato in enumerate(pois or [], start=1):
+        item = _normalizar_poi_generado_para_validacion(candidato, idx)
+        if item:
+            normalizados.append(item)
+    return normalizados
+
+
+def _construir_prompt_regeneracion_pois(
+    *,
+    datos: dict,
+    cantidad: int,
+    contexto_geo: dict,
+    nombres_excluidos: set[str],
+    coords_excluidas: set[tuple[float, float]],
+) -> str:
+    exclusiones = _formatear_exclusiones_para_prompt(nombres_excluidos, coords_excluidas)
+    return f"""
+        Eres un guía turístico experto.
+
+        Debes generar EXACTAMENTE {cantidad} POIs nuevos para una ruta en {datos.get('ciudad')}.
+
+        ## Contexto estricto
+        - Duración: {datos.get('duracion')} horas
+        - Número de personas: {datos.get('personas')}
+        - Nivel de exigencia: {datos.get('exigencia')}
+        - Temática(s): {', '.join(datos.get('mood') or [])}
+        - Centro geográfico de referencia: {json.dumps(contexto_geo.get('centro') or [0.0, 0.0], ensure_ascii=False)}
+        - Radio máximo permitido: {round(float(contexto_geo.get('radio_km') or 8.0), 2)} km
+        - Exclusiones obligatorias (nombres/coordenadas): {exclusiones}
+
+        ## Reglas obligatorias
+        - No devuelvas duplicados ni dentro de la lista ni respecto a exclusiones.
+        - No sugieras puntos fuera del área geográfica indicada.
+        - Coordenadas reales y plausibles del lugar exacto.
+
+        Responde ÚNICAMENTE JSON válido:
+        [
+            {{"nombre": "Nombre del sitio", "coords": [lat, lon], "desc": "Breve descripción del lugar"}}
+        ]
+    """
+
+
+def _solicitar_pois_adicionales_para_ruta_ia(
+    *,
+    datos: dict,
+    cantidad: int,
+    contexto_geo: dict,
+    nombres_excluidos: set[str],
+    coords_excluidas: set[tuple[float, float]],
+) -> list[dict]:
+    prompt = _construir_prompt_regeneracion_pois(
+        datos=datos,
+        cantidad=cantidad,
+        contexto_geo=contexto_geo,
+        nombres_excluidos=nombres_excluidos,
+        coords_excluidas=coords_excluidas,
+    )
+    try:
+        respuesta = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+    except ErrorIntegracionIA:
+        respuesta = None
+
+    if isinstance(respuesta, list):
+        return respuesta
+
+    fallback = _construir_pois_fallback_allowlist(
+        ciudad=str(datos.get('ciudad') or ''),
+        moods=datos.get('mood') or [],
+        cantidad_objetivo=cantidad,
+        nombres_excluidos=set(nombres_excluidos),
+        coords_excluidas=set(coords_excluidas),
+    )
+    if fallback:
+        logger.warning(
+            'Se usa fallback de allowlist para regenerar %s paradas por indisponibilidad de Gemini.',
+            len(fallback),
+        )
+        return fallback
+
+    raise ErrorIntegracionIA('No se pudieron regenerar paradas válidas con IA ni con allowlist.')
+
+
+def _normalizar_poi_para_optimizacion(poi_validado: dict) -> dict:
+    return {
+        'nombre': poi_validado['nombre'],
+        'coords': poi_validado['coordenadas'],
+        'desc': poi_validado.get('descripcion') or poi_validado.get('justificacion') or '',
+        'fuente_validacion': poi_validado.get('fuente_validacion'),
+        'tipo_geometria': poi_validado.get('tipo_geometria'),
+        'error_m': poi_validado.get('error_m'),
+        'corregida': poi_validado.get('corregida'),
+    }
+
+
+def _serializar_parada_ruta_final(poi: dict, orden: int) -> dict:
+    payload = {
+        'nombre': poi.get('nombre'),
+        'coordenadas': poi.get('coords'),
+        'orden': orden,
+        'descripcion': poi.get('desc', ''),
+    }
+    for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):
+        if meta_key in poi:
+            payload[meta_key] = poi.get(meta_key)
+    return payload
+
+
+def _validar_y_completar_pois_ruta_ia(
+    datos: dict,
+    pois_iniciales: list[dict],
+    *,
+    cantidad_objetivo: int | None = None,
+) -> list[dict]:
+    if not isinstance(pois_iniciales, list) or not pois_iniciales:
+        raise ErrorIntegracionIA('La IA no devolvió paradas iniciales válidas para construir la ruta.')
+
+    pois_normalizados = _normalizar_lista_pois(pois_iniciales)
+    objetivo = int(cantidad_objetivo) if cantidad_objetivo else len(pois_normalizados)
+    if objetivo <= 0:
+        raise ErrorIntegracionIA('La cantidad objetivo de paradas debe ser mayor que 0.')
+
+    contexto_geo = _calcular_contexto_geografico(pois_normalizados)
+    ciudad = str(datos.get('ciudad') or '').strip() or 'Sin ciudad'
+    mapbox_client = MapboxGeocodingClient()
+    osm_client = OSMGeocodingClient()
+
+    def _proveedor(cantidad_solicitada: int, nombres_excluidos: set[str], coords_excluidas: set[tuple[float, float]]):
+        return _solicitar_pois_adicionales_para_ruta_ia(
+            datos=datos,
+            cantidad=cantidad_solicitada,
+            contexto_geo=contexto_geo,
+            nombres_excluidos=nombres_excluidos,
+            coords_excluidas=coords_excluidas,
+        )
+
+    try:
+        validadas = completar_lista_paradas_validadas(
+            cantidad_objetivo=objetivo,
+            candidatos_iniciales=pois_iniciales,
+            normalizador_candidato=_normalizar_poi_generado_para_validacion,
+            proveedor_candidatos=_proveedor,
+            paradas_existentes=[],
+            ciudad=ciudad,
+            contexto_geo=contexto_geo,
+            mapbox_client=mapbox_client,
+            osm_client=osm_client,
+        )
+    except NoConvergenciaCoordenadasError as exc:
+        raise ErrorIntegracionIA(
+            'No fue posible completar el tamaño objetivo de paradas con coordenadas precisas para esta ruta.'
+        ) from exc
+
+    return [_normalizar_poi_para_optimizacion(parada) for parada in validadas]
+
+
 ### --- NODOS --- ###
 def nodo_seleccion_sitios(state: State):
     print("--- NODO 1: GENERACIÓN DE RUTA ---")
     datos = state['usuario_input']
     api_key = os.getenv("GEMINI_API_KEY")
+    objetivo_paradas = _calcular_objetivo_paradas_ia(datos)
 
     bloque_metadata = _construir_bloque_metadata(datos.get('metadata') or {})
     bloque_deseos = _construir_bloque_deseos(datos.get('deseos') or [])
@@ -854,7 +1249,7 @@ def nodo_seleccion_sitios(state: State):
         {bloque_allowlist}
 
         ## Instrucción
-        Genera una lista de 5 a 8 POIs adecuados para estos parámetros. Ten en cuenta el contexto del
+        Genera una lista de EXACTAMENTE {objetivo_paradas} POIs adecuados para estos parámetros. Ten en cuenta el contexto del
         solicitante y sus preferencias específicas si las hay.
         Si se han proporcionado POIs recomendados (allowlist), dales prioridad frente a otros lugares
         siempre que encajen con la temática. Puedes complementar con otros POIs si son necesarios para
@@ -868,8 +1263,30 @@ def nodo_seleccion_sitios(state: State):
     
     print(prompt)
 
-    pois = llamar_gemini_bypass(prompt, api_key)
-    return {"pois_seleccionados": pois}
+    try:
+        pois_iniciales = llamar_gemini_bypass(prompt, api_key)
+    except ErrorIntegracionIA as exc:
+        pois_iniciales = _construir_pois_fallback_allowlist(
+            ciudad=str(datos.get('ciudad') or ''),
+            moods=datos.get('mood') or [],
+            cantidad_objetivo=objetivo_paradas,
+        )
+        if len(pois_iniciales) < objetivo_paradas:
+            raise ErrorIntegracionIA(
+                'Gemini no respondió y no hay suficientes POIs curados en la allowlist para completar la ruta.'
+            ) from exc
+        logger.warning(
+            'Se usa fallback de allowlist (%s POIs) por error de Gemini: %s',
+            len(pois_iniciales),
+            exc,
+        )
+
+    pois_validados = _validar_y_completar_pois_ruta_ia(
+        datos,
+        pois_iniciales,
+        cantidad_objetivo=objetivo_paradas,
+    )
+    return {"pois_seleccionados": pois_validados}
     
 
 def nodo_optimizador_ortools(state: State):
@@ -877,13 +1294,17 @@ def nodo_optimizador_ortools(state: State):
     pois = state['pois_seleccionados']
     
     if not pois or len(pois) < 2:
+        paradas_directas = [
+            _serializar_parada_ruta_final(poi, orden=idx)
+            for idx, poi in enumerate(pois or [], start=1)
+        ]
         json_final_simple = {
             "titulo": f"Ruta {state['usuario_input'].get('mood')}",
             "descripcion": "Ruta generada sin optimización necesaria.",
             "duracion_estimada": state['usuario_input'].get('duracion'),
             "nivel_exigencia": state['usuario_input'].get('exigencia'),
             "mood": state['usuario_input'].get('mood'),
-            "paradas": pois
+            "paradas": paradas_directas
         }
         return {"ruta_final": json_final_simple}
     
@@ -923,19 +1344,16 @@ def nodo_optimizador_ortools(state: State):
         while not routing.IsEnd(index):
             node_index = manager.IndexToNode(index)
             poi_actual = pois[node_index]
-            
-            pois_ordenados.append({
-                "nombre": poi_actual['nombre'],
-                "coordenadas": poi_actual['coords'], 
-                "orden": orden_contador,
-                "descripcion": poi_actual.get('desc', '')
-            })
+            pois_ordenados.append(_serializar_parada_ruta_final(poi_actual, orden=orden_contador))
             
             index = solution.Value(routing.NextVar(index))
             orden_contador += 1
     else:
         print("No se encontró solución óptima, devolviendo orden original.")
-        pois_ordenados = pois
+        pois_ordenados = [
+            _serializar_parada_ruta_final(poi, orden=idx)
+            for idx, poi in enumerate(pois, start=1)
+        ]
 
     json_final = {
         "titulo": f"Ruta {state['usuario_input'].get('mood')} Inteligente",

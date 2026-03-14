@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from creacion import services
 from rutas.models import AuthUser, Guia, Ruta
 from tours.models import TURISTA
 
@@ -84,6 +85,17 @@ class GenerarRutaIAViewTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('Error en los datos', response.json()['mensaje'])
+
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views.consultar_langgraph', side_effect=services.ErrorIntegracionIA('fallo mapbox/osm'))
+    def test_error_integracion_ia_retorna_502(self, _mock_consultar, _mock_get_guia):
+        user = User.objects.create_user(username='guia_ia_fail', password='1234')
+        self.client.force_login(user)
+
+        response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()['status'], 'ERROR')
 
 
 class GuardarRutaManualViewTests(TestCase):
@@ -185,3 +197,11 @@ class GenerarParadasIAViewTests(TestCase):
         self.assertEqual(response.json()['status'], 'ERROR')
         self.assertIn('cantidad', response.json()['mensaje'])
         mock_generar.assert_not_called()
+
+    @patch('creacion.views.services.generar_candidatos_paradas_ia', side_effect=services.ErrorIntegracionIA('sin convergencia'))
+    def test_retorna_502_si_servicio_no_completa_cantidad_objetivo(self, _mock_generar):
+        self.client.force_login(self.user)
+        response = self.client.post(self.url, data=json.dumps({'cantidad': 3}), content_type='application/json')
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()['status'], 'ERROR')
