@@ -1,5 +1,7 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
+from unittest.mock import Mock, patch
+import requests
 
 from creacion import services
 from creacion.views import (
@@ -9,6 +11,34 @@ from creacion.views import (
 )
 from rutas.models import AuthUser, Guia, Parada, Ruta
 from tours.models import TURISTA
+
+
+class GeminiBypassResilienceTests(TestCase):
+    def test_reintenta_timeout_y_recupera_respuesta(self):
+        ok_response = Mock()
+        ok_response.status_code = 200
+        ok_response.raise_for_status.return_value = None
+        ok_response.json.return_value = {
+            'candidates': [{'content': {'parts': [{'text': '[{"nombre":"A"}]'}]}}]
+        }
+
+        with patch.dict('os.environ', {'GEMINI_MAX_RETRIES': '1', 'GEMINI_TIMEOUT_SECONDS': '10'}, clear=False):
+            with patch('creacion.services.requests.post', side_effect=[requests.Timeout('boom'), ok_response]) as mock_post:
+                resultado = services.llamar_gemini_bypass('prompt', 'api-key')
+
+        self.assertEqual(resultado, [{'nombre': 'A'}])
+        self.assertEqual(mock_post.call_count, 2)
+
+    def test_lanza_error_integracion_si_agota_reintentos(self):
+        with patch.dict('os.environ', {'GEMINI_MAX_RETRIES': '1', 'GEMINI_TIMEOUT_SECONDS': '10'}, clear=False):
+            with patch('creacion.services.requests.post', side_effect=requests.Timeout('boom')) as mock_post:
+                with self.assertRaisesMessage(
+                    services.ErrorIntegracionIA,
+                    'La conexión con Gemini agotó el tiempo de espera tras 2 intentos.',
+                ):
+                    services.llamar_gemini_bypass('prompt', 'api-key')
+
+        self.assertEqual(mock_post.call_count, 2)
 
 
 class MoodAndExigenciaNormalizationTests(TestCase):
@@ -101,7 +131,7 @@ class RutaStorageServiceTests(TestCase):
         payload = {'ciudad': 'Sevilla'}
         ruta_generada = {'paradas': [{'nombre': 'Sin coordenadas'}]}
 
-        with self.assertRaisesMessage(ValueError, 'No se han podido guardar coordenadas válidas para las paradas.'):
+        with self.assertRaisesMessage(ValueError, 'La ruta generada contiene paradas sin coordenadas válidas.'):
             _guardar_ruta_ia_en_bd(guia=self.guia, payload=payload, ruta_generada=ruta_generada)
 
         self.assertEqual(Ruta.objects.count(), 0)
@@ -132,83 +162,110 @@ class GenerarCandidatosParadasIATests(TestCase):
         )
         Parada.objects.create(ruta=self.ruta, orden=1, nombre='Catedral', coordenadas='POINT(-5.99 37.39)')
 
-    def test_genera_candidatos_normalizados(self):
+    @staticmethod
+    def _mock_osm_buscar_lugares(*, nombre, ciudad, centro, limit=6):
+        nombre = str(nombre).strip().lower()
+        mapping = {
+            'archivo de indias': [37.3851, -5.9930],
+            'real alcázar': [37.3838, -5.9902],
+            'giralda': [37.3860, -5.9924],
+            'puerta del sol': [40.4168, -3.7038],
+            'catedral': [37.3861, -5.9925],
+        }
+        coords = mapping.get(nombre)
+        if not coords:
+            return []
+        return [
+            {
+                'nombre': nombre.title(),
+                'coordenadas': coords,
+                'tipo_geometria': 'point',
+                'linea': None,
+                'poligono': None,
+                'fuente_validacion': 'osm_nominatim',
+                'score': 3.0,
+            }
+        ]
+
+    def test_genera_candidatos_exactos_y_regenera_hasta_completar_cantidad(self):
+        respuesta_primera = [
+            {
+                'nombre': 'Puerta del Sol',  # fuera de Sevilla
+                'coordenadas': [40.4168, -3.7038],
+                'categoria': 'historia',
+                'nivel_confianza': 0.82,
+                'justificacion': 'Muy conocida.',
+            },
+            {
+                'nombre': 'Archivo de Indias',
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'historia',
+                'nivel_confianza': 0.91,
+                'justificacion': 'Complementa el recorrido histórico.',
+            },
+        ]
+        respuesta_regenerada = [
+            {
+                'nombre': 'Real Alcázar',
+                'coordenadas': [37.3838, -5.9902],
+                'categoria': 'historia',
+                'nivel_confianza': 0.95,
+                'justificacion': 'Muy cerca del eje histórico actual.',
+            }
+        ]
+
         with self.settings(GEMINI_API_KEY='test-key'):
-            with self.subTest('candidatos ok'):
-                mocked = [
-                    {
-                        'nombre': 'Archivo de Indias',
-                        'coordenadas': [37.385, -5.993],
-                        'categoria': 'historia',
-                        'nivel_confianza': 0.91,
-                        'justificacion': 'Complementa el recorrido histórico.',
-                    }
-                ]
-                from unittest.mock import patch
-                with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
-                    resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
+            with patch('creacion.services.llamar_gemini_bypass', side_effect=[respuesta_primera, respuesta_regenerada]) as mock_ia, \
+                patch.object(services.MapboxGeocodingClient, 'buscar_lugares', return_value=[]), \
+                patch.object(services.OSMGeocodingClient, 'buscar_lugares', side_effect=self._mock_osm_buscar_lugares), \
+                patch.object(services.OSMGeocodingClient, 'buscar_geometria_lineal_cercana', return_value=[]):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=2)
 
         self.assertEqual(resultado['ruta_id'], self.ruta.id)
-        self.assertEqual(len(resultado['candidatos']), 1)
-        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')
-        self.assertEqual(resultado['candidatos'][0]['nivel_confianza'], 0.91)
+        self.assertEqual(len(resultado['candidatos']), 2)
+        self.assertEqual(
+            [c['nombre'] for c in resultado['candidatos']],
+            ['Archivo de Indias', 'Real Alcázar'],
+        )
+        self.assertEqual(mock_ia.call_count, 2)
+        self.assertIn('fuente_validacion', resultado['candidatos'][0])
+        self.assertIn('tipo_geometria', resultado['candidatos'][0])
+        self.assertIn('error_m', resultado['candidatos'][0])
+        self.assertIn('corregida', resultado['candidatos'][0])
 
     def test_falla_con_cantidad_fuera_de_rango(self):
         with self.assertRaisesMessage(services.ErrorValidacionRuta, 'La cantidad de sugerencias debe estar entre 1 y 10.'):
             services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=0)
 
-    def test_filtra_candidatos_fuera_del_contexto_geografico(self):
-        mocked = [
+    def test_falla_si_no_puede_completar_cantidad_objetivo(self):
+        respuesta_ia = [
             {
                 'nombre': 'Puerta del Sol',
-                'coordenadas': [40.4168, -3.7038],  # Madrid
-                'categoria': 'historia',
-                'nivel_confianza': 0.9,
-                'justificacion': 'Centro turístico muy visitado.',
-            },
-            {
-                'nombre': 'Real Alcázar',
-                'coordenadas': [37.3838, -5.9902],  # Sevilla
-                'categoria': 'historia',
-                'nivel_confianza': 0.95,
-                'justificacion': 'Muy cerca del eje histórico actual.',
-            },
-        ]
-        with self.settings(GEMINI_API_KEY='test-key'):
-            from unittest.mock import patch
-            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
-                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=2)
-
-        self.assertEqual(len(resultado['candidatos']), 1)
-        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Real Alcázar')
-
-    def test_falla_si_todos_los_candidatos_estan_fuera_del_contexto_geografico(self):
-        mocked = [
-            {
-                'nombre': 'Puerta del Sol',
-                'coordenadas': [40.4168, -3.7038],  # Madrid
+                'coordenadas': [40.4168, -3.7038],
                 'categoria': 'historia',
                 'nivel_confianza': 0.9,
                 'justificacion': 'Centro turístico muy visitado.',
             }
         ]
         with self.settings(GEMINI_API_KEY='test-key'):
-            from unittest.mock import patch
-            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
+            with patch('creacion.services.llamar_gemini_bypass', return_value=respuesta_ia), \
+                patch.object(services.MapboxGeocodingClient, 'buscar_lugares', return_value=[]), \
+                patch.object(services.OSMGeocodingClient, 'buscar_lugares', side_effect=self._mock_osm_buscar_lugares), \
+                patch.object(services.OSMGeocodingClient, 'buscar_geometria_lineal_cercana', return_value=[]):
                 with self.assertRaisesMessage(
                     services.ErrorIntegracionIA,
-                    'La IA no devolvió candidatos válidos y no duplicados para esta ruta.',
+                    'No fue posible completar la cantidad solicitada de paradas válidas y no duplicadas para esta ruta.',
                 ):
                     services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
 
-    def test_descarta_candidatos_duplicados_existentes_y_entre_sugerencias(self):
-        mocked = [
+    def test_descarta_duplicados_y_respeta_dedupe_en_regeneracion(self):
+        respuesta_primera = [
             {
-                'nombre': 'Catedral',  # duplicado por nombre con parada existente
-                'coordenadas': [37.3900, -5.9900],
+                'nombre': 'Catedral',  # duplicado con parada existente
+                'coordenadas': [37.3861, -5.9925],
                 'categoria': 'historia',
                 'nivel_confianza': 0.9,
-                'justificacion': 'Duplicado de prueba.',
+                'justificacion': 'Duplicado existente.',
             },
             {
                 'nombre': 'Archivo de Indias',
@@ -217,25 +274,33 @@ class GenerarCandidatosParadasIATests(TestCase):
                 'nivel_confianza': 0.91,
                 'justificacion': 'Candidato válido.',
             },
+        ]
+        respuesta_regenerada = [
             {
-                'nombre': 'Archivo de Indias',  # duplicado entre candidatos
+                'nombre': 'Giralda',
+                'coordenadas': [37.3860, -5.9924],
+                'categoria': 'historia',
+                'nivel_confianza': 0.93,
+                'justificacion': 'Segundo candidato válido no duplicado.',
+            },
+            {
+                'nombre': 'Archivo de Indias',
                 'coordenadas': [37.3850, -5.9930],
                 'categoria': 'historia',
-                'nivel_confianza': 0.88,
-                'justificacion': 'Duplicado entre sugerencias.',
-            },
-            {
-                'nombre': 'Plaza Nueva',  # duplicado por coordenadas con candidato válido
-                'coordenadas': [37.3850, -5.9930],
-                'categoria': 'local',
-                'nivel_confianza': 0.86,
-                'justificacion': 'Mismas coordenadas con otro nombre.',
+                'nivel_confianza': 0.84,
+                'justificacion': 'Duplicado entre iteraciones.',
             },
         ]
-        with self.settings(GEMINI_API_KEY='test-key'):
-            from unittest.mock import patch
-            with patch('creacion.services.llamar_gemini_bypass', return_value=mocked):
-                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=4)
 
-        self.assertEqual(len(resultado['candidatos']), 1)
-        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')
+        with self.settings(GEMINI_API_KEY='test-key'):
+            with patch('creacion.services.llamar_gemini_bypass', side_effect=[respuesta_primera, respuesta_regenerada]), \
+                patch.object(services.MapboxGeocodingClient, 'buscar_lugares', return_value=[]), \
+                patch.object(services.OSMGeocodingClient, 'buscar_lugares', side_effect=self._mock_osm_buscar_lugares), \
+                patch.object(services.OSMGeocodingClient, 'buscar_geometria_lineal_cercana', return_value=[]):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=2)
+
+        self.assertEqual(len(resultado['candidatos']), 2)
+        self.assertEqual(
+            [c['nombre'] for c in resultado['candidatos']],
+            ['Archivo de Indias', 'Giralda'],
+        )
