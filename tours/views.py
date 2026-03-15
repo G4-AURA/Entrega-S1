@@ -370,6 +370,17 @@ def obtener_ubicacion_guia(request, sesion_id):
     return JsonResponse({"error": "El guía aún no ha compartido su ubicación."}, status=404)
 
 
+@require_GET
+def obtener_estado_sesion(request, sesion_id):
+    """Snapshot de sesión para refrescar estado y parada actual en el mapa."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.tiene_acceso_estado_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    return JsonResponse(services.construir_estado_sesion(sesion))
+
+
 # ===========================================================================
 # CHAT (accesible a turistas anónimos y al guía)
 # ===========================================================================

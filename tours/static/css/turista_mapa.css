@@ -160,6 +160,34 @@ main.container {
     display: block;
 }
 
+.session-state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: var(--radius-pill);
+    padding: .3rem .8rem;
+    font-size: .67rem;
+    font-weight: 700;
+    font-family: 'Manrope', sans-serif;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+}
+
+.session-state-en_curso {
+    background: var(--success-light);
+    color: #065F46;
+}
+
+.session-state-pendiente {
+    background: var(--warning-light);
+    color: #92400E;
+}
+
+.session-state-finalizado {
+    background: var(--border-light);
+    color: var(--text-muted);
+}
+
 /* ── Timeline (itinerario) ────────────────────────────────────────– */
 .timeline {
     display: flex;

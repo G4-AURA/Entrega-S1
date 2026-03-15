@@ -74,6 +74,30 @@ def tiene_acceso_a_sesion(request, sesion: SesionTour) -> bool:
     ).exists()
 
 
+def tiene_acceso_estado_sesion(request, sesion: SesionTour) -> bool:
+    """
+    Regla de acceso para polling de estado de sesión en mapa turista.
+
+    En sesión finalizada permitimos leer el estado final a turistas que hayan
+    pertenecido a la sesión, aunque estén marcados como inactivos.
+    """
+    if request.user.is_authenticated and es_guia_de_sesion(request.user, sesion):
+        return True
+
+    turista = obtener_turista_request(request)
+    if not turista:
+        return False
+
+    if sesion.esta_finalizada:
+        return TuristaSesion.objects.filter(
+            turista=turista, sesion_tour=sesion
+        ).exists()
+
+    return TuristaSesion.objects.filter(
+        turista=turista, sesion_tour=sesion, activo=True
+    ).exists()
+
+
 # ---------------------------------------------------------------------------
 # Códigos de acceso
 # ---------------------------------------------------------------------------
@@ -114,6 +138,29 @@ def serializar_paradas(sesion: SesionTour) -> str:
         for p in sesion.ruta.paradas.all()
     ]
     return json.dumps(data)
+
+
+def construir_estado_sesion(sesion: SesionTour) -> dict:
+    """
+    Snapshot ligero del estado de sesión para refrescar UI por polling.
+    """
+    paradas = []
+    for parada in sesion.ruta.paradas.all():
+        paradas.append(
+            {
+                "id": parada.id,
+                "orden": parada.orden,
+                "es_actual": sesion.parada_actual_id == parada.id,
+            }
+        )
+
+    return {
+        "sesion_id": sesion.id,
+        "estado": sesion.estado,
+        "parada_actual_id": sesion.parada_actual_id,
+        "paradas": paradas,
+        "timestamp": timezone.now().isoformat(),
+    }
 
 
 # ---------------------------------------------------------------------------
