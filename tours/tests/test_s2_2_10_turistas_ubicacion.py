@@ -10,8 +10,8 @@ from tours.models import SesionTour, Turista, TuristaSesion, UbicacionVivo
 
 class TuristasUbicacionSesionTests(TestCase):
     def setUp(self):
-        guia_user = User.objects.create_user(username="guia_s2210", password="1234")
-        auth_guia = AuthUser.objects.create(user=guia_user)
+        self.guia_user = User.objects.create_user(username="guia_s2210", password="1234")
+        auth_guia = AuthUser.objects.create(user=self.guia_user)
         guia = Guia.objects.create(user=auth_guia)
 
         self.ruta = Ruta.objects.create(
@@ -52,7 +52,12 @@ class TuristasUbicacionSesionTests(TestCase):
         session.save()
         return client
 
-    def test_no_expone_turistas_fuera_de_sesion(self):
+    def _client_guia(self):
+        client = Client()
+        client.force_login(self.guia_user)
+        return client
+
+    def test_guia_no_expone_turistas_fuera_de_sesion(self):
         UbicacionVivo.objects.create(
             coordenadas=Point(-5.9845, 37.3891, srid=4326),
             timestamp=timezone.now(),
@@ -66,7 +71,7 @@ class TuristasUbicacionSesionTests(TestCase):
             turista=self.turista_c,
         )
 
-        client = self._client_turista(self.turista_a.id)
+        client = self._client_guia()
         response = client.get(reverse("tours:ubicaciones_turistas", args=[self.sesion.id]))
 
         self.assertEqual(response.status_code, 200)
@@ -74,8 +79,8 @@ class TuristasUbicacionSesionTests(TestCase):
         self.assertEqual(len(payload["turistas"]), 1)
         self.assertEqual(payload["turistas"][0]["turista_id"], self.turista_b.id)
 
-    def test_formato_coordenadas_y_lista_vacia(self):
-        client = self._client_turista(self.turista_a.id)
+    def test_guia_recibe_formato_coordenadas_y_lista_vacia(self):
+        client = self._client_guia()
         response_vacio = client.get(reverse("tours:ubicaciones_turistas", args=[self.sesion.id]))
 
         self.assertEqual(response_vacio.status_code, 200)
@@ -95,6 +100,11 @@ class TuristasUbicacionSesionTests(TestCase):
         self.assertIsInstance(item["lat"], float)
         self.assertIsInstance(item["lng"], float)
         self.assertIn("timestamp", item)
+
+    def test_turista_no_puede_listar_ubicaciones_turistas(self):
+        client = self._client_turista(self.turista_a.id)
+        response = client.get(reverse("tours:ubicaciones_turistas", args=[self.sesion.id]))
+        self.assertEqual(response.status_code, 403)
 
     def test_registrar_ubicacion_turista_crea_registro(self):
         client = self._client_turista(self.turista_a.id)

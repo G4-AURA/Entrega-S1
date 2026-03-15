@@ -57,11 +57,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
 
-    // ── Posición del guía (polling cada 5 s, solo turistas) ───────────────
+    // ── Polling de posiciones en vivo ──────────────────────────────────────
     if (!esGuia) {
         _obtenerUbicacionGuia();
-        _obtenerUbicacionesTuristas();
         setInterval(_obtenerUbicacionGuia, 5000);
+    } else {
+        _obtenerUbicacionesTuristas();
         setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
@@ -352,7 +353,7 @@ function _initChat() {
 
 
 function _obtenerUbicacionesTuristas() {
-    if (!map || esGuia) return;
+    if (!map || !esGuia) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
         .then(r => { if (!r.ok) throw new Error(); return r.json(); })

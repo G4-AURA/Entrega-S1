@@ -431,13 +431,12 @@ def registrar_ubicacion_turista(request, sesion_id):
 
 @require_GET
 def obtener_ubicaciones_turistas(request, sesion_id):
-    """Devuelve la última ubicación de turistas activos de la sesión."""
+    """Devuelve la última ubicación de turistas activos de la sesión (solo guía)."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
-    if not services.tiene_acceso_a_sesion(request, sesion):
+    if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
-    solicitante_turista = services.obtener_turista_request(request)
     turistas_activos_ids = list(
         TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).values_list(
             "turista_id", flat=True
@@ -464,9 +463,6 @@ def obtener_ubicaciones_turistas(request, sesion_id):
         if not turista_id or turista_id in vistos:
             continue
         vistos.add(turista_id)
-
-        if solicitante_turista and turista_id == solicitante_turista.id:
-            continue
 
         resultados.append(
             {
