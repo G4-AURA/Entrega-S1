@@ -1012,6 +1012,30 @@ EXIGENCIA_MAP = {
     'alta': 'alta',
 }
 
+MAX_REINTENTOS_PARADA_INVALIDA = 3
+MAX_ALTERNATIVAS_RUTA = 5
+UMBRAL_DISTANCIA_MAXIMA_PARADA_KM = 35.0
+
+_VARIACIONES_ALTERNATIVA = [
+    'enfoque historico y monumental',
+    'enfoque local y experiencial',
+    'enfoque cultural y panoramico',
+    'enfoque gastronomico y vida urbana',
+    'enfoque naturaleza y espacios abiertos',
+]
+
+_KEYWORDS_MOOD = {
+    'historia': ['historia', 'historico', 'museo', 'monumento', 'patrimonio'],
+    'gastronomia': ['gastronomia', 'mercado', 'tapas', 'cocina', 'comida'],
+    'naturaleza': ['parque', 'jardin', 'naturaleza', 'rio', 'mirador'],
+    'misterio y leyendas': ['leyenda', 'misterio', 'enigmatico', 'tradicion'],
+    'local': ['barrio', 'local', 'plaza', 'cotidiano', 'artesania'],
+    'cine y series': ['cine', 'rodaje', 'escena', 'serie'],
+    'religioso y espiritual': ['iglesia', 'catedral', 'templo', 'espiritual'],
+    'arquitectura y diseño': ['arquitectura', 'diseño', 'fachada', 'edificio'],
+    'ocio/cultural': ['teatro', 'galeria', 'cultural', 'ocio', 'espectaculo'],
+}
+
 
 def normalizar_mood(raw_moods):
     if isinstance(raw_moods, str):
@@ -1327,6 +1351,327 @@ def nodo_optimizador_ortools(state: State):
     return {"ruta_final": json_final}
 
 
+def _normalizar_poi_generado(poi, idx):
+    if not isinstance(poi, dict):
+        return None
+
+    nombre = str(poi.get('nombre') or '').strip()
+    if not nombre:
+        return None
+
+    coords = _normalizar_coordenadas(
+        poi.get('coordenadas') or poi.get('coords'),
+        lat=poi.get('lat'),
+        lon=poi.get('lon'),
+    )
+    if not coords:
+        return None
+
+    return {
+        'nombre': nombre[:120],
+        'coords': coords,
+        'desc': str(poi.get('desc') or poi.get('descripcion') or poi.get('justificacion') or '').strip()[:500],
+        'categoria': str(poi.get('categoria') or 'general').strip()[:80],
+        'orden': idx,
+    }
+
+
+def _validar_paradas_generadas(paradas):
+    validas = []
+    invalidas = []
+    nombres_vistos = set()
+    coords_vistas = set()
+
+    for parada in paradas:
+        coords = parada.get('coords') or [None, None]
+        lat = coords[0] if len(coords) >= 2 else None
+        lon = coords[1] if len(coords) >= 2 else None
+
+        if lat is None or lon is None or not (-90 <= float(lat) <= 90) or not (-180 <= float(lon) <= 180):
+            invalidas.append({'parada': parada, 'motivo': 'coordenadas_invalidas'})
+            continue
+
+        nombre_key = _normalizar_nombre_para_dedupe(parada.get('nombre'))
+        coords_key = _clave_coordenadas_para_dedupe([lat, lon])
+        if nombre_key in nombres_vistos or coords_key in coords_vistas:
+            invalidas.append({'parada': parada, 'motivo': 'duplicada'})
+            continue
+
+        nombres_vistos.add(nombre_key)
+        coords_vistas.add(coords_key)
+        validas.append(parada)
+
+    if len(validas) >= 2:
+        centro = _calcular_contexto_geografico([
+            {'coordenadas': parada['coords']}
+            for parada in validas
+        ])['centro']
+
+        filtradas = []
+        for parada in validas:
+            if _distancia_haversine_km(parada['coords'], centro) > UMBRAL_DISTANCIA_MAXIMA_PARADA_KM:
+                invalidas.append({'parada': parada, 'motivo': 'fuera_contexto_geografico'})
+                continue
+            filtradas.append(parada)
+        validas = filtradas
+
+    return validas, invalidas
+
+
+def _solicitar_alternativa_parada(payload, parada_invalida, motivo, paradas_aceptadas, intento):
+    nombres_aceptados = [p.get('nombre') for p in paradas_aceptadas]
+    prompt = f"""
+        Eres un guía turístico experto.
+        Debes generar una alternativa para una parada inválida.
+
+        Ciudad: {payload.get('ciudad')}
+        Temática(s): {', '.join(payload.get('mood') or [])}
+        Restricciones: {json.dumps(payload.get('restricciones') or [], ensure_ascii=False)}
+        Paradas ya aceptadas: {json.dumps(nombres_aceptados, ensure_ascii=False)}
+
+        Parada inválida detectada:
+        - Nombre: {parada_invalida.get('nombre')}
+        - Coordenadas: {json.dumps(parada_invalida.get('coords') or [], ensure_ascii=False)}
+        - Motivo del error: {motivo}
+        - Intento de reemplazo: {intento}
+
+        Devuelve SOLO un JSON con una parada alternativa NO duplicada y geográficamente coherente:
+        {{
+          "nombre": "Nombre del lugar",
+          "coords": [lat, lon],
+          "desc": "Descripción breve",
+          "categoria": "Categoría"
+        }}
+    """
+
+    alternativa = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+    if isinstance(alternativa, list):
+        alternativa = alternativa[0] if alternativa else None
+    return _normalizar_poi_generado(alternativa, 1)
+
+
+def _optimizar_pois_en_ruta(pois, payload):
+    if not pois or len(pois) < 2:
+        return {
+            'titulo': f"Ruta {payload.get('mood')}",
+            'descripcion': 'Ruta generada sin optimización necesaria.',
+            'duracion_estimada': payload.get('duracion'),
+            'nivel_exigencia': payload.get('exigencia'),
+            'mood': payload.get('mood'),
+            'paradas': [
+                {
+                    'nombre': p.get('nombre'),
+                    'coordenadas': p.get('coords'),
+                    'orden': idx + 1,
+                    'descripcion': p.get('desc', ''),
+                    'categoria': p.get('categoria', 'general'),
+                }
+                for idx, p in enumerate(pois)
+            ],
+        }
+
+    data = crear_matriz_datos(pois)
+    manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
+    routing = pywrapcp.RoutingModel(manager)
+
+    def distance_callback(from_index, to_index):
+        from_node = manager.IndexToNode(from_index)
+        to_node = manager.IndexToNode(to_index)
+        return data['distance_matrix'][from_node][to_node]
+
+    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    solution = routing.SolveWithParameters(search_parameters)
+
+    if not solution:
+        ordenadas = pois
+    else:
+        ordenadas = []
+        index = routing.Start(0)
+        while not routing.IsEnd(index):
+            node_index = manager.IndexToNode(index)
+            ordenadas.append(pois[node_index])
+            index = solution.Value(routing.NextVar(index))
+
+    paradas = []
+    for idx, poi in enumerate(ordenadas, start=1):
+        paradas.append(
+            {
+                'nombre': poi.get('nombre'),
+                'coordenadas': poi.get('coords'),
+                'orden': idx,
+                'descripcion': poi.get('desc', ''),
+                'categoria': poi.get('categoria', 'general'),
+            }
+        )
+
+    return {
+        'titulo': f"Ruta {payload.get('mood')} Inteligente",
+        'descripcion': 'Ruta optimizada con algoritmo TSP (Traveling Salesperson Problem).',
+        'duracion_estimada': payload.get('duracion'),
+        'nivel_exigencia': payload.get('exigencia'),
+        'mood': payload.get('mood'),
+        'paradas': paradas,
+    }
+
+
+def _calcular_distancia_total_km(paradas):
+    if len(paradas) < 2:
+        return 0.0
+    total = 0.0
+    for idx in range(len(paradas) - 1):
+        total += _distancia_haversine_km(paradas[idx]['coordenadas'], paradas[idx + 1]['coordenadas'])
+    return total
+
+
+def _calcular_diversidad_paradas(paradas):
+    if not paradas:
+        return 0.0
+    nombres_unicos = {
+        _normalizar_nombre_para_dedupe(parada.get('nombre'))
+        for parada in paradas
+        if parada.get('nombre')
+    }
+    ratio_nombres = len(nombres_unicos) / len(paradas)
+
+    categorias_unicas = {
+        str(parada.get('categoria') or '').strip().lower()
+        for parada in paradas
+        if parada.get('categoria')
+    }
+    ratio_categorias = len(categorias_unicas) / max(1, len(paradas))
+    return min(1.0, 0.7 * ratio_nombres + 0.3 * ratio_categorias)
+
+
+def _calcular_coherencia_tematica(paradas, moods):
+    if not paradas:
+        return 0.0
+    keywords = []
+    for mood in moods or []:
+        keywords.extend(_KEYWORDS_MOOD.get(str(mood).strip().lower(), []))
+
+    if not keywords:
+        return 0.5
+
+    matches = 0
+    for parada in paradas:
+        texto = f"{parada.get('nombre', '')} {parada.get('descripcion', '')} {parada.get('categoria', '')}".lower()
+        if any(k in texto for k in keywords):
+            matches += 1
+    return matches / len(paradas)
+
+
+def _generar_pois_base(payload, variacion):
+    bloque_metadata = _construir_bloque_metadata(payload.get('metadata') or {})
+    bloque_deseos = _construir_bloque_deseos(payload.get('deseos') or [])
+    bloque_restricciones = _construir_bloque_deseos(payload.get('restricciones') or [])
+    pois_allowlist = _obtener_pois_allowlist(ciudad=payload.get('ciudad', ''), moods=payload.get('mood') or [])
+    bloque_allowlist = _construir_bloque_allowlist(pois_allowlist)
+
+    prompt = f"""
+        Eres un guía turístico experto. Selecciona POIs para una ruta en {payload.get('ciudad')}.
+
+        Parámetros:
+        - Duración: {payload.get('duracion')} horas
+        - Personas: {payload.get('personas')}
+        - Exigencia: {payload.get('exigencia')}
+        - Temática(s): {', '.join(payload.get('mood') or [])}
+        - Variación de alternativa: {variacion}
+        {bloque_metadata}
+        {bloque_deseos}
+        {bloque_restricciones}
+        {bloque_allowlist}
+
+        Devuelve SOLO JSON válido con una lista de 5 a 8 POIs:
+        [
+          {{"nombre": "...", "coords": [lat, lon], "desc": "...", "categoria": "..."}}
+        ]
+    """
+    return llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+
+
+def _generar_ruta_alternativa_con_reintentos(payload, variacion):
+    respuesta = _generar_pois_base(payload, variacion)
+    if not isinstance(respuesta, list):
+        raise ErrorIntegracionIA('La IA devolvió un formato inválido para la ruta alternativa.')
+
+    candidatos = []
+    for idx, poi in enumerate(respuesta, start=1):
+        normalizado = _normalizar_poi_generado(poi, idx)
+        if normalizado:
+            candidatos.append(normalizado)
+
+    validas, invalidas = _validar_paradas_generadas(candidatos)
+    rechazadas = []
+
+    for invalida in invalidas:
+        parada = invalida['parada']
+        motivo = invalida['motivo']
+        reemplazo = None
+        for intento in range(1, MAX_REINTENTOS_PARADA_INVALIDA + 1):
+            try:
+                reemplazo = _solicitar_alternativa_parada(payload, parada, motivo, validas, intento)
+            except Exception:
+                reemplazo = None
+            if not reemplazo:
+                continue
+
+            validas_tmp = validas + [reemplazo]
+            validas_revalidadas, invalidas_revalidadas = _validar_paradas_generadas(validas_tmp)
+            if len(validas_revalidadas) == len(validas_tmp) and not invalidas_revalidadas:
+                validas = validas_revalidadas
+                break
+
+        if not reemplazo:
+            rechazadas.append(
+                {
+                    'nombre': parada.get('nombre') or 'Sin nombre',
+                    'coordenadas': parada.get('coords') or [],
+                    'motivo_rechazo': f'No superó validación: {motivo}',
+                }
+            )
+
+    ruta = _optimizar_pois_en_ruta(validas, payload)
+    distancia_total_km = _calcular_distancia_total_km(ruta.get('paradas') or [])
+    diversidad = _calcular_diversidad_paradas(ruta.get('paradas') or [])
+    coherencia = _calcular_coherencia_tematica(ruta.get('paradas') or [], payload.get('mood') or [])
+
+    return {
+        'ruta': ruta,
+        'metricas': {
+            'distancia_total_km': round(distancia_total_km, 3),
+            'diversidad': round(diversidad, 3),
+            'coherencia_tematica': round(coherencia, 3),
+        },
+        'paradas_rechazadas_validacion': rechazadas,
+    }
+
+
+def _seleccionar_mejor_alternativa(alternativas):
+    if not alternativas:
+        raise ErrorIntegracionIA('No se pudieron generar alternativas de ruta válidas.')
+
+    distancias = [a['metricas']['distancia_total_km'] for a in alternativas]
+    min_d, max_d = min(distancias), max(distancias)
+
+    for alternativa in alternativas:
+        dist = alternativa['metricas']['distancia_total_km']
+        if max_d == min_d:
+            distancia_score = 1.0
+        else:
+            distancia_score = 1.0 - ((dist - min_d) / (max_d - min_d))
+
+        diversidad = alternativa['metricas']['diversidad']
+        coherencia = alternativa['metricas']['coherencia_tematica']
+        alternativa['score_total'] = round(0.45 * distancia_score + 0.30 * diversidad + 0.25 * coherencia, 4)
+
+    alternativas.sort(key=lambda a: a['score_total'], reverse=True)
+    return alternativas[0], alternativas
+
+
 ### --- GRAFO --- ###
 def construir_grafo():
     workflow = StateGraph(State)
@@ -1342,6 +1687,31 @@ def construir_grafo():
     return workflow.compile()
 
 def consultar_langgraph(prompt_params):
-    app = construir_grafo()
-    resultado = app.invoke({"usuario_input": prompt_params})
-    return resultado["ruta_final"]
+    try:
+        num_alternativas = int(prompt_params.get('num_alternativas', 3))
+    except (TypeError, ValueError):
+        num_alternativas = 3
+
+    num_alternativas = max(1, min(MAX_ALTERNATIVAS_RUTA, num_alternativas))
+
+    alternativas = []
+    for idx in range(num_alternativas):
+        variacion = _VARIACIONES_ALTERNATIVA[idx % len(_VARIACIONES_ALTERNATIVA)]
+        try:
+            alternativa = _generar_ruta_alternativa_con_reintentos(prompt_params, variacion)
+        except ErrorIntegracionIA:
+            continue
+        alternativas.append(alternativa)
+
+    mejor, evaluadas = _seleccionar_mejor_alternativa(alternativas)
+    ruta_final = mejor['ruta']
+    ruta_final['paradas_rechazadas_validacion'] = mejor.get('paradas_rechazadas_validacion') or []
+    ruta_final['alternativas_evaluadas'] = [
+        {
+            'score_total': a.get('score_total'),
+            'metricas': a.get('metricas'),
+        }
+        for a in evaluadas
+    ]
+    ruta_final['metricas_seleccion'] = mejor.get('metricas')
+    return ruta_final

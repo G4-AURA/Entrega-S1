@@ -87,6 +87,18 @@ def generar_ruta_ia(request):
             },
         )
 
+        for parada_rechazada in ruta_generada.get('paradas_rechazadas_validacion') or []:
+            estado_propuesta = services.avanzar_checkpoint_sesion_generacion(
+                request,
+                sesion_generacion['session_id'],
+                checkpoint='validacion_paradas',
+                parada_rechazada={
+                    'nombre': parada_rechazada.get('nombre'),
+                    'coordenadas': parada_rechazada.get('coordenadas'),
+                },
+                motivo_rechazo=parada_rechazada.get('motivo_rechazo') or 'Parada inválida detectada automáticamente.',
+            )
+
         if modo_seleccion:
             return JsonResponse(
                 {
@@ -116,6 +128,11 @@ def generar_ruta_ia(request):
             checkpoint='ruta_guardada',
             datos_extra={'ruta_id': ruta_guardada.id},
         )
+
+        ruta_generada['checkpoint_contexto'] = {
+            'restricciones_usuario': estado_actualizado.get('restricciones_usuario') or [],
+            'paradas_rechazadas': estado_actualizado.get('paradas_rechazadas') or [],
+        }
 
         advertencias = []
         advertencia_historial = services.guardar_historial_ruta_ia(payload, ruta_generada)

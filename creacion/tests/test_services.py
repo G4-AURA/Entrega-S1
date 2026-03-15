@@ -3,6 +3,7 @@ from django.contrib.sessions.middleware import SessionMiddleware
 from django.test import RequestFactory
 from django.test import TestCase
 from django.utils import timezone
+from unittest.mock import patch
 
 from creacion import services
 from creacion.views import (
@@ -332,3 +333,83 @@ class SesionGeneracionCheckpointTests(TestCase):
 
         with self.assertRaises(services.ErrorSesionGeneracionExpirada):
             services.obtener_estado_sesion_generacion(request, session_id=session_id)
+
+
+class GeneracionRutaResilienteIATests(TestCase):
+    @patch('creacion.services._solicitar_alternativa_parada')
+    @patch('creacion.services._generar_pois_base')
+    def test_reintenta_paradas_invalidas_y_sustituye_duplicadas(self, mock_generar_base, mock_solicitar_alt):
+        payload = {
+            'ciudad': 'Sevilla',
+            'duracion': 2,
+            'personas': 4,
+            'exigencia': 'media',
+            'mood': ['historia'],
+            'restricciones': [],
+        }
+
+        mock_generar_base.return_value = [
+            {'nombre': 'Catedral', 'coords': [37.386, -5.992], 'desc': 'Histórica', 'categoria': 'historia'},
+            {'nombre': 'Catedral', 'coords': [37.386, -5.992], 'desc': 'Duplicada', 'categoria': 'historia'},
+            {'nombre': 'Parada invalida', 'coords': [120.0, -5.990], 'desc': 'Coord mala', 'categoria': 'historia'},
+        ]
+        mock_solicitar_alt.side_effect = [
+            {'nombre': 'Archivo de Indias', 'coords': [37.385, -5.993], 'desc': 'Válida', 'categoria': 'historia'},
+            {'nombre': 'Real Alcázar', 'coords': [37.3838, -5.9902], 'desc': 'Válida', 'categoria': 'historia'},
+        ]
+
+        alternativa = services._generar_ruta_alternativa_con_reintentos(payload, 'enfoque historico')
+
+        nombres = [p['nombre'] for p in alternativa['ruta']['paradas']]
+        self.assertIn('Archivo de Indias', nombres)
+        self.assertIn('Real Alcázar', nombres)
+        self.assertEqual(len(alternativa['paradas_rechazadas_validacion']), 0)
+
+    @patch('creacion.services._generar_ruta_alternativa_con_reintentos')
+    def test_consultar_langgraph_evalua_alternativas_y_elige_mejor(self, mock_generar_alternativa):
+        alternativa_corta = {
+            'ruta': {
+                'titulo': 'Ruta A',
+                'descripcion': 'Alternativa A',
+                'duracion_estimada': 2,
+                'nivel_exigencia': 'media',
+                'mood': ['historia'],
+                'paradas': [
+                    {'nombre': 'A', 'coordenadas': [37.386, -5.992], 'descripcion': 'historia', 'categoria': 'historia'},
+                    {'nombre': 'B', 'coordenadas': [37.387, -5.993], 'descripcion': 'historia', 'categoria': 'historia'},
+                ],
+            },
+            'metricas': {'distancia_total_km': 1.0, 'diversidad': 0.8, 'coherencia_tematica': 0.9},
+            'paradas_rechazadas_validacion': [],
+        }
+        alternativa_larga = {
+            'ruta': {
+                'titulo': 'Ruta B',
+                'descripcion': 'Alternativa B',
+                'duracion_estimada': 2,
+                'nivel_exigencia': 'media',
+                'mood': ['historia'],
+                'paradas': [
+                    {'nombre': 'C', 'coordenadas': [37.38, -5.99], 'descripcion': 'historia', 'categoria': 'historia'},
+                    {'nombre': 'D', 'coordenadas': [37.45, -6.10], 'descripcion': 'historia', 'categoria': 'historia'},
+                ],
+            },
+            'metricas': {'distancia_total_km': 12.0, 'diversidad': 0.7, 'coherencia_tematica': 0.8},
+            'paradas_rechazadas_validacion': [],
+        }
+        mock_generar_alternativa.side_effect = [alternativa_corta, alternativa_larga]
+
+        resultado = services.consultar_langgraph(
+            {
+                'ciudad': 'Sevilla',
+                'duracion': 2,
+                'personas': 4,
+                'exigencia': 'media',
+                'mood': ['historia'],
+                'num_alternativas': 2,
+            }
+        )
+
+        self.assertEqual(resultado['titulo'], 'Ruta A')
+        self.assertEqual(len(resultado['alternativas_evaluadas']), 2)
+        self.assertIn('metricas_seleccion', resultado)
