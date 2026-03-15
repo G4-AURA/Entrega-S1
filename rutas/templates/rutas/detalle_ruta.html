@@ -433,21 +433,6 @@
                             <span id="estado-sugerencias-ia-{{ parada.id }}" class="ia-suggestion-meta"></span>
                         </div>
                         <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
-                        <div class="input-group input-group-sm mt-2">
-                            <input
-                                type="text"
-                                id="input-restriccion-ia-{{ parada.id }}"
-                                class="form-control"
-                                placeholder="Añadir restricción (ej: evitar interiores)">
-                            <button
-                                type="button"
-                                class="btn btn-outline-secondary btn-registrar-restriccion-ia"
-                                data-parada-id="{{ parada.id }}">
-                                Guardar restricción
-                            </button>
-                        </div>
-                        <div id="estado-restriccion-ia-{{ parada.id }}" class="ia-suggestion-meta mt-1"></div>
-                        <div id="historial-sesion-ia-{{ parada.id }}" class="small mt-2 text-muted"></div>
                     </div>
 
                     <form method="post" class="parada-edit-form d-none"
@@ -517,9 +502,6 @@ const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId        = {{ ruta.id }};
 const csrfToken     = '{{ csrf_token }}';
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
-const checkpointSesionUrlTemplate = "{% url 'creacion:actualizar_checkpoint_sesion_generacion' session_id='__SESSION_ID__' %}";
-const obtenerSesionUrlTemplate = "{% url 'creacion:obtener_sesion_generacion_ia' session_id='__SESSION_ID__' %}";
-const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
 const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
@@ -763,151 +745,10 @@ function getPanelSugerenciasParada(paradaId) {
         panel: document.getElementById(`panel-sugerencias-ia-${paradaId}`),
         estado: document.getElementById(`estado-sugerencias-ia-${paradaId}`),
         lista: document.getElementById(`lista-sugerencias-ia-${paradaId}`),
-        restriccionInput: document.getElementById(`input-restriccion-ia-${paradaId}`),
-        restriccionEstado: document.getElementById(`estado-restriccion-ia-${paradaId}`),
-        historial: document.getElementById(`historial-sesion-ia-${paradaId}`),
     };
 }
 
 const sugerenciasCachePorParada = new Map();
-
-function obtenerSesionGeneracionDesdeStorage() {
-    try {
-        const raw = window.localStorage.getItem(IA_SESSION_STORAGE_KEY);
-        if (!raw) return null;
-        const mapa = JSON.parse(raw);
-        if (!mapa || typeof mapa !== 'object') return null;
-        return mapa[String(rutaId)] || null;
-    } catch (_error) {
-        return null;
-    }
-}
-
-function obtenerSesionGeneracionId() {
-    const querySesion = new URLSearchParams(window.location.search).get('sesion_ia');
-    return querySesion || obtenerSesionGeneracionDesdeStorage();
-}
-
-const sesionGeneracionId = obtenerSesionGeneracionId();
-let estadoSesionGeneracion = null;
-
-function escapeHtml(value) {
-    return String(value || '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-}
-
-function renderResumenSesionIAEnPanel(paradaId) {
-    const { historial } = getPanelSugerenciasParada(paradaId);
-    if (!historial) return;
-    if (!sesionGeneracionId) {
-        historial.textContent = 'Sin sesión IA asociada a esta ruta.';
-        return;
-    }
-    if (!estadoSesionGeneracion || typeof estadoSesionGeneracion !== 'object') {
-        historial.textContent = 'Cargando estado de sesión IA...';
-        return;
-    }
-
-    const checkpoint = estadoSesionGeneracion.checkpoint_actual || 'sin checkpoint';
-    const restricciones = Array.isArray(estadoSesionGeneracion.restricciones_usuario)
-        ? estadoSesionGeneracion.restricciones_usuario
-        : [];
-    const rechazadas = Array.isArray(estadoSesionGeneracion.paradas_rechazadas)
-        ? estadoSesionGeneracion.paradas_rechazadas
-        : [];
-
-    const restriccionesPreview = restricciones.slice(-2).join(' | ');
-    const restriccionesTexto = restricciones.length
-        ? `Restricciones (${restricciones.length}): ${restriccionesPreview}`
-        : 'Restricciones (0)';
-
-    const ultimasRechazadas = rechazadas.slice(-3).reverse();
-    const rechazosHtml = ultimasRechazadas.length
-        ? `
-            <div class="mt-1">Ultimos rechazos:</div>
-            <ul class="mb-0 ps-3">
-                ${ultimasRechazadas.map((rechazo) => {
-                    const nombre = escapeHtml(rechazo?.nombre || 'Sin nombre');
-                    const motivo = escapeHtml(rechazo?.motivo_rechazo || 'Sin motivo');
-                    return `<li>${nombre}: ${motivo}</li>`;
-                }).join('')}
-            </ul>
-        `
-        : '<div class="mt-1">Ultimos rechazos: ninguno</div>';
-
-    historial.innerHTML = `
-        <div>Checkpoint: ${escapeHtml(checkpoint)}</div>
-        <div>Rechazadas: ${rechazadas.length}</div>
-        <div>${escapeHtml(restriccionesTexto)}</div>
-        ${rechazosHtml}
-    `;
-}
-
-function renderResumenSesionIAEnTodosLosPaneles() {
-    document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
-        if (!btn?.dataset?.paradaId) return;
-        renderResumenSesionIAEnPanel(btn.dataset.paradaId);
-    });
-}
-
-async function cargarEstadoSesionGeneracion() {
-    if (!sesionGeneracionId) return null;
-
-    const url = obtenerSesionUrlTemplate.replace('__SESSION_ID__', encodeURIComponent(sesionGeneracionId));
-    try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'X-CSRFToken': csrfToken,
-            },
-        });
-        if (!response.ok) return null;
-
-        const payload = await response.json();
-        if (payload?.status !== 'OK') return null;
-        estadoSesionGeneracion = payload.datos;
-        renderResumenSesionIAEnTodosLosPaneles();
-        return estadoSesionGeneracion;
-    } catch (_error) {
-        return null;
-    }
-}
-
-async function registrarCheckpointSesion(payload) {
-    if (!sesionGeneracionId) return null;
-
-    const url = checkpointSesionUrlTemplate.replace('__SESSION_ID__', encodeURIComponent(sesionGeneracionId));
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) return null;
-        const data = await response.json();
-        if (data?.status === 'OK') {
-            estadoSesionGeneracion = data.datos;
-            renderResumenSesionIAEnTodosLosPaneles();
-        }
-        return data;
-    } catch (_error) {
-        return null;
-    }
-}
-
-function eliminarCandidatoDelCache(paradaId, candidateIndex) {
-    const candidatos = sugerenciasCachePorParada.get(String(paradaId)) || [];
-    if (!Array.isArray(candidatos) || candidateIndex < 0 || candidateIndex >= candidatos.length) return;
-    candidatos.splice(candidateIndex, 1);
-    renderSugerenciasIAEnParada(paradaId, candidatos);
-}
 
 function cerrarTodosLosPanelesIASugerencias() {
     document.querySelectorAll('.ia-suggestions-inline').forEach((panel) => {
@@ -947,12 +788,6 @@ function renderSugerenciasIAEnParada(paradaId, candidatos) {
                             ${hasCoords ? '' : 'disabled'}>
                         Usar esta parada
                     </button>
-                    <button type="button"
-                            class="btn btn-outline-danger btn-sm btn-descartar-sugerencia-ia"
-                            data-parada-id="${paradaId}"
-                            data-candidate-index="${idx}">
-                        Rechazar
-                    </button>
                 </div>
             </div>
         `;
@@ -990,7 +825,6 @@ async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
     estado.textContent = 'Generando...';
     lista.innerHTML = '';
     triggerButton.disabled = true;
-    renderResumenSesionIAEnPanel(paradaId);
 
     try {
         const response = await fetch(sugerenciasIaUrl, {
@@ -999,10 +833,7 @@ async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken,
             },
-            body: JSON.stringify({
-                cantidad: 3,
-                sesion_generacion_id: sesionGeneracionId,
-            }),
+            body: JSON.stringify({ cantidad: 3 }),
         });
 
         const payload = await response.json();
@@ -1036,72 +867,6 @@ document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
 
 document.addEventListener('click', (event) => {
     const usarBtn = event.target.closest('.btn-usar-sugerencia-ia');
-    const descartarBtn = event.target.closest('.btn-descartar-sugerencia-ia');
-    const guardarRestriccionBtn = event.target.closest('.btn-registrar-restriccion-ia');
-
-    if (guardarRestriccionBtn) {
-        const paradaId = guardarRestriccionBtn.dataset.paradaId;
-        const { restriccionInput, restriccionEstado } = getPanelSugerenciasParada(paradaId);
-        const restriccion = (restriccionInput?.value || '').trim();
-        if (!restriccion || !restriccionEstado) return;
-
-        guardarRestriccionBtn.disabled = true;
-        restriccionEstado.textContent = 'Guardando restricción...';
-
-        registrarCheckpointSesion({
-            checkpoint: 'restriccion_usuario_actualizada',
-            restricciones: [restriccion],
-            contexto: { ruta_id: rutaId, parada_id: Number(paradaId) },
-        }).then((res) => {
-            if (res?.status === 'OK') {
-                restriccionEstado.textContent = 'Restricción guardada en la sesión IA.';
-                restriccionInput.value = '';
-                return;
-            }
-            restriccionEstado.textContent = 'No se pudo guardar la restricción en este momento.';
-        }).finally(() => {
-            guardarRestriccionBtn.disabled = false;
-        });
-
-        return;
-    }
-
-    if (descartarBtn) {
-        const paradaId = descartarBtn.dataset.paradaId;
-        const candidateIndex = Number(descartarBtn.dataset.candidateIndex);
-        const { estado } = getPanelSugerenciasParada(paradaId);
-        const candidatos = sugerenciasCachePorParada.get(String(paradaId)) || [];
-        const candidato = candidatos[candidateIndex];
-        if (!candidato) return;
-
-        const motivo = window.prompt(
-            '¿Por qué rechazas esta sugerencia? (opcional)',
-            'No encaja con las preferencias del grupo',
-        ) || '';
-
-        descartarBtn.disabled = true;
-        if (estado) estado.textContent = 'Registrando rechazo...';
-
-        registrarCheckpointSesion({
-            checkpoint: 'sugerencia_rechazada',
-            parada_rechazada: {
-                nombre: candidato.nombre,
-                coordenadas: candidato.coordenadas,
-                categoria: candidato.categoria,
-                justificacion: candidato.justificacion,
-            },
-            motivo_rechazo: motivo,
-            contexto: { ruta_id: rutaId, parada_id: Number(paradaId) },
-        }).then(() => {
-            eliminarCandidatoDelCache(paradaId, candidateIndex);
-            if (estado) estado.textContent = 'Sugerencia rechazada y registrada.';
-        }).finally(() => {
-            descartarBtn.disabled = false;
-        });
-
-        return;
-    }
-
     if (!usarBtn) return;
 
     const paradaId = usarBtn.dataset.paradaId;
@@ -1117,30 +882,8 @@ document.addEventListener('click', (event) => {
     );
     if (!confirmacion) return;
 
-    usarBtn.disabled = true;
-    registrarCheckpointSesion({
-        checkpoint: 'sugerencia_aceptada',
-        paradas_propuestas: [
-            {
-                nombre: candidato?.nombre || '',
-                coordenadas: [lat, lon],
-                categoria: candidato?.categoria || 'general',
-                justificacion: candidato?.justificacion || '',
-            },
-        ],
-        contexto: { ruta_id: rutaId, parada_id: Number(paradaId) },
-    }).finally(() => {
-        agregarSugerenciaComoNuevaParada({ nombre: candidato?.nombre || '', lat, lon });
-        usarBtn.disabled = false;
-    });
+    agregarSugerenciaComoNuevaParada({ nombre: candidato?.nombre || '', lat, lon });
 });
-
-// Cargar estado de sesion al entrar para que el resumen sea persistente.
-if (sesionGeneracionId) {
-    cargarEstadoSesionGeneracion();
-} else {
-    renderResumenSesionIAEnTodosLosPaneles();
-}
 
 mapa.on('click', (event) => {
     if (!activeParadaForm) return;

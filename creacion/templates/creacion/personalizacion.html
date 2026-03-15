@@ -142,7 +142,8 @@
     "csrfToken": "{{ csrf_token }}",
     "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN }}",
     "urls": {
-        "generar": "{% url 'creacion:generar_ruta_ia' %}"
+        "generar": "{% url 'creacion:generar_ruta_ia' %}",
+        "obtenerSesion": "{% url 'creacion:obtener_sesion_generacion_ia' session_id='__SESSION_ID__' %}"
     }
 }
 </script>

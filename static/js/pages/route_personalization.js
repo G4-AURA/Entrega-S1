@@ -182,6 +182,29 @@
         return data;
     }
 
+    async function obtenerEstadoSesionGeneracion(sesionGeneracionId) {
+        if (!sesionGeneracionId || !config?.urls?.obtenerSesion) return null;
+
+        const url = config.urls.obtenerSesion.replace('__SESSION_ID__', encodeURIComponent(sesionGeneracionId));
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': config.csrfToken,
+                },
+            });
+
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            if (data?.status !== 'OK') return null;
+            return data.datos;
+        } catch (_error) {
+            return null;
+        }
+    }
+
     function renderizarMapa(paradas) {
         if (leafletMap) {
             leafletMap.remove();
@@ -241,12 +264,16 @@
             const payload = await leerFormulario();
             const data = await enviarPeticion(payload);
             guardarSesionGeneracionEnStorage(data.ruta_id, data.sesion_generacion_id);
+
+            const estadoSesion = await obtenerEstadoSesionGeneracion(data.sesion_generacion_id);
+            const checkpoint = estadoSesion?.checkpoint_actual || data.checkpoint_actual || 'ruta_guardada';
+
             form.classList.add('d-none');
             document.getElementById('subtitulo-form').classList.add('d-none');
             renderizarRuta(data.datos_ruta);
 
             estado.className = 'alert alert-success mt-3';
-            estado.innerHTML = `${data.mensaje} — <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.`;
+            estado.innerHTML = `${data.mensaje}<br><small>Checkpoint IA activo: ${checkpoint}</small> — <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.`;
             estado.classList.remove('d-none');
         } catch (error) {
             console.error(error);
