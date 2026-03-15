@@ -5,6 +5,8 @@
     const boton = document.getElementById('btn-generar-ruta');
     const estado = document.getElementById('estado-respuesta');
     const pantallaCarga = document.getElementById('pantalla-carga');
+    const loadingStatusTitle = document.getElementById('loading-status-title');
+    const loadingStatusDetail = document.getElementById('loading-status-detail');
     const rutaMeta = document.getElementById('ruta-meta');
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
@@ -19,6 +21,46 @@
     let leafletMap = null;
     let sesionGeneracionActiva = null;
     let propuestasParadasActivas = [];
+    let progressTimerId = null;
+    let progressStepIndex = 0;
+
+    const PROGRESS_STEPS_GENERAR = [
+        { title: 'Validando solicitud...', detail: 'Comprobando ciudad, preferencias y parámetros del grupo.' },
+        { title: 'Generando alternativas IA...', detail: 'Creando varias rutas candidatas para esta solicitud.' },
+        { title: 'Validando paradas...', detail: 'Detectando duplicados y validando coherencia geográfica.' },
+        { title: 'Reintentando paradas inválidas...', detail: 'Pidiendo automáticamente alternativas para las no válidas.' },
+        { title: 'Seleccionando mejor ruta...', detail: 'Evaluando distancia, diversidad y coherencia temática.' },
+    ];
+
+    const PROGRESS_STEPS_ADICIONALES = [
+        { title: 'Analizando sugerencias del guía...', detail: 'Aplicando tus indicaciones para nuevas propuestas.' },
+        { title: 'Generando nuevas paradas...', detail: 'Buscando alternativas adicionales sin duplicar la selección actual.' },
+        { title: 'Validando calidad de paradas...', detail: 'Filtrando por coherencia geográfica y duplicidad.' },
+    ];
+
+    function actualizarMensajeProgreso(step) {
+        if (loadingStatusTitle) loadingStatusTitle.textContent = step.title;
+        if (loadingStatusDetail) loadingStatusDetail.textContent = step.detail;
+    }
+
+    function iniciarMensajesProgreso(tipo = 'generar') {
+        detenerMensajesProgreso();
+        const steps = tipo === 'adicionales' ? PROGRESS_STEPS_ADICIONALES : PROGRESS_STEPS_GENERAR;
+        progressStepIndex = 0;
+        actualizarMensajeProgreso(steps[progressStepIndex]);
+
+        progressTimerId = window.setInterval(() => {
+            progressStepIndex = (progressStepIndex + 1) % steps.length;
+            actualizarMensajeProgreso(steps[progressStepIndex]);
+        }, 5000);
+    }
+
+    function detenerMensajesProgreso() {
+        if (progressTimerId) {
+            window.clearInterval(progressTimerId);
+            progressTimerId = null;
+        }
+    }
 
     function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
         if (!rutaId || !sesionGeneracionId) return;
@@ -42,6 +84,10 @@
         pantallaCarga.style.display = estaCargando ? 'flex' : 'none';
         boton.disabled = estaCargando;
         boton.textContent = estaCargando ? 'Generando...' : 'Generar la ruta';
+        if (!estaCargando) {
+            detenerMensajesProgreso();
+            actualizarMensajeProgreso({ title: 'Generando ruta...', detail: 'Preparando el proceso...' });
+        }
     }
 
     async function recogerMetadata() {
@@ -399,6 +445,7 @@
         event.preventDefault();
         estado.classList.add('d-none');
         setCargando(true);
+        iniciarMensajesProgreso('generar');
 
         try {
             const payload = await leerFormulario();
@@ -464,6 +511,8 @@
             estado.classList.add('d-none');
             btnGenerarAdicionales.disabled = true;
             btnGenerarAdicionales.textContent = 'Generando...';
+            setCargando(true);
+            iniciarMensajesProgreso('adicionales');
 
             try {
                 const firmasSeleccionadas = new Set(
@@ -497,6 +546,7 @@
                 console.error(error);
                 renderizarErrores(error.message);
             } finally {
+                setCargando(false);
                 btnGenerarAdicionales.disabled = false;
                 btnGenerarAdicionales.textContent = 'Generar más paradas';
             }
