@@ -273,7 +273,12 @@
             renderizarRuta(data.datos_ruta);
 
             estado.className = 'alert alert-success mt-3';
-            estado.innerHTML = `${data.mensaje}<br><small>Checkpoint IA activo: ${checkpoint}</small> — <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.`;
+            estado.innerHTML = `
+                ${data.mensaje}
+                <span class="badge bg-success ms-2">Checkpoint IA: ${checkpoint}</span>
+                <br>
+                <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.
+            `;
             estado.classList.remove('d-none');
         } catch (error) {
             console.error(error);
