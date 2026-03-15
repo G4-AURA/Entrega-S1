@@ -18,6 +18,8 @@
 let map               = null;
 let guiaMarker        = null;
 let miUbicacionMarker = null;
+let paradaMarkers     = new Map();
+let paradaActualId    = null;
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -52,6 +54,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── Dibujar recorrido y paradas ───────────────────────────────────────
     _dibujarRutaYParadas();
+
+    _refrescarEstadoSesion();
+    setInterval(_refrescarEstadoSesion, 5000);
 
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
@@ -111,47 +116,27 @@ function _dibujarRutaYParadas() {
     if (typeof paradasData === 'undefined' || !Array.isArray(paradasData)) return;
 
     const bounds = [];
+    paradaMarkers = new Map();
 
     paradasData.forEach(parada => {
         if (parada.lat == null || parada.lng == null) return;
 
         bounds.push([parada.lat, parada.lng]);
 
-        const esActual = parada.es_actual;
-        const size     = esActual ? 34 : 26;
+        if (parada.es_actual) {
+            paradaActualId = parada.id;
+        }
 
-        const iconHtml = esActual
-            ? `<div style="
-                  background:#4f46e5;
-                  width:${size}px;height:${size}px;
-                  border-radius:50%;border:3px solid white;
-                  box-shadow:0 2px 10px rgba(79,70,229,.45);
-                  display:flex;align-items:center;justify-content:center;">
-                  <span style="color:white;font-size:14px;font-weight:700;">${parada.orden}</span>
-               </div>`
-            : `<div style="
-                  background:#d1d5db;
-                  width:${size}px;height:${size}px;
-                  border-radius:50%;border:2px solid white;
-                  box-shadow:0 1px 5px rgba(0,0,0,.18);
-                  display:flex;align-items:center;justify-content:center;">
-                  <span style="color:#6b7280;font-size:11px;font-weight:600;">${parada.orden}</span>
-               </div>`;
-
-        L.marker([parada.lat, parada.lng], {
-            icon: L.divIcon({
-                className:  '',
-                html:       iconHtml,
-                iconSize:   [size, size],
-                iconAnchor: [size / 2, size / 2],
-                popupAnchor:[0, -(size / 2) - 4],
-            }),
+        const marker = L.marker([parada.lat, parada.lng], {
+            icon: _buildParadaIcon(parada.orden, parada.es_actual),
         })
         .addTo(map)
         .bindPopup(
             `<strong>${parada.nombre}</strong>` +
             `<br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`
         );
+
+        paradaMarkers.set(parada.id, { marker, orden: parada.orden });
     });
 
     // Si no hay geometría, ajustar la vista a los marcadores
@@ -339,4 +324,141 @@ function _initChat() {
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
+}
+
+
+function _buildParadaIcon(orden, esActual) {
+    const size = esActual ? 34 : 26;
+    const iconHtml = esActual
+        ? `<div style="
+              background:#4f46e5;
+              width:${size}px;height:${size}px;
+              border-radius:50%;border:3px solid white;
+              box-shadow:0 2px 10px rgba(79,70,229,.45);
+              display:flex;align-items:center;justify-content:center;">
+              <span style="color:white;font-size:14px;font-weight:700;">${orden}</span>
+           </div>`
+        : `<div style="
+              background:#d1d5db;
+              width:${size}px;height:${size}px;
+              border-radius:50%;border:2px solid white;
+              box-shadow:0 1px 5px rgba(0,0,0,.18);
+              display:flex;align-items:center;justify-content:center;">
+              <span style="color:#6b7280;font-size:11px;font-weight:600;">${orden}</span>
+           </div>`;
+
+    return L.divIcon({
+        className: '',
+        html: iconHtml,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -(size / 2) - 4],
+    });
+}
+
+
+function _refrescarEstadoSesion() {
+    if (typeof estadoSesionUrl === 'undefined' || !estadoSesionUrl) return;
+
+    fetch(estadoSesionUrl)
+        .then(r => {
+            if (!r.ok) throw new Error();
+            return r.json();
+        })
+        .then(data => {
+            const paradaId = data.parada_actual_id ?? null;
+
+            if (_haCambiadoEstructuraParadas(data.paradas || [])) {
+                window.location.reload();
+                return;
+            }
+
+            _actualizarBadgeEstado(data.estado);
+            _actualizarTimeline(data.paradas || [], paradaId);
+            _actualizarMarcadoresParadas(data.paradas || [], paradaId);
+        })
+        .catch(() => {});
+}
+
+
+function _haCambiadoEstructuraParadas(paradasServidor) {
+    const idsServidor = new Set(
+        paradasServidor
+            .filter(p => p && p.id != null)
+            .map(p => String(p.id))
+    );
+
+    const idsDom = new Set(
+        Array.from(document.querySelectorAll('.timeline-item[data-parada-id]'))
+            .map(item => item.getAttribute('data-parada-id'))
+            .filter(Boolean)
+    );
+
+    if (idsServidor.size !== idsDom.size) return true;
+
+    for (const id of idsServidor) {
+        if (!idsDom.has(id)) return true;
+    }
+
+    return false;
+}
+
+
+function _actualizarBadgeEstado(estado) {
+    const badge = document.getElementById('sesion-estado-badge');
+    if (!badge || !estado) return;
+
+    const estadoNormalizado = String(estado).toLowerCase();
+    if (badge.dataset.estado === estadoNormalizado) return;
+
+    badge.dataset.estado = estadoNormalizado;
+    badge.classList.remove('session-state-pendiente', 'session-state-en_curso', 'session-state-finalizado');
+    badge.classList.add(`session-state-${estadoNormalizado}`);
+
+    if (estadoNormalizado === 'en_curso') {
+        badge.innerHTML = '<span class="material-icons-round" style="font-size:10px;">fiber_manual_record</span> En Curso';
+    } else if (estadoNormalizado === 'pendiente') {
+        badge.textContent = 'Pendiente';
+    } else {
+        badge.textContent = 'Finalizado';
+    }
+}
+
+
+function _actualizarTimeline(paradas, paradaId) {
+    if (!Array.isArray(paradas)) return;
+
+    const actualSet = new Set(paradas.filter(p => p.es_actual).map(p => String(p.id)));
+    if (!actualSet.size && paradaId) {
+        actualSet.add(String(paradaId));
+    }
+
+    document.querySelectorAll('.timeline-item[data-parada-id]').forEach(item => {
+        const itemParadaId = item.getAttribute('data-parada-id');
+        const isActual = actualSet.has(String(itemParadaId));
+        item.classList.toggle('active', isActual);
+
+        const title = item.querySelector('.timeline-title');
+        if (title) {
+            title.classList.toggle('text-muted', !isActual);
+        }
+    });
+}
+
+
+function _actualizarMarcadoresParadas(paradas, paradaId) {
+    if (!Array.isArray(paradas) || paradaMarkers.size === 0) return;
+
+    const actualSet = new Set(paradas.filter(p => p.es_actual).map(p => Number(p.id)));
+    if (!actualSet.size && paradaId != null) {
+        actualSet.add(Number(paradaId));
+    }
+
+    if (actualSet.has(paradaActualId)) return;
+
+    paradaMarkers.forEach((entry, id) => {
+        entry.marker.setIcon(_buildParadaIcon(entry.orden, actualSet.has(Number(id))));
+    });
+
+    paradaActualId = actualSet.size ? [...actualSet][0] : null;
 }

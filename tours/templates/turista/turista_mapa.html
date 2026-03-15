@@ -44,27 +44,25 @@
 
         <div class="tab-content active" id="tab-itinerario">
             <div class="d-flex justify-content-between align-items-center mb-1 mt-2">
-                {% if sesion.estado == 'en_curso' %}
-                <span style="display:inline-flex;align-items:center;gap:5px;background:var(--success-light);color:#065F46;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                <span id="sesion-estado-badge"
+                      class="session-state-badge session-state-{{ sesion.estado }}"
+                      data-estado="{{ sesion.estado }}">
+                    {% if sesion.estado == 'en_curso' %}
                     <span class="material-icons-round" style="font-size:10px;">fiber_manual_record</span>
                     En Curso
-                </span>
-                {% elif sesion.estado == 'pendiente' %}
-                <span style="display:inline-flex;align-items:center;gap:5px;background:var(--warning-light);color:#92400E;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                    {% elif sesion.estado == 'pendiente' %}
                     Pendiente
-                </span>
-                {% else %}
-                <span style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                    {% else %}
                     Finalizado
+                    {% endif %}
                 </span>
-                {% endif %}
                 <span style="color:var(--text-muted);font-size:.8rem;font-weight:500;">{{ sesion.ruta.titulo }}</span>
             </div>
 
             <div class="timeline">
                 {% for parada in paradas %}
-                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
-                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
+                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}" data-parada-id="{{ parada.id }}">
+                    <h6 class="timeline-title mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
                         style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
                         {{ parada.nombre }}
                     </h6>
@@ -109,6 +107,7 @@
     const paradasData     = JSON.parse(document.getElementById('paradas-data').textContent);
     const currentUserName = '{{ current_user_name|escapejs }}';
     const geometriaRuta   = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
+    const estadoSesionUrl = '{% url "tours:estado_sesion" sesion.id %}';
 </script>
 <script src="{% static 'js/mapa_turista.js' %}"></script>
 {% endblock %}

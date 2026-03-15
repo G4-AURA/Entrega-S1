@@ -27,6 +27,7 @@ urlpatterns = [
     # ------------------------------------------------------------------
     path("ubicacion/", views.registrar_ubicacion, name="registrar_ubicacion"),
     path("sesiones/<int:sesion_id>/ubicacion_guia/", views.obtener_ubicacion_guia, name="ubicacion_guia"),
+    path("sesiones/<int:sesion_id>/estado/", views.obtener_estado_sesion, name="estado_sesion"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
     path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
 ]
