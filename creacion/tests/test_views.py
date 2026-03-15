@@ -244,3 +244,99 @@ class SesionGeneracionIAViewTests(TestCase):
         self.assertEqual(datos_actualizados['checkpoint_actual'], 'feedback_usuario')
         self.assertEqual(len(datos_actualizados['paradas_rechazadas']), 1)
         self.assertIn('Evitar repeticiones', datos_actualizados['restricciones_usuario'])
+
+
+class FlujoSeleccionParadasIATests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='guia_seleccion_ia', password='1234')
+        self.client.force_login(self.user)
+
+    @patch('creacion.views._guardar_ruta_ia_en_bd')
+    @patch('creacion.views.consultar_langgraph')
+    def test_generar_en_modo_seleccion_devuelve_propuesta_sin_guardar(self, mock_consultar, mock_guardar):
+        mock_consultar.return_value = {
+            'descripcion': 'Ruta propuesta',
+            'paradas': [
+                {'nombre': 'Parada A', 'coordenadas': [37.38, -5.99]},
+                {'nombre': 'Parada B', 'coordenadas': [37.39, -6.00]},
+            ],
+        }
+
+        response = self.client.post(
+            reverse('creacion:generar_ruta_ia'),
+            data=json.dumps(
+                {
+                    'ciudad': 'Sevilla',
+                    'duracion': 2,
+                    'personas': 4,
+                    'exigencia': 'media',
+                    'mood': ['historia'],
+                    'modo_seleccion': True,
+                }
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['checkpoint_actual'], 'ruta_generada')
+        self.assertTrue(data.get('sesion_generacion_id'))
+        self.assertEqual(len(data.get('datos_ruta', {}).get('paradas', [])), 2)
+        self.assertNotIn('ruta_id', data)
+        mock_guardar.assert_not_called()
+
+    @patch('creacion.views._guardar_ruta_ia_en_bd')
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views.consultar_langgraph')
+    def test_confirmar_seleccion_guarda_ruta_y_checkpoint_final(
+        self,
+        mock_consultar,
+        _mock_get_guia,
+        mock_guardar,
+    ):
+        mock_consultar.return_value = {
+            'descripcion': 'Ruta propuesta',
+            'paradas': [
+                {'nombre': 'Parada A', 'coordenadas': [37.38, -5.99]},
+                {'nombre': 'Parada B', 'coordenadas': [37.39, -6.00]},
+            ],
+        }
+        mock_guardar.return_value = type('RutaStub', (), {'id': 123})()
+
+        generar = self.client.post(
+            reverse('creacion:generar_ruta_ia'),
+            data=json.dumps(
+                {
+                    'ciudad': 'Sevilla',
+                    'duracion': 2,
+                    'personas': 4,
+                    'exigencia': 'media',
+                    'mood': ['historia'],
+                    'modo_seleccion': True,
+                    'restricciones': ['Evitar escaleras'],
+                }
+            ),
+            content_type='application/json',
+        )
+        self.assertEqual(generar.status_code, 200)
+        sesion_id = generar.json()['sesion_generacion_id']
+
+        confirmar = self.client.post(
+            reverse('creacion:confirmar_ruta_ia'),
+            data=json.dumps(
+                {
+                    'sesion_generacion_id': sesion_id,
+                    'seleccion_indices': [1],
+                }
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(confirmar.status_code, 200)
+        data = confirmar.json()
+        self.assertEqual(data['ruta_id'], 123)
+        self.assertEqual(data['checkpoint_actual'], 'ruta_guardada')
+        self.assertEqual(len(data['datos_ruta']['checkpoint_contexto']['paradas_rechazadas']), 1)
+        self.assertIn('Evitar escaleras', data['datos_ruta']['checkpoint_contexto']['restricciones_usuario'])
+        mock_guardar.assert_called_once()

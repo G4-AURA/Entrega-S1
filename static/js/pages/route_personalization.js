@@ -8,9 +8,14 @@
     const rutaMeta = document.getElementById('ruta-meta');
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
+    const ayudaSeleccionParadas = document.getElementById('seleccion-paradas-ayuda');
+    const accionesSeleccionRuta = document.getElementById('acciones-seleccion-ruta');
+    const btnConfirmarSeleccion = document.getElementById('btn-confirmar-seleccion');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
 
     let leafletMap = null;
+    let sesionGeneracionActiva = null;
+    let propuestasParadasActivas = [];
 
     function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
         if (!rutaId || !sesionGeneracionId) return;
@@ -161,6 +166,7 @@
             mood: moodSeleccionados,
             deseos: leerDeseos(),
             metadata,
+            modo_seleccion: true,
         };
     }
 
@@ -249,6 +255,72 @@
         renderizarMapa(datos.paradas || []);
     }
 
+    function renderizarRutaPropuesta(datos) {
+        seccionResultados.classList.remove('d-none');
+        listaParadas.innerHTML = '';
+
+        rutaMeta.classList.remove('d-none');
+        rutaMeta.textContent = `${datos.titulo || 'Ruta propuesta'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Selecciona paradas`;
+
+        propuestasParadasActivas = Array.isArray(datos.paradas) ? datos.paradas : [];
+        propuestasParadasActivas.forEach((parada, idx) => {
+            listaParadas.insertAdjacentHTML(
+                'beforeend',
+                `<label class="list-group-item border-start border-warning border-4 mb-2">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <div class="fw-bold text-dark">Parada ${parada.orden || idx + 1}: ${parada.nombre || `Parada ${idx + 1}`}</div>
+                            <div class="small text-muted">${parada.descripcion || parada.desc || parada.justificacion || 'Sin descripción'}</div>
+                        </div>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input parada-propuesta-check" type="checkbox" data-index="${idx}" checked>
+                        </div>
+                    </div>
+                </label>`,
+            );
+        });
+
+        ayudaSeleccionParadas?.classList.remove('d-none');
+        accionesSeleccionRuta?.classList.remove('d-none');
+        renderizarMapa(propuestasParadasActivas);
+    }
+
+    function obtenerIndicesSeleccionados() {
+        return Array.from(document.querySelectorAll('.parada-propuesta-check:checked'))
+            .map((check) => Number(check.dataset.index))
+            .filter((idx) => Number.isInteger(idx));
+    }
+
+    async function confirmarSeleccionRutaIA() {
+        if (!sesionGeneracionActiva) {
+            throw new Error('No hay una sesión de generación activa para confirmar.');
+        }
+
+        const seleccion = obtenerIndicesSeleccionados();
+        if (!seleccion.length) {
+            throw new Error('Debes seleccionar al menos una parada para guardar la ruta.');
+        }
+
+        const response = await fetch(config.urls.confirmar, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': config.csrfToken,
+            },
+            body: JSON.stringify({
+                sesion_generacion_id: sesionGeneracionActiva,
+                seleccion_indices: seleccion,
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.status !== 'OK') {
+            throw new Error(data.mensaje || 'No se pudo confirmar la selección de paradas.');
+        }
+
+        return data;
+    }
+
     document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {
             this.closest('.mood-btn').classList.toggle('active', this.checked);
@@ -263,21 +335,16 @@
         try {
             const payload = await leerFormulario();
             const data = await enviarPeticion(payload);
-            guardarSesionGeneracionEnStorage(data.ruta_id, data.sesion_generacion_id);
-
-            const estadoSesion = await obtenerEstadoSesionGeneracion(data.sesion_generacion_id);
-            const checkpoint = estadoSesion?.checkpoint_actual || data.checkpoint_actual || 'ruta_guardada';
+            sesionGeneracionActiva = data.sesion_generacion_id || null;
 
             form.classList.add('d-none');
             document.getElementById('subtitulo-form').classList.add('d-none');
-            renderizarRuta(data.datos_ruta);
+            renderizarRutaPropuesta(data.datos_ruta || {});
 
             estado.className = 'alert alert-success mt-3';
             estado.innerHTML = `
                 ${data.mensaje}
-                <span class="badge bg-success ms-2">Checkpoint IA: ${checkpoint}</span>
-                <br>
-                <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.
+                <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${data.checkpoint_actual || 'ruta_generada'}</span>
             `;
             estado.classList.remove('d-none');
         } catch (error) {
@@ -289,5 +356,39 @@
     });
 
     inicializarDeseos();
+
+    if (btnConfirmarSeleccion) {
+        btnConfirmarSeleccion.addEventListener('click', async () => {
+            estado.classList.add('d-none');
+            btnConfirmarSeleccion.disabled = true;
+            btnConfirmarSeleccion.textContent = 'Guardando...';
+
+            try {
+                const confirmacion = await confirmarSeleccionRutaIA();
+                guardarSesionGeneracionEnStorage(confirmacion.ruta_id, confirmacion.sesion_generacion_id);
+                const estadoSesion = await obtenerEstadoSesionGeneracion(confirmacion.sesion_generacion_id);
+                const checkpoint = estadoSesion?.checkpoint_actual || confirmacion.checkpoint_actual || 'ruta_guardada';
+
+                accionesSeleccionRuta?.classList.add('d-none');
+                ayudaSeleccionParadas?.classList.add('d-none');
+                renderizarRuta(confirmacion.datos_ruta || {});
+
+                estado.className = 'alert alert-success mt-3';
+                estado.innerHTML = `
+                    ${confirmacion.mensaje}
+                    <span class="badge bg-success ms-2">Checkpoint IA: ${checkpoint}</span>
+                    <br>
+                    <a href="/catalogo/${confirmacion.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.
+                `;
+                estado.classList.remove('d-none');
+            } catch (error) {
+                console.error(error);
+                renderizarErrores(error.message);
+            } finally {
+                btnConfirmarSeleccion.disabled = false;
+                btnConfirmarSeleccion.textContent = 'Guardar ruta con selección';
+            }
+        });
+    }
 
 })();

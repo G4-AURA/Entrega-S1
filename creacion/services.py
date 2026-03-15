@@ -592,6 +592,41 @@ def guardar_historial_ruta_ia(payload, ruta_generada):
     return None
 
 
+def obtener_contexto_checkpoint_por_ruta(ruta_id):
+    """
+    Recupera el contexto de checkpoints guardado en historial IA para una ruta.
+    Busca en los historiales más recientes una respuesta cuyo id de ruta coincida.
+    """
+    contexto_vacio = {
+        'restricciones_usuario': [],
+        'paradas_rechazadas': [],
+    }
+
+    if not ruta_id:
+        return contexto_vacio
+
+    try:
+        historiales = Historial_ia.objects.order_by('-momento')[:200]
+    except DatabaseError:
+        return contexto_vacio
+
+    for historial in historiales:
+        respuesta = historial.respuesta if isinstance(historial.respuesta, dict) else {}
+        if int(respuesta.get('id') or 0) != int(ruta_id):
+            continue
+
+        checkpoint_contexto = respuesta.get('checkpoint_contexto')
+        if not isinstance(checkpoint_contexto, dict):
+            return contexto_vacio
+
+        return {
+            'restricciones_usuario': checkpoint_contexto.get('restricciones_usuario') or [],
+            'paradas_rechazadas': checkpoint_contexto.get('paradas_rechazadas') or [],
+        }
+
+    return contexto_vacio
+
+
 def guardar_ruta_manual(guia, payload):
     titulo = str(payload.get('titulo') or '').strip()
     descripcion = payload.get('descripcion') or ''

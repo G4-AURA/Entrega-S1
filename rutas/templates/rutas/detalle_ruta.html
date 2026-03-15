@@ -175,6 +175,14 @@
     .ia-suggestion-item__actions {
         margin-top: 0.5rem;
     }
+
+    .checkpoint-context-box {
+        border: 1px solid #dbeafe;
+        border-radius: 12px;
+        background: #f8fbff;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+    }
 </style>
 {% endblock %}
 
@@ -227,6 +235,37 @@
             </span>
         {% endif %}
     </div>
+
+    {% with restricciones=ia_checkpoint_contexto.restricciones_usuario rechazadas=ia_checkpoint_contexto.paradas_rechazadas %}
+    {% if restricciones or rechazadas %}
+    <div class="checkpoint-context-box">
+        <div class="fw-semibold small mb-2">Contexto IA utilizado para esta ruta</div>
+        {% if restricciones %}
+        <div class="small mb-2">
+            <strong>Restricciones iniciales del guía:</strong>
+            <ul class="mb-0 mt-1">
+                {% for restriccion in restricciones %}
+                <li>{{ restriccion }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if rechazadas %}
+        <div class="small">
+            <strong>Paradas rechazadas durante la selección:</strong>
+            <ul class="mb-0 mt-1">
+                {% for parada in rechazadas %}
+                <li>
+                    {{ parada.nombre|default:'Sin nombre' }}
+                    {% if parada.motivo_rechazo %}- {{ parada.motivo_rechazo }}{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% endwith %}
 
     {# ── Meta ─────────────────────────────────────────────────────────────── #}
     <div class="card shadow-sm border-0 mb-3">

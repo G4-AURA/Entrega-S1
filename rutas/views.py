@@ -14,6 +14,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from creacion import services as creacion_services
 from . import services
 from .models import Parada, Ruta
 MAX_RUTAS_PAGE_SIZE = 9
@@ -221,6 +222,7 @@ def ruta_detalle_view(request, ruta_id):
         "stop_reordered": request.GET.get("stop_reordered") == "1",
         "stop_error":     request.GET.get("stop_error")     == "1",
         "exigencia_choices": Ruta.Exigencia.choices,
+        "ia_checkpoint_contexto": creacion_services.obtener_contexto_checkpoint_por_ruta(ruta.id),
     }
     return render(request, "rutas/detalle_ruta.html", context)
 
