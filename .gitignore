@@ -26,3 +26,12 @@ celerybeat.pid
 CLAUDE.md
 .claude/
 .github/instructions/
+.github/get-shit-done/
+.github/skills/
+.github/copilot-instructions.md
+.github/gsd-file-manifest.json
+.github/agents/
+.planning/
+.gemini/
+.codex/
+.opencode/

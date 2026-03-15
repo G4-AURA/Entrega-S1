@@ -370,6 +370,113 @@ def obtener_ubicacion_guia(request, sesion_id):
     return JsonResponse({"error": "El guía aún no ha compartido su ubicación."}, status=404)
 
 
+@require_POST
+def registrar_ubicacion_turista(request, sesion_id):
+    """Registra la posición GPS del turista anónimo activo en la sesión."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    turista = services.obtener_turista_request(request)
+    if not turista:
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    es_participante_activo = TuristaSesion.objects.filter(
+        turista=turista,
+        sesion_tour=sesion,
+        activo=True,
+    ).exists()
+    if not es_participante_activo:
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    latitud = body.get("latitud")
+    longitud = body.get("longitud")
+    if any(v is None for v in (latitud, longitud)):
+        return JsonResponse(
+            {"error": "Los campos latitud y longitud son obligatorios."},
+            status=400,
+        )
+
+    try:
+        latitud, longitud = float(latitud), float(longitud)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Latitud/longitud deben ser numéricas."}, status=400)
+
+    if not (-90 <= latitud <= 90) or not (-180 <= longitud <= 180):
+        return JsonResponse({"error": "Coordenadas fuera de rango válido."}, status=400)
+
+    ubicacion = UbicacionVivo.objects.create(
+        coordenadas=Point(longitud, latitud, srid=4326),
+        timestamp=timezone.now(),
+        sesion_tour=sesion,
+        usuario=None,
+        turista=turista,
+    )
+
+    return JsonResponse(
+        {
+            "ubicacion_id": ubicacion.id,
+            "sesion_id": sesion.id,
+            "turista_id": turista.id,
+            "latitud": latitud,
+            "longitud": longitud,
+            "timestamp": ubicacion.timestamp.isoformat(),
+        },
+        status=201,
+    )
+
+
+@require_GET
+def obtener_ubicaciones_turistas(request, sesion_id):
+    """Devuelve la última ubicación de turistas activos de la sesión (solo guía)."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    turistas_activos_ids = list(
+        TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).values_list(
+            "turista_id", flat=True
+        )
+    )
+
+    if not turistas_activos_ids:
+        return JsonResponse({"turistas": []})
+
+    ubicaciones = (
+        UbicacionVivo.objects.filter(
+            sesion_tour=sesion,
+            turista_id__in=turistas_activos_ids,
+            coordenadas__isnull=False,
+        )
+        .select_related("turista")
+        .order_by("turista_id", "-timestamp")
+    )
+
+    resultados = []
+    vistos = set()
+    for ubicacion in ubicaciones:
+        turista_id = ubicacion.turista_id
+        if not turista_id or turista_id in vistos:
+            continue
+        vistos.add(turista_id)
+
+        resultados.append(
+            {
+                "turista_id": turista_id,
+                "alias": ubicacion.turista.alias,
+                "lat": ubicacion.coordenadas.y,
+                "lng": ubicacion.coordenadas.x,
+                "timestamp": ubicacion.timestamp.isoformat(),
+            }
+        )
+
+    return JsonResponse({"turistas": resultados})
+
+
 # ===========================================================================
 # CHAT (accesible a turistas anónimos y al guía)
 # ===========================================================================

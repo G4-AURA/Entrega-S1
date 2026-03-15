@@ -18,6 +18,7 @@
 let map               = null;
 let guiaMarker        = null;
 let miUbicacionMarker = null;
+const turistasMarkers = new Map();
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -56,10 +57,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
 
-    // ── Posición del guía (polling cada 5 s, solo turistas) ───────────────
+    // ── Polling de posiciones en vivo ──────────────────────────────────────
     if (!esGuia) {
         _obtenerUbicacionGuia();
         setInterval(_obtenerUbicacionGuia, 5000);
+    } else {
+        _obtenerUbicacionesTuristas();
+        setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
     // ── Panel expandible ──────────────────────────────────────────────────
@@ -202,6 +206,12 @@ function _iniciarRastreoLocal() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
                     body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
                 }).catch(() => {});
+            } else {
+                fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                    body:    JSON.stringify({ latitud: lat, longitud: lng }),
+                }).catch(() => {});
             }
         },
         () => {},
@@ -339,4 +349,59 @@ function _initChat() {
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
+}
+
+
+function _obtenerUbicacionesTuristas() {
+    if (!map || !esGuia) return;
+
+    fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(data => _renderizarTuristasEnMapa(data.turistas || []))
+        .catch(() => {});
+}
+
+
+function _renderizarTuristasEnMapa(turistas) {
+    const visibles = new Set();
+
+    turistas.forEach(turista => {
+        if (typeof turista.lat !== 'number' || typeof turista.lng !== 'number') return;
+
+        const key = String(turista.turista_id);
+        visibles.add(key);
+        const pos = [turista.lat, turista.lng];
+
+        let marker = turistasMarkers.get(key);
+        if (!marker) {
+            marker = L.marker(pos, {
+                icon: L.divIcon({
+                    className: '',
+                    html: `<div style="
+                            background:#0ea5e9;width:24px;height:24px;
+                            border-radius:50%;border:2px solid white;
+                            box-shadow:0 2px 8px rgba(14,165,233,.45);
+                            display:flex;align-items:center;justify-content:center;
+                            color:white;font-size:12px;font-weight:700;">T</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                }),
+                zIndexOffset: 850,
+            }).addTo(map);
+            turistasMarkers.set(key, marker);
+        } else {
+            marker.setLatLng(pos);
+        }
+
+        marker.bindPopup(`Turista: ${turista.alias || 'Anónimo'}`);
+    });
+
+    Array.from(turistasMarkers.keys()).forEach(key => {
+        if (visibles.has(key)) return;
+        const marker = turistasMarkers.get(key);
+        if (marker) {
+            map.removeLayer(marker);
+            turistasMarkers.delete(key);
+        }
+    });
 }

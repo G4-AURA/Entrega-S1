@@ -110,13 +110,21 @@ class TuristaSesion(models.Model):
 
 class UbicacionVivo(models.Model):
     """
-    Snapshot GPS del guía dentro de una sesión activa.
-    Solo el guía comparte ubicación; los turistas son anónimos y no se rastrean.
+    Snapshot GPS dentro de una sesión activa.
+    Puede pertenecer al guía autenticado (`usuario`) o a un turista anónimo
+    (`turista`) según el origen del reporte.
     """
     coordenadas = gis_models.PointField(null=True, blank=True)
     timestamp = models.DateTimeField()
     sesion_tour = models.ForeignKey(SesionTour, on_delete=models.CASCADE)
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE)
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    turista = models.ForeignKey(
+        Turista,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="ubicaciones_vivas",
+    )
 
     class Meta:
         db_table = "tours_ubicacion_vivo"
@@ -128,7 +136,11 @@ class UbicacionVivo(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.usuario.username} – {self.timestamp}"
+        if self.usuario_id:
+            return f"{self.usuario.username} – {self.timestamp}"
+        if self.turista_id:
+            return f"{self.turista.alias} – {self.timestamp}"
+        return f"Ubicación sin remitente – {self.timestamp}"
 
 
 class MensajeChat(models.Model):
