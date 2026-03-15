@@ -130,7 +130,7 @@ def guardar_ruta_manual(request):
             status=200,
         )
     except services.ErrorValidacionRuta as exc:
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=400)
+        return JsonResponse({'status': 'ERROR', 'errores': exc.errores}, status=400)
     except services.ErrorPersistenciaRuta as exc:
         logger.exception('Error de persistencia en guardar_ruta_manual')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
