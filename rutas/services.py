@@ -141,6 +141,8 @@ def actualizar_titulo_ruta(ruta, raw_titulo):
 
 
 def actualizar_descripcion_ruta(ruta, descripcion):
+    if len(descripcion or "") > 150:
+        raise ValueError("La descripción no puede superar los 150 caracteres.")
     ruta.descripcion = descripcion
     ruta.save(update_fields=["descripcion"])
 

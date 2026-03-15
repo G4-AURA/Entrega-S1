@@ -24,6 +24,14 @@ class ErrorRutaBase(Exception):
 
 class ErrorValidacionRuta(ErrorRutaBase):
     """Errores de validación de payload y datos de ruta."""
+    def __init__(self, errores):
+        if isinstance(errores, str):
+            self.errores = {'general': errores}
+        elif isinstance(errores, dict):
+            self.errores = errores
+        else:
+            self.errores = {'general': str(errores)}
+        super().__init__(str(self.errores))
 
 
 class ErrorPermisosRuta(ErrorRutaBase):
@@ -358,15 +366,31 @@ def guardar_ruta_manual(guia, payload):
     paradas_data = payload.get('paradas', [])
 
     if not titulo:
-        raise ErrorValidacionRuta('El título de la ruta es obligatorio.')
+        raise ErrorValidacionRuta({'titulo': 'El título de la ruta es obligatorio.'})
+    if len(titulo) > 255:
+        raise ErrorValidacionRuta({'titulo': 'El título no puede superar los 255 caracteres.'})
     if not isinstance(paradas_data, list):
-        raise ErrorValidacionRuta('El formato de paradas no es válido.')
+        raise ErrorValidacionRuta({'paradas': 'El formato de paradas no es válido.'})
+
+    for idx, parada_data in enumerate(paradas_data, start=1):
+        nombre = parada_data.get('nombre', '')
+        if len(str(nombre)) > 255:
+            raise ErrorValidacionRuta({f'parada_{idx}': 'El nombre no puede superar los 255 caracteres.'})
 
     try:
         duracion_horas = float(payload.get('duracion_horas', 2.0))
+    except (TypeError, ValueError):
+        raise ErrorValidacionRuta({'duracion_horas': 'Duración debe tener un formato válido.'})
+
+    try:
         num_personas = int(payload.get('num_personas', 10))
-    except (TypeError, ValueError) as exc:
-        raise ErrorValidacionRuta('Duración y número de personas deben tener un formato válido.') from exc
+    except (TypeError, ValueError):
+        raise ErrorValidacionRuta({'num_personas': 'Número de personas debe tener un formato válido.'})
+
+    if duracion_horas <= 0.1 or duracion_horas > 24:
+        raise ErrorValidacionRuta({'duracion_horas': 'El valor debe ser superior a 0,1'})
+    if num_personas < 1 or num_personas > 50:
+        raise ErrorValidacionRuta({'num_personas': 'El valor debe ser superior o igual a 1'})
 
     exigencia_raw = str(payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA)).strip().lower()
     nivel_exigencia = MAPA_EXIGENCIA_RUTA.get(exigencia_raw, payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA))

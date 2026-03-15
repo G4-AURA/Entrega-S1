@@ -200,8 +200,9 @@
                        value="{{ ruta.titulo }}" required>
             </div>
             <div class="mb-2">
-                <textarea name="descripcion" class="form-control" rows="2"
+                <textarea name="descripcion" class="form-control" rows="2" maxlength="150"
                           placeholder="Descripción (opcional)">{{ ruta.descripcion }}</textarea>
+                <small class="text-muted">Máximo 150 caracteres</small>
             </div>
             <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
         </form>
@@ -243,14 +244,17 @@
                 {% csrf_token %}
                 <input type="hidden" name="form_type" value="meta">
                 <div class="col-12 col-md-3">
+                    <label class="form-label">Duración (horas)</label>
                     <input type="number" step="0.1" min="0.1" name="duracion_horas"
                            class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
                 </div>
                 <div class="col-12 col-md-3">
+                    <label class="form-label">Número de personas</label>
                     <input type="number" min="1" name="num_personas"
                            class="form-control" value="{{ ruta.num_personas }}" required>
                 </div>
                 <div class="col-12 col-md-3">
+                    <label class="form-label">Nivel de exigencia</label>
                     <select name="nivel_exigencia" class="form-select" required>
                         {% for value, label in exigencia_choices %}
                         <option value="{{ value }}"
