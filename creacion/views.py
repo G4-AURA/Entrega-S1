@@ -104,6 +104,9 @@ def generar_ruta_ia(request):
         logger.exception('Error de persistencia en generar_ruta_ia')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
 
+    except services.ErrorIntegracionIA as exc:
+        logger.error('Error de IA en generar_ruta_ia: %s', exc)
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
 
 @csrf_exempt
 @require_POST
