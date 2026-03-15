@@ -791,6 +791,15 @@ function obtenerSesionGeneracionId() {
 const sesionGeneracionId = obtenerSesionGeneracionId();
 let estadoSesionGeneracion = null;
 
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
 function renderResumenSesionIAEnPanel(paradaId) {
     const { historial } = getPanelSugerenciasParada(paradaId);
     if (!historial) return;
@@ -816,7 +825,26 @@ function renderResumenSesionIAEnPanel(paradaId) {
         ? `Restricciones (${restricciones.length}): ${restriccionesPreview}`
         : 'Restricciones (0)';
 
-    historial.textContent = `Checkpoint: ${checkpoint} · Rechazadas: ${rechazadas.length} · ${restriccionesTexto}`;
+    const ultimasRechazadas = rechazadas.slice(-3).reverse();
+    const rechazosHtml = ultimasRechazadas.length
+        ? `
+            <div class="mt-1">Ultimos rechazos:</div>
+            <ul class="mb-0 ps-3">
+                ${ultimasRechazadas.map((rechazo) => {
+                    const nombre = escapeHtml(rechazo?.nombre || 'Sin nombre');
+                    const motivo = escapeHtml(rechazo?.motivo_rechazo || 'Sin motivo');
+                    return `<li>${nombre}: ${motivo}</li>`;
+                }).join('')}
+            </ul>
+        `
+        : '<div class="mt-1">Ultimos rechazos: ninguno</div>';
+
+    historial.innerHTML = `
+        <div>Checkpoint: ${escapeHtml(checkpoint)}</div>
+        <div>Rechazadas: ${rechazadas.length}</div>
+        <div>${escapeHtml(restriccionesTexto)}</div>
+        ${rechazosHtml}
+    `;
 }
 
 function renderResumenSesionIAEnTodosLosPaneles() {
