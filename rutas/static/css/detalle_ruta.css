@@ -231,3 +231,40 @@
     cursor: grab;
     border: 1px dashed var(--brand-color) !important;
 }
+
+.ia-suggestions-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.ia-suggestion-item {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: var(--bg-white);
+    padding: 0.6rem;
+    margin-top: 0.5rem;
+}
+
+.ia-suggestion-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.ia-suggestions-inline {
+    margin-top: 0.75rem;
+}
+
+.ia-suggestion-item__actions {
+    margin-top: 0.5rem;
+}
+
+.checkpoint-context-box {
+    border: 1px solid #dbeafe;
+    border-radius: 12px;
+    background: #f8fbff;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
