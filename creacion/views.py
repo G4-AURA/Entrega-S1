@@ -275,6 +275,73 @@ def confirmar_ruta_ia(request):
         status=200,
     )
 
+
+@csrf_exempt
+@require_POST
+def generar_paradas_adicionales_ia(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes iniciar sesión para continuar.'}, status=401)
+
+    if hasattr(request.user, 'turista'):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Solo los guías pueden pedir paradas adicionales.'},
+            status=403,
+        )
+
+    try:
+        body = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'El cuerpo de la petición no es JSON válido.'}, status=400)
+
+    sesion_generacion_id = str(body.get('sesion_generacion_id') or '').strip()
+    sugerencias_texto = str(body.get('sugerencias') or '').strip()
+    cantidad_raw = body.get('cantidad', 3)
+    if not sesion_generacion_id:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes indicar la sesión de generación.'}, status=400)
+
+    try:
+        cantidad = int(cantidad_raw)
+    except (TypeError, ValueError):
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'La cantidad debe ser un entero válido.'}, status=400)
+
+    try:
+        estado = services.obtener_estado_sesion_generacion(request, sesion_generacion_id)
+        candidatos = services.generar_paradas_adicionales_sesion(
+            estado_sesion=estado,
+            cantidad=cantidad,
+            sugerencias_texto=sugerencias_texto,
+        )
+
+        restricciones_extra = [sugerencias_texto] if sugerencias_texto else None
+        estado_actualizado = services.avanzar_checkpoint_sesion_generacion(
+            request,
+            sesion_generacion_id,
+            checkpoint='paradas_adicionales_generadas',
+            paradas_propuestas=candidatos,
+            restricciones=restricciones_extra,
+        )
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
+    except services.ErrorValidacionRuta as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=400)
+    except services.ErrorIntegracionIA as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
+
+    return JsonResponse(
+        {
+            'status': 'OK',
+            'mensaje': 'Paradas adicionales generadas correctamente.',
+            'sesion_generacion_id': sesion_generacion_id,
+            'checkpoint_actual': estado_actualizado.get('checkpoint_actual'),
+            'datos': {
+                'paradas_propuestas': estado_actualizado.get('paradas_propuestas') or [],
+            },
+        },
+        status=200,
+    )
+
 @csrf_exempt
 @require_POST
 def guardar_ruta_manual(request):

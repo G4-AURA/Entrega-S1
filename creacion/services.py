@@ -860,6 +860,128 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
         'candidatos': candidatos,
     }
 
+
+def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3, sugerencias_texto: str = ''):
+    if cantidad < 1 or cantidad > 10:
+        raise ErrorValidacionRuta('La cantidad de sugerencias debe estar entre 1 y 10.')
+
+    contexto = estado_sesion.get('contexto_generacion') or {}
+    ciudad = str(contexto.get('ciudad') or 'Sin ciudad').strip() or 'Sin ciudad'
+    mood = contexto.get('mood') or []
+    restricciones = estado_sesion.get('restricciones_usuario') or []
+
+    paradas_existentes = []
+    for idx, parada in enumerate(estado_sesion.get('paradas_propuestas') or [], start=1):
+        coordenadas = _normalizar_coordenadas(
+            parada.get('coordenadas') or parada.get('coords'),
+            lat=parada.get('lat'),
+            lon=parada.get('lon'),
+        )
+        if not coordenadas:
+            continue
+
+        nombre = str(parada.get('nombre') or '').strip()
+        if not nombre:
+            continue
+
+        paradas_existentes.append(
+            {
+                'orden': parada.get('orden') or idx,
+                'nombre': nombre,
+                'coordenadas': coordenadas,
+            }
+        )
+
+    if not paradas_existentes:
+        raise ErrorValidacionRuta('No hay contexto de paradas propuestas para pedir alternativas adicionales.')
+
+    contexto_geo = _calcular_contexto_geografico(paradas_existentes)
+
+    bloque_sugerencias = ''
+    sugerencias_texto = str(sugerencias_texto or '').strip()
+    if sugerencias_texto:
+        bloque_sugerencias = f"\nSugerencias adicionales del guía: {sugerencias_texto[:300]}"
+
+    bloque_restricciones = ''
+    if restricciones:
+        bloque_restricciones = (
+            "\nRestricciones activas del guía: "
+            + '; '.join(str(r).strip() for r in restricciones if str(r).strip())[:600]
+        )
+
+    prompt = f"""
+        Eres un asistente experto en diseño de rutas turísticas.
+
+        Debes proponer {cantidad} NUEVAS paradas adicionales para complementar esta selección.
+
+        ## Contexto
+        - Ciudad: {ciudad}
+        - Temática(s): {', '.join(mood) if mood else 'general'}
+        - Paradas ya propuestas: {json.dumps(paradas_existentes, ensure_ascii=False)}
+        - Centro geográfico aproximado: {json.dumps(contexto_geo['centro'], ensure_ascii=False)}
+        - Distancia máxima permitida desde el centro: {round(contexto_geo['radio_km'], 2)} km
+        {bloque_restricciones}
+        {bloque_sugerencias}
+
+        ## Criterios obligatorios
+        - NO repitas paradas existentes.
+        - NO repitas paradas dentro de la respuesta.
+        - Mantén coherencia temática y con restricciones.
+        - Devuelve coordenadas plausibles y dentro del área indicada.
+
+        Responde únicamente JSON válido (sin texto extra) como lista de objetos:
+        [
+          {{
+            "nombre": "Nombre de la parada",
+            "coordenadas": [lat, lon],
+            "categoria": "Categoría turística",
+            "nivel_confianza": 0.0,
+            "justificacion": "Motivo breve"
+          }}
+        ]
+    """
+
+    try:
+        respuesta_ia = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+    except Exception as exc:
+        raise ErrorIntegracionIA('No se pudieron generar paradas adicionales con IA en este momento.') from exc
+
+    if not isinstance(respuesta_ia, list):
+        raise ErrorIntegracionIA('La IA devolvió un formato inválido para las paradas adicionales.')
+
+    nombres_vistos = {
+        _normalizar_nombre_para_dedupe(p.get('nombre'))
+        for p in paradas_existentes
+        if _normalizar_nombre_para_dedupe(p.get('nombre'))
+    }
+    coords_vistas = {
+        _clave_coordenadas_para_dedupe(p.get('coordenadas'))
+        for p in paradas_existentes
+        if isinstance(p.get('coordenadas'), list) and len(p.get('coordenadas')) >= 2
+    }
+
+    candidatos = []
+    for idx, candidato in enumerate(respuesta_ia, start=1):
+        normalizado = _normalizar_candidato_parada(candidato, idx)
+        if not normalizado:
+            continue
+        if not _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
+            continue
+
+        nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
+        coords_key = _clave_coordenadas_para_dedupe(normalizado.get('coordenadas'))
+        if nombre_key in nombres_vistos or coords_key in coords_vistas:
+            continue
+
+        nombres_vistos.add(nombre_key)
+        coords_vistas.add(coords_key)
+        candidatos.append(normalizado)
+
+    if not candidatos:
+        raise ErrorIntegracionIA('La IA no devolvió paradas adicionales válidas y no duplicadas.')
+
+    return candidatos
+
 class State(TypedDict):
     usuario_input: dict 
     pois_seleccionados: list

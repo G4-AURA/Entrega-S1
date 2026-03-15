@@ -340,3 +340,59 @@ class FlujoSeleccionParadasIATests(TestCase):
         self.assertEqual(len(data['datos_ruta']['checkpoint_contexto']['paradas_rechazadas']), 1)
         self.assertIn('Evitar escaleras', data['datos_ruta']['checkpoint_contexto']['restricciones_usuario'])
         mock_guardar.assert_called_once()
+
+    @patch('creacion.views.services.generar_paradas_adicionales_sesion')
+    @patch('creacion.views.consultar_langgraph')
+    def test_generar_paradas_adicionales_actualiza_propuestas_en_sesion(self, mock_consultar, mock_generar_adicionales):
+        mock_consultar.return_value = {
+            'descripcion': 'Ruta propuesta',
+            'paradas': [
+                {'nombre': 'Parada A', 'coordenadas': [37.38, -5.99]},
+                {'nombre': 'Parada B', 'coordenadas': [37.39, -6.00]},
+            ],
+        }
+        mock_generar_adicionales.return_value = [
+            {
+                'id_sugerencia': 1,
+                'nombre': 'Parada C',
+                'coordenadas': [37.40, -6.01],
+                'categoria': 'historia',
+                'nivel_confianza': 0.82,
+                'justificacion': 'Complementa el recorrido',
+            }
+        ]
+
+        generar = self.client.post(
+            reverse('creacion:generar_ruta_ia'),
+            data=json.dumps(
+                {
+                    'ciudad': 'Sevilla',
+                    'duracion': 2,
+                    'personas': 4,
+                    'exigencia': 'media',
+                    'mood': ['historia'],
+                    'modo_seleccion': True,
+                }
+            ),
+            content_type='application/json',
+        )
+        self.assertEqual(generar.status_code, 200)
+        sesion_id = generar.json()['sesion_generacion_id']
+
+        adicionales = self.client.post(
+            reverse('creacion:generar_paradas_adicionales_ia'),
+            data=json.dumps(
+                {
+                    'sesion_generacion_id': sesion_id,
+                    'cantidad': 2,
+                    'sugerencias': 'Añade una parada con sombra',
+                }
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(adicionales.status_code, 200)
+        data = adicionales.json()
+        self.assertEqual(data['checkpoint_actual'], 'paradas_adicionales_generadas')
+        self.assertEqual(len(data['datos']['paradas_propuestas']), 3)
+        self.assertEqual(data['datos']['paradas_propuestas'][-1]['nombre'], 'Parada C')

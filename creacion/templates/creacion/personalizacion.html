@@ -125,11 +125,28 @@
             <p id="seleccion-paradas-ayuda" class="small text-muted d-none mb-2">
                 Selecciona las paradas que quieres mantener antes de guardar la ruta.
             </p>
+            <p id="resumen-seleccion-paradas" class="small text-muted d-none mb-2"></p>
             <div id="lista-paradas" class="list-group list-paradas-container shadow-sm"></div>
             <div class="mt-3 d-none" id="acciones-seleccion-ruta">
-                <button type="button" id="btn-confirmar-seleccion" class="btn btn-success w-100">
-                    Guardar ruta con selección
-                </button>
+                <div class="row g-2 align-items-center">
+                    <div class="col-12 col-md-8">
+                        <input
+                            type="text"
+                            id="input-sugerencias-adicionales"
+                            class="form-control"
+                            placeholder="Sugerencias para nuevas paradas (ej: incluir espacios verdes y accesibles)">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <button type="button" id="btn-generar-adicionales" class="btn btn-outline-primary w-100">
+                            Generar más paradas
+                        </button>
+                    </div>
+                    <div class="col-12">
+                        <button type="button" id="btn-confirmar-seleccion" class="btn btn-success w-100">
+                            Guardar ruta con selección
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -152,6 +169,7 @@
     "urls": {
         "generar": "{% url 'creacion:generar_ruta_ia' %}",
         "confirmar": "{% url 'creacion:confirmar_ruta_ia' %}",
+        "adicionales": "{% url 'creacion:generar_paradas_adicionales_ia' %}",
         "obtenerSesion": "{% url 'creacion:obtener_sesion_generacion_ia' session_id='__SESSION_ID__' %}"
     }
 }

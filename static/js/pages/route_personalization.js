@@ -9,8 +9,11 @@
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
     const ayudaSeleccionParadas = document.getElementById('seleccion-paradas-ayuda');
+    const resumenSeleccionParadas = document.getElementById('resumen-seleccion-paradas');
     const accionesSeleccionRuta = document.getElementById('acciones-seleccion-ruta');
     const btnConfirmarSeleccion = document.getElementById('btn-confirmar-seleccion');
+    const btnGenerarAdicionales = document.getElementById('btn-generar-adicionales');
+    const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
 
     let leafletMap = null;
@@ -235,6 +238,26 @@
         estado.classList.remove('d-none');
     }
 
+    function firmaParada(parada) {
+        const nombre = String(parada?.nombre || '').trim().toLowerCase();
+        const coords = Array.isArray(parada?.coordenadas) ? parada.coordenadas : [null, null];
+        const lat = Number(coords[0]);
+        const lon = Number(coords[1]);
+        const latKey = Number.isFinite(lat) ? lat.toFixed(5) : 'x';
+        const lonKey = Number.isFinite(lon) ? lon.toFixed(5) : 'x';
+        return `${nombre}|${latKey}|${lonKey}`;
+    }
+
+    function actualizarResumenSeleccionParadas() {
+        if (!resumenSeleccionParadas) return;
+
+        const total = propuestasParadasActivas.length;
+        const seleccionadas = obtenerIndicesSeleccionados().length;
+        const rechazadas = Math.max(0, total - seleccionadas);
+        resumenSeleccionParadas.textContent = `Paradas seleccionadas: ${seleccionadas} · Paradas rechazadas: ${rechazadas}`;
+        resumenSeleccionParadas.classList.remove('d-none');
+    }
+
     function renderizarRuta(datos) {
         seccionResultados.classList.remove('d-none');
         listaParadas.innerHTML = '';
@@ -255,15 +278,27 @@
         renderizarMapa(datos.paradas || []);
     }
 
-    function renderizarRutaPropuesta(datos) {
+    function renderizarRutaPropuesta(datos, opciones = {}) {
         seccionResultados.classList.remove('d-none');
         listaParadas.innerHTML = '';
 
         rutaMeta.classList.remove('d-none');
         rutaMeta.textContent = `${datos.titulo || 'Ruta propuesta'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Selecciona paradas`;
 
+        const firmasSeleccionadas = opciones.firmasSeleccionadas || null;
+        const firmasPrevias = opciones.firmasPrevias || null;
+
         propuestasParadasActivas = Array.isArray(datos.paradas) ? datos.paradas : [];
         propuestasParadasActivas.forEach((parada, idx) => {
+            const firma = firmaParada(parada);
+            let checked = true;
+            if (firmasSeleccionadas && firmasPrevias) {
+                if (firmasSeleccionadas.has(firma)) checked = true;
+                else if (firmasPrevias.has(firma)) checked = false;
+                else checked = true;
+            } else if (firmasSeleccionadas) {
+                checked = firmasSeleccionadas.has(firma) || !firmasSeleccionadas.size;
+            }
             listaParadas.insertAdjacentHTML(
                 'beforeend',
                 `<label class="list-group-item border-start border-warning border-4 mb-2">
@@ -273,7 +308,7 @@
                             <div class="small text-muted">${parada.descripcion || parada.desc || parada.justificacion || 'Sin descripción'}</div>
                         </div>
                         <div class="form-check mt-1">
-                            <input class="form-check-input parada-propuesta-check" type="checkbox" data-index="${idx}" checked>
+                            <input class="form-check-input parada-propuesta-check" type="checkbox" data-index="${idx}" ${checked ? 'checked' : ''}>
                         </div>
                     </div>
                 </label>`,
@@ -282,6 +317,12 @@
 
         ayudaSeleccionParadas?.classList.remove('d-none');
         accionesSeleccionRuta?.classList.remove('d-none');
+        actualizarResumenSeleccionParadas();
+
+        document.querySelectorAll('.parada-propuesta-check').forEach((check) => {
+            check.addEventListener('change', actualizarResumenSeleccionParadas);
+        });
+
         renderizarMapa(propuestasParadasActivas);
     }
 
@@ -316,6 +357,33 @@
         const data = await response.json();
         if (!response.ok || data.status !== 'OK') {
             throw new Error(data.mensaje || 'No se pudo confirmar la selección de paradas.');
+        }
+
+        return data;
+    }
+
+    async function generarParadasAdicionalesIA() {
+        if (!sesionGeneracionActiva) {
+            throw new Error('No hay una sesión activa para generar más paradas.');
+        }
+
+        const sugerencias = (inputSugerenciasAdicionales?.value || '').trim();
+        const response = await fetch(config.urls.adicionales, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': config.csrfToken,
+            },
+            body: JSON.stringify({
+                sesion_generacion_id: sesionGeneracionActiva,
+                cantidad: 3,
+                sugerencias,
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.status !== 'OK') {
+            throw new Error(data.mensaje || 'No se pudieron generar más paradas.');
         }
 
         return data;
@@ -387,6 +455,50 @@
             } finally {
                 btnConfirmarSeleccion.disabled = false;
                 btnConfirmarSeleccion.textContent = 'Guardar ruta con selección';
+            }
+        });
+    }
+
+    if (btnGenerarAdicionales) {
+        btnGenerarAdicionales.addEventListener('click', async () => {
+            estado.classList.add('d-none');
+            btnGenerarAdicionales.disabled = true;
+            btnGenerarAdicionales.textContent = 'Generando...';
+
+            try {
+                const firmasSeleccionadas = new Set(
+                    obtenerIndicesSeleccionados().map((idx) => firmaParada(propuestasParadasActivas[idx]))
+                );
+                const firmasPrevias = new Set(propuestasParadasActivas.map((p) => firmaParada(p)));
+
+                const resultado = await generarParadasAdicionalesIA();
+                const estadoSesion = await obtenerEstadoSesionGeneracion(resultado.sesion_generacion_id);
+                const checkpoint = estadoSesion?.checkpoint_actual || resultado.checkpoint_actual || 'paradas_adicionales_generadas';
+                const propuestas = resultado?.datos?.paradas_propuestas || [];
+
+                renderizarRutaPropuesta(
+                    {
+                        titulo: 'Ruta propuesta actualizada',
+                        duracion_horas: null,
+                        paradas: propuestas,
+                    },
+                    { firmasSeleccionadas, firmasPrevias },
+                );
+
+                if (inputSugerenciasAdicionales) inputSugerenciasAdicionales.value = '';
+
+                estado.className = 'alert alert-success mt-3';
+                estado.innerHTML = `
+                    ${resultado.mensaje}
+                    <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${checkpoint}</span>
+                `;
+                estado.classList.remove('d-none');
+            } catch (error) {
+                console.error(error);
+                renderizarErrores(error.message);
+            } finally {
+                btnGenerarAdicionales.disabled = false;
+                btnGenerarAdicionales.textContent = 'Generar más paradas';
             }
         });
     }
