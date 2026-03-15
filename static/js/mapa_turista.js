@@ -3,6 +3,7 @@
 ========================================= */
 
 let guiaMarker = null;
+let turistaMarkers = {};
 let map = null;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -40,6 +41,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof esGuia !== 'undefined' && !esGuia) {
         obtenerUbicacionGuia();
         setInterval(obtenerUbicacionGuia, 5000);
+    }
+
+    // El guía necesita ver las ubicaciones de todos los turistas registrados
+    if (typeof esGuia !== 'undefined' && esGuia) {
+        obtenerUbicacionesTuristas();
+        setInterval(obtenerUbicacionesTuristas, 5000);
     }
 
     // 3. Renderizar Paradas Dinámicamente
@@ -155,8 +162,8 @@ function iniciarRastreoLocal() {
                 miUbicacionMarker.setLatLng(pos);
             }
 
-            // --- 2. ENVIAR AL SERVIDOR (Solo si soy el guía) ---
-            if (typeof esGuia !== 'undefined' && esGuia) {
+            // --- 2. ENVIAR AL SERVIDOR (Guía y turistas registrados) ---
+            if (typeof esGuia !== 'undefined' && typeof isAnonymous !== 'undefined' && !isAnonymous) {
                 fetch('/tours/ubicacion/', {
                     method: 'POST',
                     headers: {
@@ -212,6 +219,41 @@ function obtenerUbicacionGuia() {
             }
         })
         .catch(error => console.error("Error obteniendo ubicación del guía:", error));
+}
+
+function obtenerUbicacionesTuristas() {
+    if (!map) return;
+
+    fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
+        .then(response => {
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error('Error al obtener ubicaciones de turistas');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.turistas && Array.isArray(data.turistas)) {
+                data.turistas.forEach(turista => {
+                    const pos = [turista.lat, turista.lng];
+
+                    if (!turistaMarkers[turista.turista_id]) {
+                        const turistaIcon = L.divIcon({
+                            className: 'turista-marker-container',
+                            html: '<div style="background-color: #3b82f6; width: 22px; height: 22px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8); display:flex; justify-content:center; align-items:center;"><span class="material-icons-round" style="font-size: 12px; color: white;">person</span></div>',
+                            iconSize: [28, 28],
+                            iconAnchor: [14, 14]
+                        });
+
+                        turistaMarkers[turista.turista_id] = L.marker(pos, {icon: turistaIcon, zIndexOffset: 800}).addTo(map);
+                        turistaMarkers[turista.turista_id].bindPopup(`Turista: ${turista.alias}`);
+                    } else {
+                        turistaMarkers[turista.turista_id].setLatLng(pos);
+                    }
+                });
+            }
+        })
+        .catch(error => console.error("Error obteniendo ubicaciones de turistas:", error));
 }
 
 // FUNCIÓN DE POLLING PARA MOSTRAR AL GUÍA

@@ -424,6 +424,48 @@ def obtener_ubicacion_guia(request, sesion_id):
     
     return JsonResponse({'error': 'El guía aún no ha compartido su ubicación.'}, status=404)
 
+
+def obtener_ubicaciones_turistas(request, sesion_id):
+    """
+    Devuelve la última ubicación registrada de cada turista registrado de la sesión.
+    Solo accesible por el guía de la sesión.
+    """
+    sesion = get_object_or_404(SESION_TOUR, id=sesion_id)
+
+    # Verificar que quien accede es el guía de la sesión
+    es_guia = False
+    try:
+        if sesion.ruta.guia.user.user == request.user:
+            es_guia = True
+    except AttributeError:
+        pass
+
+    if not es_guia:
+        return JsonResponse(
+            {'error': 'No tienes permiso para ver las ubicaciones de los turistas.'},
+            status=403,
+        )
+
+    # Para cada turista registrado en la sesión, obtener su última ubicación
+    turistas_ubicaciones = []
+    for turista in sesion.turistas.filter(user__isnull=False):
+        ultima_ubi = UBICACION_VIVO.objects.filter(
+            sesion_tour=sesion,
+            usuario=turista.user,
+        ).order_by('-timestamp').first()
+
+        if ultima_ubi and ultima_ubi.coordenadas:
+            turistas_ubicaciones.append({
+                'turista_id': turista.id,
+                'alias': turista.alias,
+                'lat': ultima_ubi.coordenadas.y,
+                'lng': ultima_ubi.coordenadas.x,
+                'timestamp': ultima_ubi.timestamp.isoformat(),
+            })
+
+    return JsonResponse({'turistas': turistas_ubicaciones})
+
+
 # =============================================================================
 # VISTAS PARA TURISTAS ANÓNIMOS (solo requieren token/cookie)
 # =============================================================================
