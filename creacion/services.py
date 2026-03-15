@@ -117,6 +117,28 @@ _MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
     ],
 }
 
+def validar_ciudad_existe(ciudad: str) -> bool:
+    """
+    Consulta a la API de Nominatim (OpenStreetMap) si el nombre de la ciudad existe.
+    """
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        'q': ciudad,
+        'format': 'json',
+        'limit': 1
+    }
+    headers = {
+        'User-Agent': 'AURA-RouteApp/1.0' 
+    }
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return len(data) > 0
+        return True # Fallback por si la API falla
+    except requests.RequestException:
+        return True
 
 def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
     """
@@ -219,6 +241,13 @@ def normalizar_payload_ia(datos):
         raise ErrorValidacionRuta('El cuerpo de la petición debe ser un JSON válido.')
 
     ciudad = str(datos.get('ciudad') or '').strip()
+    
+    if not ciudad:
+        raise ErrorValidacionRuta("El nombre de la ciudad es obligatorio.")
+
+    if not validar_ciudad_existe(ciudad):
+        raise ErrorValidacionRuta("La ciudad ingresada no se encuentra en nuestros registros o no existe.")
+    
     duracion = datos.get('duracion')
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
@@ -736,28 +765,9 @@ def llamar_gemini_bypass(prompt, api_key):
         resultado = response.json()
         texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
         return json.loads(texto_json)
-    except requests.HTTPError as e:
-        status_code = e.response.status_code if e.response is not None else "desconocido"
-        print(f"ERROR HTTP al llamar a Gemini (status={status_code}): {e}")
-    except requests.RequestException as e:
-        print(f"ERROR de conexión al llamar a Gemini: {e}")
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
-        print(f"ERROR procesando la respuesta de Gemini: {e}")
+        
     except Exception as e:
-        print(f"ERROR inesperado al llamar a la API: {e}")
-
-    # Si se llega aquí, devolvemos datos de fallback.
-    # Nota: un 429 (Too Many Requests) entra en requests.HTTPError y dispara este retorno.
-        
-    #Datos de prueba por si la conexión a la IA falla.
-        
-    return [
-            {"nombre": f"Centro Histórico", "coords": [40.4167, -3.7037], "desc": "Punto de interés principal recomendado."},
-            {"nombre": "Parque Principal", "coords": [40.4233, -3.6827], "desc": "Zona verde ideal para el descanso del grupo."},
-            {"nombre": "Museo de Arte", "coords": [40.4137, -3.6921], "desc": "Parada cultural imprescindible."},
-            {"nombre": "Mirador de la Ciudad", "coords": [40.4070, -3.7115], "desc": "Las mejores vistas para fotografías."},
-            {"nombre": "Zona Gastronómica", "coords": [40.4150, -3.7070], "desc": "Lugar perfecto para degustar platos locales."}
-        ]
+        raise ErrorIntegracionIA(f"No se pudieron generar paradas con IA en este momento: {str(e)}")
 
 def calcular_distancia(coord1, coord2):
     """Calcula distancia euclidiana entre dos puntos [lat, lon]"""
