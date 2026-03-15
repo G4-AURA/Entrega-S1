@@ -1033,6 +1033,34 @@ def _construir_pois_fallback_allowlist(
     return candidatos
 
 
+def _calcular_contexto_regeneracion_pois(datos: dict, pois_normalizados: list[dict]) -> dict:
+    """
+    Calcula contexto geográfico robusto para regeneración de POIs.
+
+    Prioridad:
+    1) Coordenadas iniciales normalizadas.
+    2) POIs de allowlist de la ciudad/moods.
+    3) Sin restricción geográfica dura (centro/radio None) para evitar [0,0].
+    """
+    if pois_normalizados:
+        return _calcular_contexto_geografico(pois_normalizados)
+
+    pois_allowlist = _obtener_pois_allowlist(
+        ciudad=str(datos.get('ciudad') or ''),
+        moods=datos.get('mood') or [],
+    )
+    contexto_desde_allowlist = []
+    for poi in pois_allowlist:
+        coords = poi.get('coords')
+        if isinstance(coords, list) and len(coords) >= 2:
+            contexto_desde_allowlist.append({'coordenadas': [float(coords[0]), float(coords[1])]})
+
+    if contexto_desde_allowlist:
+        return _calcular_contexto_geografico(contexto_desde_allowlist)
+
+    return {'centro': None, 'radio_km': None}
+
+
 def _normalizar_poi_generado_para_validacion(candidato, idx):
     if not isinstance(candidato, dict):
         return None
@@ -1080,6 +1108,14 @@ def _construir_prompt_regeneracion_pois(
     coords_excluidas: set[tuple[float, float]],
 ) -> str:
     exclusiones = _formatear_exclusiones_para_prompt(nombres_excluidos, coords_excluidas)
+    centro = contexto_geo.get('centro')
+    radio_km = contexto_geo.get('radio_km')
+    centro_prompt = json.dumps(centro, ensure_ascii=False) if isinstance(centro, list) else '"No definido: usar ciudad solicitada"'
+    radio_prompt = (
+        f'{round(float(radio_km), 2)} km'
+        if isinstance(radio_km, (int, float))
+        else 'No definido: priorizar ciudad solicitada'
+    )
     return f"""
         Eres un guía turístico experto.
 
@@ -1090,8 +1126,8 @@ def _construir_prompt_regeneracion_pois(
         - Número de personas: {datos.get('personas')}
         - Nivel de exigencia: {datos.get('exigencia')}
         - Temática(s): {', '.join(datos.get('mood') or [])}
-        - Centro geográfico de referencia: {json.dumps(contexto_geo.get('centro') or [0.0, 0.0], ensure_ascii=False)}
-        - Radio máximo permitido: {round(float(contexto_geo.get('radio_km') or 8.0), 2)} km
+        - Centro geográfico de referencia: {centro_prompt}
+        - Radio máximo permitido: {radio_prompt}
         - Exclusiones obligatorias (nombres/coordenadas): {exclusiones}
 
         ## Reglas obligatorias
@@ -1177,15 +1213,15 @@ def _validar_y_completar_pois_ruta_ia(
     *,
     cantidad_objetivo: int | None = None,
 ) -> list[dict]:
-    if not isinstance(pois_iniciales, list) or not pois_iniciales:
-        raise ErrorIntegracionIA('La IA no devolvió paradas iniciales válidas para construir la ruta.')
+    if not isinstance(pois_iniciales, list):
+        raise ErrorIntegracionIA('La IA devolvió un formato inválido para la lista inicial de paradas.')
 
     pois_normalizados = _normalizar_lista_pois(pois_iniciales)
-    objetivo = int(cantidad_objetivo) if cantidad_objetivo else len(pois_normalizados)
+    objetivo = int(cantidad_objetivo) if cantidad_objetivo else _calcular_objetivo_paradas_ia(datos)
     if objetivo <= 0:
         raise ErrorIntegracionIA('La cantidad objetivo de paradas debe ser mayor que 0.')
 
-    contexto_geo = _calcular_contexto_geografico(pois_normalizados)
+    contexto_geo = _calcular_contexto_regeneracion_pois(datos, pois_normalizados)
     ciudad = str(datos.get('ciudad') or '').strip() or 'Sin ciudad'
     mapbox_client = MapboxGeocodingClient()
     osm_client = OSMGeocodingClient()
