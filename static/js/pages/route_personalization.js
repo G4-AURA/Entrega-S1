@@ -8,8 +8,22 @@
     const rutaMeta = document.getElementById('ruta-meta');
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
+    const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
 
     let leafletMap = null;
+
+    function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
+        if (!rutaId || !sesionGeneracionId) return;
+
+        try {
+            const raw = window.localStorage.getItem(IA_SESSION_STORAGE_KEY);
+            const mapa = raw ? JSON.parse(raw) : {};
+            mapa[String(rutaId)] = String(sesionGeneracionId);
+            window.localStorage.setItem(IA_SESSION_STORAGE_KEY, JSON.stringify(mapa));
+        } catch (_error) {
+            // Si localStorage no está disponible, continuamos sin persistencia en frontend.
+        }
+    }
 
     // ── Geolocalización anticipada ────────────────────────────────────────────
     // Se lanza en cuanto el módulo se carga, sin esperar al submit.
@@ -226,6 +240,7 @@
         try {
             const payload = await leerFormulario();
             const data = await enviarPeticion(payload);
+            guardarSesionGeneracionEnStorage(data.ruta_id, data.sesion_generacion_id);
             form.classList.add('d-none');
             document.getElementById('subtitulo-form').classList.add('d-none');
             renderizarRuta(data.datos_ruta);
