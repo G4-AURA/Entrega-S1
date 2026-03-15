@@ -447,6 +447,7 @@
                             </button>
                         </div>
                         <div id="estado-restriccion-ia-{{ parada.id }}" class="ia-suggestion-meta mt-1"></div>
+                        <div id="historial-sesion-ia-{{ parada.id }}" class="small mt-2 text-muted"></div>
                     </div>
 
                     <form method="post" class="parada-edit-form d-none"
@@ -517,6 +518,7 @@ const rutaId        = {{ ruta.id }};
 const csrfToken     = '{{ csrf_token }}';
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 const checkpointSesionUrlTemplate = "{% url 'creacion:actualizar_checkpoint_sesion_generacion' session_id='__SESSION_ID__' %}";
+const obtenerSesionUrlTemplate = "{% url 'creacion:obtener_sesion_generacion_ia' session_id='__SESSION_ID__' %}";
 const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
@@ -763,6 +765,7 @@ function getPanelSugerenciasParada(paradaId) {
         lista: document.getElementById(`lista-sugerencias-ia-${paradaId}`),
         restriccionInput: document.getElementById(`input-restriccion-ia-${paradaId}`),
         restriccionEstado: document.getElementById(`estado-restriccion-ia-${paradaId}`),
+        historial: document.getElementById(`historial-sesion-ia-${paradaId}`),
     };
 }
 
@@ -786,6 +789,65 @@ function obtenerSesionGeneracionId() {
 }
 
 const sesionGeneracionId = obtenerSesionGeneracionId();
+let estadoSesionGeneracion = null;
+
+function renderResumenSesionIAEnPanel(paradaId) {
+    const { historial } = getPanelSugerenciasParada(paradaId);
+    if (!historial) return;
+    if (!sesionGeneracionId) {
+        historial.textContent = 'Sin sesión IA asociada a esta ruta.';
+        return;
+    }
+    if (!estadoSesionGeneracion || typeof estadoSesionGeneracion !== 'object') {
+        historial.textContent = 'Cargando estado de sesión IA...';
+        return;
+    }
+
+    const checkpoint = estadoSesionGeneracion.checkpoint_actual || 'sin checkpoint';
+    const restricciones = Array.isArray(estadoSesionGeneracion.restricciones_usuario)
+        ? estadoSesionGeneracion.restricciones_usuario
+        : [];
+    const rechazadas = Array.isArray(estadoSesionGeneracion.paradas_rechazadas)
+        ? estadoSesionGeneracion.paradas_rechazadas
+        : [];
+
+    const restriccionesPreview = restricciones.slice(-2).join(' | ');
+    const restriccionesTexto = restricciones.length
+        ? `Restricciones (${restricciones.length}): ${restriccionesPreview}`
+        : 'Restricciones (0)';
+
+    historial.textContent = `Checkpoint: ${checkpoint} · Rechazadas: ${rechazadas.length} · ${restriccionesTexto}`;
+}
+
+function renderResumenSesionIAEnTodosLosPaneles() {
+    document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
+        if (!btn?.dataset?.paradaId) return;
+        renderResumenSesionIAEnPanel(btn.dataset.paradaId);
+    });
+}
+
+async function cargarEstadoSesionGeneracion() {
+    if (!sesionGeneracionId) return null;
+
+    const url = obtenerSesionUrlTemplate.replace('__SESSION_ID__', encodeURIComponent(sesionGeneracionId));
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': csrfToken,
+            },
+        });
+        if (!response.ok) return null;
+
+        const payload = await response.json();
+        if (payload?.status !== 'OK') return null;
+        estadoSesionGeneracion = payload.datos;
+        renderResumenSesionIAEnTodosLosPaneles();
+        return estadoSesionGeneracion;
+    } catch (_error) {
+        return null;
+    }
+}
 
 async function registrarCheckpointSesion(payload) {
     if (!sesionGeneracionId) return null;
@@ -801,7 +863,12 @@ async function registrarCheckpointSesion(payload) {
             body: JSON.stringify(payload),
         });
         if (!response.ok) return null;
-        return await response.json();
+        const data = await response.json();
+        if (data?.status === 'OK') {
+            estadoSesionGeneracion = data.datos;
+            renderResumenSesionIAEnTodosLosPaneles();
+        }
+        return data;
     } catch (_error) {
         return null;
     }
@@ -895,6 +962,7 @@ async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
     estado.textContent = 'Generando...';
     lista.innerHTML = '';
     triggerButton.disabled = true;
+    renderResumenSesionIAEnPanel(paradaId);
 
     try {
         const response = await fetch(sugerenciasIaUrl, {
@@ -1038,6 +1106,13 @@ document.addEventListener('click', (event) => {
         usarBtn.disabled = false;
     });
 });
+
+// Cargar estado de sesion al entrar para que el resumen sea persistente.
+if (sesionGeneracionId) {
+    cargarEstadoSesionGeneracion();
+} else {
+    renderResumenSesionIAEnTodosLosPaneles();
+}
 
 mapa.on('click', (event) => {
     if (!activeParadaForm) return;
