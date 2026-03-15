@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from creacion import services
 from creacion.services import consultar_langgraph
@@ -66,7 +66,15 @@ def generar_ruta_ia(request):
 
     try:
         payload = services.normalizar_payload_ia(datos)
+        sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload)
+
         ruta_generada = consultar_langgraph(payload)
+        services.avanzar_checkpoint_sesion_generacion(
+            request,
+            sesion_generacion['session_id'],
+            checkpoint='ruta_generada',
+            paradas_propuestas=ruta_generada.get('paradas') if isinstance(ruta_generada, dict) else [],
+        )
 
         guia = _obtener_guia_para_usuario(request.user)
         if not guia:
@@ -76,6 +84,12 @@ def generar_ruta_ia(request):
             )
 
         ruta_guardada = _guardar_ruta_ia_en_bd(guia=guia, payload=payload, ruta_generada=ruta_generada)
+        estado_actualizado = services.avanzar_checkpoint_sesion_generacion(
+            request,
+            sesion_generacion['session_id'],
+            checkpoint='ruta_guardada',
+            datos_extra={'ruta_id': ruta_guardada.id},
+        )
 
         advertencias = []
         advertencia_historial = services.guardar_historial_ruta_ia(payload, ruta_generada)
@@ -86,10 +100,13 @@ def generar_ruta_ia(request):
             'status': 'OK',
             'mensaje': 'Ruta generada, optimizada y guardada correctamente.',
             'ruta_id': ruta_guardada.id,
+            'sesion_generacion_id': sesion_generacion['session_id'],
+            'checkpoint_actual': estado_actualizado.get('checkpoint_actual'),
             'datos_ruta': ruta_generada,
             'datos': {
                 'ruta_id': ruta_guardada.id,
                 'ruta': ruta_generada,
+                'sesion_generacion_id': sesion_generacion['session_id'],
             },
         }
         if advertencias:
@@ -163,6 +180,7 @@ def generar_paradas_ia(request, ruta_id):
         return JsonResponse({'status': 'ERROR', 'mensaje': 'El cuerpo de la petición no es JSON válido.'}, status=400)
 
     cantidad_raw = body.get('cantidad', 3)
+    sesion_generacion_id = body.get('sesion_generacion_id')
     try:
         cantidad = int(cantidad_raw)
     except (TypeError, ValueError):
@@ -173,9 +191,69 @@ def generar_paradas_ia(request, ruta_id):
 
     try:
         resultado = services.generar_candidatos_paradas_ia(ruta=ruta, cantidad=cantidad)
+        if sesion_generacion_id:
+            services.avanzar_checkpoint_sesion_generacion(
+                request,
+                sesion_generacion_id,
+                checkpoint='sugerencias_generadas',
+                paradas_propuestas=resultado.get('candidatos') or [],
+                datos_extra={'ruta_id': ruta.id},
+            )
     except services.ErrorValidacionRuta as exc:
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=400)
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
     except services.ErrorIntegracionIA as exc:
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
 
     return JsonResponse({'status': 'OK', 'datos': resultado}, status=200)
+
+
+@csrf_exempt
+@require_GET
+def obtener_sesion_generacion_ia(request, session_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes iniciar sesión.'}, status=401)
+
+    try:
+        estado = services.obtener_estado_sesion_generacion(request, session_id=session_id)
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
+
+    return JsonResponse({'status': 'OK', 'datos': estado}, status=200)
+
+
+@csrf_exempt
+@require_POST
+def actualizar_checkpoint_sesion_generacion(request, session_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes iniciar sesión.'}, status=401)
+
+    try:
+        body = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'El cuerpo de la petición no es JSON válido.'}, status=400)
+
+    checkpoint = str(body.get('checkpoint') or '').strip() or 'checkpoint_manual'
+
+    try:
+        estado = services.avanzar_checkpoint_sesion_generacion(
+            request,
+            session_id,
+            checkpoint=checkpoint,
+            paradas_propuestas=body.get('paradas_propuestas') or [],
+            parada_rechazada=body.get('parada_rechazada'),
+            motivo_rechazo=body.get('motivo_rechazo') or '',
+            restricciones=body.get('restricciones'),
+            datos_extra=body.get('contexto') if isinstance(body.get('contexto'), dict) else None,
+        )
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
+
+    return JsonResponse({'status': 'OK', 'datos': estado}, status=200)

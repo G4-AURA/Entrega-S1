@@ -1,5 +1,8 @@
 from django.contrib.auth.models import User
+from django.contrib.sessions.middleware import SessionMiddleware
+from django.test import RequestFactory
 from django.test import TestCase
+from django.utils import timezone
 
 from creacion import services
 from creacion.views import (
@@ -239,3 +242,93 @@ class GenerarCandidatosParadasIATests(TestCase):
 
         self.assertEqual(len(resultado['candidatos']), 1)
         self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')
+
+
+class SesionGeneracionCheckpointTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _build_request_with_session(self):
+        request = self.factory.post('/creacion/api/generar/')
+        middleware = SessionMiddleware(lambda req: None)
+        middleware.process_request(request)
+        request.session.save()
+        return request
+
+    def test_crea_estado_inicial_de_sesion_con_checkpoint(self):
+        request = self._build_request_with_session()
+        payload = {
+            'ciudad': 'Sevilla',
+            'duracion': 3,
+            'personas': 6,
+            'exigencia': 'media',
+            'mood': ['historia'],
+            'deseos': ['Evitar cuestas pronunciadas'],
+        }
+
+        estado = services.crear_estado_sesion_generacion(request, payload=payload)
+
+        self.assertTrue(estado['session_id'])
+        self.assertEqual(estado['checkpoint_actual'], 'payload_normalizado')
+        self.assertEqual(estado['restricciones_usuario'], ['Evitar cuestas pronunciadas'])
+        self.assertEqual(estado['paradas_propuestas'], [])
+        self.assertEqual(estado['paradas_rechazadas'], [])
+
+    def test_avanza_checkpoint_y_recupera_estado(self):
+        request = self._build_request_with_session()
+        payload = {
+            'ciudad': 'Sevilla',
+            'duracion': 2,
+            'personas': 4,
+            'exigencia': 'media',
+            'mood': ['historia'],
+            'restricciones': ['No entrar en interiores'],
+        }
+
+        estado_inicial = services.crear_estado_sesion_generacion(request, payload=payload)
+        session_id = estado_inicial['session_id']
+
+        services.avanzar_checkpoint_sesion_generacion(
+            request,
+            session_id,
+            checkpoint='sugerencias_generadas',
+            paradas_propuestas=[
+                {'nombre': 'Archivo de Indias', 'coordenadas': [37.385, -5.993]},
+                {'nombre': 'Archivo de Indias', 'coordenadas': [37.385, -5.993]},
+            ],
+            parada_rechazada={'nombre': 'Setas', 'coordenadas': [37.393, -5.991]},
+            motivo_rechazo='Demasiado concurrida',
+            restricciones=['Priorizar espacios abiertos'],
+            datos_extra={'ruta_id': 42},
+        )
+
+        recuperado = services.obtener_estado_sesion_generacion(request, session_id=session_id)
+
+        self.assertEqual(recuperado['checkpoint_actual'], 'sugerencias_generadas')
+        self.assertEqual(len(recuperado['paradas_propuestas']), 1)
+        self.assertEqual(recuperado['paradas_propuestas'][0]['nombre'], 'Archivo de Indias')
+        self.assertEqual(len(recuperado['paradas_rechazadas']), 1)
+        self.assertEqual(recuperado['paradas_rechazadas'][0]['motivo_rechazo'], 'Demasiado concurrida')
+        self.assertIn('No entrar en interiores', recuperado['restricciones_usuario'])
+        self.assertIn('Priorizar espacios abiertos', recuperado['restricciones_usuario'])
+        self.assertEqual(recuperado['contexto_generacion']['ruta_id'], 42)
+
+    def test_lanza_error_controlado_si_la_sesion_ha_expirado(self):
+        request = self._build_request_with_session()
+        payload = {
+            'ciudad': 'Sevilla',
+            'duracion': 2,
+            'personas': 4,
+            'exigencia': 'media',
+            'mood': ['historia'],
+        }
+        estado = services.crear_estado_sesion_generacion(request, payload=payload)
+        session_id = estado['session_id']
+
+        store = request.session[services.SESION_GENERACION_STORE_KEY]
+        store[session_id]['expira_en'] = int(timezone.now().timestamp()) - 5
+        request.session[services.SESION_GENERACION_STORE_KEY] = store
+        request.session.modified = True
+
+        with self.assertRaises(services.ErrorSesionGeneracionExpirada):
+            services.obtener_estado_sesion_generacion(request, session_id=session_id)

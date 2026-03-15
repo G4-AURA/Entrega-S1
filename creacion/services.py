@@ -3,6 +3,7 @@ import json
 import math
 import logging
 import requests
+import uuid
 from typing import TypedDict
 from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
@@ -38,6 +39,18 @@ class ErrorIntegracionIA(ErrorRutaBase):
     """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
 
 
+class ErrorSesionGeneracionRuta(ErrorRutaBase):
+    """Errores de estado/checkpoints de sesión de generación IA."""
+
+
+class ErrorSesionGeneracionExpirada(ErrorSesionGeneracionRuta):
+    """La sesión de generación ya no está disponible por expiración."""
+
+
+class ErrorSesionGeneracionNoEncontrada(ErrorSesionGeneracionRuta):
+    """No existe una sesión de generación para el identificador indicado."""
+
+
 MAPA_MOOD_RUTA = {
     'historia': Ruta.Mood.HISTORIA,
     'gastronomia': Ruta.Mood.GASTRONOMIA,
@@ -63,6 +76,8 @@ MAPA_EXIGENCIA_RUTA = {
 }
 
 MAX_POIS_ALLOWLIST_EN_PROMPT = 15
+SESION_GENERACION_STORE_KEY = 'creacion_ruta_ia_sesiones'
+SESION_GENERACION_TTL_SECONDS = 60 * 60 * 6
 
 _MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
     'historia': [
@@ -236,6 +251,199 @@ def obtener_guia_para_usuario(usuario):
         ) from exc
 
 
+def _firma_parada(checkpoint_parada):
+    nombre = str(checkpoint_parada.get('nombre') or '').strip().lower()
+    coords = checkpoint_parada.get('coordenadas') or [None, None]
+    lat = None
+    lon = None
+    if isinstance(coords, (list, tuple)) and len(coords) >= 2:
+        lat = round(float(coords[0]), 5)
+        lon = round(float(coords[1]), 5)
+    return f'{nombre}|{lat}|{lon}'
+
+
+def _normalizar_restricciones(raw_restricciones, deseos=None):
+    if raw_restricciones is None:
+        raw_restricciones = deseos or []
+
+    if isinstance(raw_restricciones, str):
+        raw_restricciones = [raw_restricciones]
+
+    if not isinstance(raw_restricciones, list):
+        return []
+
+    normalizadas = []
+    vistas = set()
+    for restriccion in raw_restricciones:
+        texto = str(restriccion).strip()
+        if not texto:
+            continue
+        clave = texto.lower()
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        normalizadas.append(texto[:200])
+        if len(normalizadas) >= 20:
+            break
+    return normalizadas
+
+
+def _normalizar_parada_checkpoint(parada):
+    if not isinstance(parada, dict):
+        return None
+
+    nombre = str(parada.get('nombre') or '').strip()
+    if not nombre:
+        return None
+
+    coordenadas = _normalizar_coordenadas(
+        parada.get('coordenadas') or parada.get('coords'),
+        lat=parada.get('lat'),
+        lon=parada.get('lon'),
+    )
+    if not coordenadas:
+        return None
+
+    return {
+        'nombre': nombre[:120],
+        'coordenadas': coordenadas,
+        'categoria': str(parada.get('categoria') or '').strip()[:80],
+        'justificacion': str(parada.get('justificacion') or '').strip()[:500],
+    }
+
+
+def _obtener_store_sesiones_generacion(request):
+    store = request.session.get(SESION_GENERACION_STORE_KEY)
+    if not isinstance(store, dict):
+        store = {}
+        request.session[SESION_GENERACION_STORE_KEY] = store
+    return store
+
+
+def crear_estado_sesion_generacion(request, payload, checkpoint='payload_normalizado'):
+    ahora_epoch = int(timezone.now().timestamp())
+    estado = {
+        'session_id': uuid.uuid4().hex,
+        'checkpoint_actual': checkpoint,
+        'creado_en': ahora_epoch,
+        'actualizado_en': ahora_epoch,
+        'expira_en': ahora_epoch + SESION_GENERACION_TTL_SECONDS,
+        'contexto_generacion': {
+            'ciudad': payload.get('ciudad'),
+            'duracion': payload.get('duracion'),
+            'personas': payload.get('personas'),
+            'exigencia': payload.get('exigencia'),
+            'mood': payload.get('mood') or [],
+        },
+        'restricciones_usuario': _normalizar_restricciones(
+            payload.get('restricciones'),
+            deseos=payload.get('deseos') or [],
+        ),
+        'paradas_propuestas': [],
+        'paradas_rechazadas': [],
+    }
+
+    store = _obtener_store_sesiones_generacion(request)
+    store[estado['session_id']] = estado
+    request.session[SESION_GENERACION_STORE_KEY] = store
+    request.session.modified = True
+    return estado
+
+
+def obtener_estado_sesion_generacion(request, session_id, refresh_ttl=True):
+    store = _obtener_store_sesiones_generacion(request)
+    estado = store.get(str(session_id))
+    if not estado:
+        raise ErrorSesionGeneracionNoEncontrada(
+            'No existe la sesión de generación solicitada. Inicia una nueva generación de ruta.'
+        )
+
+    ahora_epoch = int(timezone.now().timestamp())
+    if int(estado.get('expira_en') or 0) < ahora_epoch:
+        del store[str(session_id)]
+        request.session[SESION_GENERACION_STORE_KEY] = store
+        request.session.modified = True
+        raise ErrorSesionGeneracionExpirada(
+            'La sesión de generación ha expirado. Vuelve a iniciar la generación de la ruta.'
+        )
+
+    if refresh_ttl:
+        estado['actualizado_en'] = ahora_epoch
+        estado['expira_en'] = ahora_epoch + SESION_GENERACION_TTL_SECONDS
+        store[str(session_id)] = estado
+        request.session[SESION_GENERACION_STORE_KEY] = store
+        request.session.modified = True
+
+    return estado
+
+
+def avanzar_checkpoint_sesion_generacion(
+    request,
+    session_id,
+    checkpoint,
+    *,
+    paradas_propuestas=None,
+    parada_rechazada=None,
+    motivo_rechazo='',
+    restricciones=None,
+    datos_extra=None,
+):
+    estado = obtener_estado_sesion_generacion(request, session_id=session_id, refresh_ttl=False)
+    store = _obtener_store_sesiones_generacion(request)
+
+    ahora_epoch = int(timezone.now().timestamp())
+    propuestas_actuales = estado.get('paradas_propuestas') or []
+    firmas_actuales = {_firma_parada(p) for p in propuestas_actuales if isinstance(p, dict)}
+
+    propuestas_nuevas = []
+    for parada in paradas_propuestas or []:
+        parada_norm = _normalizar_parada_checkpoint(parada)
+        if not parada_norm:
+            continue
+        firma = _firma_parada(parada_norm)
+        if firma in firmas_actuales:
+            continue
+        firmas_actuales.add(firma)
+        parada_norm['checkpoint'] = checkpoint
+        parada_norm['registrada_en'] = ahora_epoch
+        propuestas_nuevas.append(parada_norm)
+
+    estado['paradas_propuestas'] = propuestas_actuales + propuestas_nuevas
+
+    if parada_rechazada:
+        parada_rechazada_norm = _normalizar_parada_checkpoint(parada_rechazada)
+        if parada_rechazada_norm:
+            parada_rechazada_norm['motivo_rechazo'] = str(motivo_rechazo or '').strip()[:300]
+            parada_rechazada_norm['checkpoint'] = checkpoint
+            parada_rechazada_norm['registrada_en'] = ahora_epoch
+
+            rechazos_actuales = estado.get('paradas_rechazadas') or []
+            firmas_rechazos = {_firma_parada(p) for p in rechazos_actuales if isinstance(p, dict)}
+            if _firma_parada(parada_rechazada_norm) not in firmas_rechazos:
+                rechazos_actuales.append(parada_rechazada_norm)
+                estado['paradas_rechazadas'] = rechazos_actuales
+
+    if restricciones is not None:
+        restricciones_existentes = estado.get('restricciones_usuario') or []
+        estado['restricciones_usuario'] = _normalizar_restricciones(
+            restricciones_existentes + _normalizar_restricciones(restricciones)
+        )
+
+    if isinstance(datos_extra, dict) and datos_extra:
+        contexto = estado.get('contexto_generacion') or {}
+        contexto.update(datos_extra)
+        estado['contexto_generacion'] = contexto
+
+    estado['checkpoint_actual'] = checkpoint
+    estado['actualizado_en'] = ahora_epoch
+    estado['expira_en'] = ahora_epoch + SESION_GENERACION_TTL_SECONDS
+
+    store[str(session_id)] = estado
+    request.session[SESION_GENERACION_STORE_KEY] = store
+    request.session.modified = True
+    return estado
+
+
 def normalizar_payload_ia(datos):
     if not isinstance(datos, dict):
         raise ErrorValidacionRuta('El cuerpo de la petición debe ser un JSON válido.')
@@ -269,6 +477,8 @@ def normalizar_payload_ia(datos):
         raise ErrorValidacionRuta('Los deseos personalizados deben ser una lista.')
     deseos = [str(d).strip()[:100] for d in deseos_raw if str(d).strip()][:5]
 
+    restricciones = _normalizar_restricciones(datos.get('restricciones'), deseos=deseos)
+
     # Metadata contextual enviada automáticamente desde el cliente (sin intervención del usuario)
     metadata = datos.get('metadata') or {}
 
@@ -280,6 +490,7 @@ def normalizar_payload_ia(datos):
             'exigencia': exigencia_normalizada,
             'mood': moods_normalizados,
             'deseos': deseos,
+            'restricciones': restricciones,
             'metadata': metadata,
         }
     except (TypeError, ValueError) as exc:
