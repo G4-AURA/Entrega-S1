@@ -798,6 +798,17 @@ function renderSugerenciasIAEnParada(paradaId, candidatos) {
     }).join('');
 }
 
+function updateRecalcularButton() {
+    const paradas = document.querySelectorAll('.parada-item');
+    const btn = document.getElementById('btn-recalcular');
+    if (btn) {
+        btn.disabled = paradas.length < 1;
+    }
+}
+
+// Llamar al cargar la página
+updateRecalcularButton();
+
 function agregarSugerenciaComoNuevaParada(candidato) {
     const form = document.getElementById('form-agregar-parada');
     if (!form) return;
