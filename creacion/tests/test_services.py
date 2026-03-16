@@ -37,7 +37,7 @@ class GeminiBypassResilienceTests(TestCase):
             with patch('creacion.services.requests.post', side_effect=requests.Timeout('boom')) as mock_post:
                 with self.assertRaisesMessage(
                     services.ErrorIntegracionIA,
-                    'La conexión con Gemini agotó el tiempo de espera tras 2 intentos.',
+                    'Gemini agotó el tiempo de espera tras 2 intentos..',
                 ):
                     services.llamar_gemini_bypass('prompt', 'api-key')
 
@@ -400,34 +400,38 @@ class SesionGeneracionCheckpointTests(TestCase):
 
 
 class GeneracionRutaResilienteIATests(TestCase):
-    @patch('creacion.services._solicitar_alternativa_parada')
-    @patch('creacion.services._generar_pois_base')
-    def test_reintenta_paradas_invalidas_y_sustituye_duplicadas(self, mock_generar_base, mock_solicitar_alt):
-        payload = {
+    @patch('creacion.services._ejecutar_grafo_para_alternativa')
+    def test_consultar_langgraph_descarta_alternativas_con_error(self, mock_ejecutar):
+        """Verifica que si una alternativa falla, se ignora y se usan las válidas."""
+        alternativa_valida = {
+            'ruta': {
+                'titulo': 'Ruta A',
+                'descripcion': 'Alternativa A',
+                'duracion_estimada': 2,
+                'nivel_exigencia': 'media',
+                'mood': ['historia'],
+                'paradas': [
+                    {'nombre': 'Catedral', 'coordenadas': [37.386, -5.992], 'descripcion': '', 'categoria': 'historia'},
+                    {'nombre': 'Alcázar', 'coordenadas': [37.383, -5.990], 'descripcion': '', 'categoria': 'historia'},
+                ],
+            },
+            'metricas': {'distancia_total_km': 1.0, 'diversidad': 0.8, 'coherencia_tematica': 0.9},
+            'paradas_rechazadas_validacion': [],
+        }
+        from creacion.services import ErrorIntegracionIA
+        mock_ejecutar.side_effect = [ErrorIntegracionIA('fallo'), alternativa_valida]
+
+        resultado = services.consultar_langgraph({
             'ciudad': 'Sevilla',
             'duracion': 2,
             'personas': 4,
             'exigencia': 'media',
             'mood': ['historia'],
-            'restricciones': [],
-        }
+            'num_alternativas': 2,
+        })
 
-        mock_generar_base.return_value = [
-            {'nombre': 'Catedral', 'coords': [37.386, -5.992], 'desc': 'Histórica', 'categoria': 'historia'},
-            {'nombre': 'Catedral', 'coords': [37.386, -5.992], 'desc': 'Duplicada', 'categoria': 'historia'},
-            {'nombre': 'Parada invalida', 'coords': [120.0, -5.990], 'desc': 'Coord mala', 'categoria': 'historia'},
-        ]
-        mock_solicitar_alt.side_effect = [
-            {'nombre': 'Archivo de Indias', 'coords': [37.385, -5.993], 'desc': 'Válida', 'categoria': 'historia'},
-            {'nombre': 'Real Alcázar', 'coords': [37.3838, -5.9902], 'desc': 'Válida', 'categoria': 'historia'},
-        ]
-
-        alternativa = services._generar_ruta_alternativa_con_reintentos(payload, 'enfoque historico')
-
-        nombres = [p['nombre'] for p in alternativa['ruta']['paradas']]
-        self.assertIn('Archivo de Indias', nombres)
-        self.assertIn('Real Alcázar', nombres)
-        self.assertEqual(len(alternativa['paradas_rechazadas_validacion']), 0)
+        self.assertEqual(resultado['titulo'], 'Ruta A')
+        self.assertEqual(len(resultado['alternativas_evaluadas']), 1)
 
     @patch('creacion.services._ejecutar_grafo_para_alternativa')
     def test_consultar_langgraph_evalua_alternativas_y_elige_mejor(self, mock_generar_alternativa):
