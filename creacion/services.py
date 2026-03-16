@@ -124,6 +124,28 @@ _MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
     ],
 }
 
+def validar_ciudad_existe(ciudad: str) -> bool:
+    """
+    Consulta a la API de Nominatim (OpenStreetMap) si el nombre de la ciudad existe.
+    """
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        'q': ciudad,
+        'format': 'json',
+        'limit': 1
+    }
+    headers = {
+        'User-Agent': 'AURA-RouteApp/1.0' 
+    }
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return len(data) > 0
+        return True # Fallback por si la API falla
+    except requests.RequestException:
+        return True
 
 def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
     """
@@ -226,6 +248,13 @@ def normalizar_payload_ia(datos):
         raise ErrorValidacionRuta('El cuerpo de la petición debe ser un JSON válido.')
 
     ciudad = str(datos.get('ciudad') or '').strip()
+    
+    if not ciudad:
+        raise ErrorValidacionRuta("El nombre de la ciudad es obligatorio.")
+
+    if not validar_ciudad_existe(ciudad):
+        raise ErrorValidacionRuta("La ciudad ingresada no se encuentra en nuestros registros o no existe.")
+    
     duracion = datos.get('duracion')
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
@@ -911,7 +940,20 @@ def llamar_gemini_bypass(prompt, api_key):
         except Exception as exc:
             raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
+<<<<<<< feat/ValidacionCoordenadas
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
+=======
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=20)
+        response.raise_for_status()
+
+        resultado = response.json()
+        texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
+        return json.loads(texto_json)
+        
+    except Exception as e:
+        raise ErrorIntegracionIA(f"No se pudieron generar paradas con IA en este momento: {str(e)}")
+>>>>>>> develop
 
 def calcular_distancia(coord1, coord2):
     """Calcula distancia euclidiana entre dos puntos [lat, lon]"""

@@ -2,6 +2,7 @@
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.urls import reverse
 
 from rutas.models import AuthUser, Guia
 from .forms import RegistroUsuarioForm
@@ -14,7 +15,18 @@ def home_router(request):
     Turistas ya no tienen cuenta — cualquier usuario logueado es un guía
     (o superusuario), por lo que todos van al catálogo.
     """
-    return redirect("catalogo")
+    user = request.user
+
+  # 1. Si es Superusuario -> Al panel de control
+    if user.is_superuser:
+        return redirect("admin:index")
+
+    # 2. Si es Guía -> Al catálogo
+    if hasattr(user, 'auth_profile') and hasattr(user.auth_profile, 'guia'):
+        return redirect("catalogo")
+
+    # 3. Si no es nada (por si acaso) -> Al mapa principal
+    return redirect("/")
 
 
 def registro(request):
