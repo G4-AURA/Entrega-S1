@@ -10,7 +10,9 @@ import secrets
 import string
 from typing import Optional, Tuple
 
+from django.core.cache import cache
 from django.contrib.auth.models import User
+from django.conf import settings
 from django.utils import timezone
 
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
@@ -93,6 +95,66 @@ def generar_codigo_unico(length: int = 6) -> str:
 # ---------------------------------------------------------------------------
 # Serialización geográfica
 # ---------------------------------------------------------------------------
+
+ROUTE_SNAPSHOT_CACHE_PREFIX = "tour:session"
+
+
+def route_snapshot_cache_key(sesion_id: int) -> str:
+    return f"{ROUTE_SNAPSHOT_CACHE_PREFIX}:{sesion_id}:route_snapshot"
+
+
+def _build_route_snapshot(sesion: SesionTour) -> dict:
+    paradas = list(sesion.ruta.paradas.all())
+    data_paradas = [
+        {
+            "id": p.id,
+            "nombre": p.nombre,
+            "orden": p.orden,
+            "lat": p.coordenadas.y if p.coordenadas else None,
+            "lng": p.coordenadas.x if p.coordenadas else None,
+            "es_actual": (
+                sesion.parada_actual_id == p.id if sesion.parada_actual_id else False
+            ),
+        }
+        for p in paradas
+    ]
+    return {
+        "sesion_id": sesion.id,
+        "ruta_id": sesion.ruta_id,
+        "estado": sesion.estado,
+        "generated_at": timezone.now().isoformat(),
+        "paradas": data_paradas,
+        "geometria_ruta": sesion.ruta.geometria_ruta_coords,
+    }
+
+
+def set_route_snapshot(sesion: SesionTour) -> dict:
+    snapshot = _build_route_snapshot(sesion)
+    cache.set(
+        route_snapshot_cache_key(sesion.id),
+        snapshot,
+        timeout=getattr(settings, "ROUTE_SNAPSHOT_CACHE_TTL", 180),
+    )
+    return snapshot
+
+
+def get_route_snapshot(sesion: SesionTour) -> dict:
+    key = route_snapshot_cache_key(sesion.id)
+    snapshot = cache.get(key)
+    if snapshot:
+        return snapshot
+    return set_route_snapshot(sesion)
+
+
+def invalidate_route_snapshot(sesion_id: int) -> None:
+    cache.delete(route_snapshot_cache_key(sesion_id))
+
+
+def invalidate_route_snapshots_for_route(ruta_id: int) -> None:
+    sesion_ids = SesionTour.objects.filter(ruta_id=ruta_id).values_list("id", flat=True)
+    keys = [route_snapshot_cache_key(sesion_id) for sesion_id in sesion_ids]
+    if keys:
+        cache.delete_many(keys)
 
 def serializar_paradas(sesion: SesionTour) -> str:
     """
@@ -219,9 +281,11 @@ def iniciar_sesion(sesion: SesionTour) -> None:
     sesion.fecha_inicio = timezone.now()
     sesion.codigo_acceso = generar_codigo_unico()
     sesion.save(update_fields=["estado", "fecha_inicio", "codigo_acceso"])
+    set_route_snapshot(sesion)
 
 
 def cerrar_sesion(sesion: SesionTour) -> None:
     sesion.estado = SesionTour.FINALIZADO
     sesion.save(update_fields=["estado"])
     TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).update(activo=False)
+    set_route_snapshot(sesion)
