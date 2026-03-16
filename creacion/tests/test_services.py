@@ -37,7 +37,7 @@ class GeminiBypassResilienceTests(TestCase):
             with patch('creacion.services.requests.post', side_effect=requests.Timeout('boom')) as mock_post:
                 with self.assertRaisesMessage(
                     services.ErrorIntegracionIA,
-                    'Gemini agotó el tiempo de espera tras 2 intentos..',
+                    'Gemini agotó el tiempo de espera tras 2 intentos.',
                 ):
                     services.llamar_gemini_bypass('prompt', 'api-key')
 
