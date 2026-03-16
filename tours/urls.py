@@ -22,6 +22,7 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/regenerar_codigo/", views.regenerar_codigo, name="regenerar_codigo"),
     path("sesiones/<int:sesion_id>/cerrar_acceso/", views.cerrar_acceso, name="cerrar_acceso"),
     path("sesiones/<int:sesion_id>/participantes/", views.participantes_sesion, name="participantes_sesion"),
+    path("sesiones/<int:sesion_id>/cronometro/estado/", views.estado_cronometro, name="estado_cronometro"),
     # ------------------------------------------------------------------
     # API REST — ubicación y chat
     # ------------------------------------------------------------------

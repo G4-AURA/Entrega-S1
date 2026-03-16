@@ -167,6 +167,73 @@ main.container {
     gap: 8px;
 }
 
+.session-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 12px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid #c7d2fe;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-family: 'Manrope', sans-serif;
+    width: fit-content;
+}
+
+.session-countdown .material-icons-round {
+    font-size: 16px;
+}
+
+.session-countdown strong {
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    margin-left: 2px;
+}
+
+.session-countdown.finished {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.session-countdown.waiting {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+.start-countdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--brand-color);
+    background: var(--brand-color);
+    color: white;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-family: 'Manrope', sans-serif;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.start-countdown-btn:hover:not(:disabled) {
+    background: var(--brand-hover);
+}
+
+.start-countdown-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.start-countdown-btn .material-icons-round {
+    font-size: 16px;
+}
+
 .timeline-item {
     padding: 10px 12px;
     border-left: 3px solid #e2e8f0;

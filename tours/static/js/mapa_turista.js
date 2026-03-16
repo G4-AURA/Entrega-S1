@@ -18,6 +18,8 @@
 let map               = null;
 let guiaMarker        = null;
 let miUbicacionMarker = null;
+let countdownTimerId  = null;
+let countdownPollId   = null;
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -86,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // ── Chat ──────────────────────────────────────────────────────────────
+    _initSessionCountdown();
     _initChat();
 });
 
@@ -254,6 +257,137 @@ function _obtenerUbicacionGuia() {
 function _getCsrf() {
     const c = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('csrftoken='));
     return c ? c.slice('csrftoken='.length) : '';
+}
+
+
+// ── Cronómetro de sesión ──────────────────────────────────────────────────
+
+function _initSessionCountdown() {
+    const timerContainer = document.getElementById('session-countdown');
+    const timerValue = document.getElementById('session-countdown-time');
+    const startBtn = document.getElementById('start-countdown-btn');
+    if (!timerContainer || !timerValue) return;
+
+    const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
+        ? duracionRutaHoras
+        : 1;
+    const countdownMs = Math.round(horasBase * 60 * 60 * 1000);
+    let sesionIniciada = (typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso');
+    let startTimestamp = (typeof sesionFechaInicioEpochMs !== 'undefined' && Number.isFinite(sesionFechaInicioEpochMs))
+        ? sesionFechaInicioEpochMs
+        : Date.now();
+
+    const setWaitingUi = () => {
+        timerValue.textContent = _formatRemainingTime(countdownMs);
+        timerContainer.classList.remove('finished');
+        timerContainer.classList.add('waiting');
+    };
+
+    const startTicker = () => {
+        if (countdownTimerId) {
+            clearInterval(countdownTimerId);
+            countdownTimerId = null;
+        }
+
+        timerContainer.classList.remove('waiting');
+        let endTimestamp = startTimestamp + countdownMs;
+        let remainingSeconds = Math.max(0, Math.floor((endTimestamp - Date.now()) / 1000));
+        let lastTickAt = Date.now();
+
+        const render = () => {
+            timerValue.textContent = _formatRemainingTime(remainingSeconds * 1000);
+            if (remainingSeconds === 0) {
+                timerContainer.classList.add('finished');
+                if (countdownTimerId) {
+                    clearInterval(countdownTimerId);
+                    countdownTimerId = null;
+                }
+            } else {
+                timerContainer.classList.remove('finished');
+            }
+        };
+
+        render();
+        countdownTimerId = setInterval(() => {
+            const tickNow = Date.now();
+            const elapsedSeconds = Math.max(1, Math.floor((tickNow - lastTickAt) / 1000));
+            remainingSeconds = Math.max(0, remainingSeconds - elapsedSeconds);
+            lastTickAt = tickNow;
+            if (remainingSeconds > 0) endTimestamp = tickNow + (remainingSeconds * 1000);
+            render();
+        }, 1000);
+    };
+
+    const applyRemoteState = (data) => {
+        if (!data || !data.estado) return;
+        const remoteStarted = data.estado === 'en_curso';
+
+        if (remoteStarted && data.fecha_inicio) {
+            const parsedStart = Date.parse(data.fecha_inicio);
+            if (Number.isFinite(parsedStart)) startTimestamp = parsedStart;
+        }
+
+        if (remoteStarted) {
+            sesionIniciada = true;
+            if (startBtn) {
+                startBtn.disabled = true;
+                startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+            }
+            startTicker();
+        } else {
+            sesionIniciada = false;
+            if (!countdownTimerId) setWaitingUi();
+        }
+    };
+
+    const fetchCountdownState = () => {
+        if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl) return;
+        fetch(countdownStatusUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(applyRemoteState)
+            .catch(() => {});
+    };
+
+    if (sesionIniciada) startTicker();
+    else setWaitingUi();
+
+    fetchCountdownState();
+    countdownPollId = setInterval(fetchCountdownState, 5000);
+
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            if (sesionIniciada) return;
+            if (typeof startCountdownUrl === 'undefined' || !startCountdownUrl) return;
+
+            startBtn.disabled = true;
+            fetch(startCountdownUrl, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': _getCsrf(), 'Accept': 'application/json' },
+            })
+                .then(r => r.ok ? r.json() : Promise.reject())
+                .then(data => {
+                    if (data && data.estado === 'en_curso' && data.fecha_inicio) {
+                        const parsed = Date.parse(data.fecha_inicio);
+                        if (Number.isFinite(parsed)) startTimestamp = parsed;
+                        sesionIniciada = true;
+                        startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+                        startTicker();
+                    } else {
+                        startBtn.disabled = false;
+                    }
+                })
+                .catch(() => { startBtn.disabled = false; });
+        });
+    }
+}
+
+function _formatRemainingTime(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 
