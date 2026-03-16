@@ -5,11 +5,75 @@
     const boton = document.getElementById('btn-generar-ruta');
     const estado = document.getElementById('estado-respuesta');
     const pantallaCarga = document.getElementById('pantalla-carga');
+    const loadingStatusTitle = document.getElementById('loading-status-title');
+    const loadingStatusDetail = document.getElementById('loading-status-detail');
     const rutaMeta = document.getElementById('ruta-meta');
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
+    const ayudaSeleccionParadas = document.getElementById('seleccion-paradas-ayuda');
+    const resumenSeleccionParadas = document.getElementById('resumen-seleccion-paradas');
+    const accionesSeleccionRuta = document.getElementById('acciones-seleccion-ruta');
+    const btnConfirmarSeleccion = document.getElementById('btn-confirmar-seleccion');
+    const btnGenerarAdicionales = document.getElementById('btn-generar-adicionales');
+    const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
+    const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
 
     let leafletMap = null;
+    let sesionGeneracionActiva = null;
+    let propuestasParadasActivas = [];
+    let progressTimerId = null;
+    let progressStepIndex = 0;
+
+    const PROGRESS_STEPS_GENERAR = [
+        { title: 'Validando solicitud...', detail: 'Comprobando ciudad, preferencias y parámetros del grupo.' },
+        { title: 'Generando alternativas IA...', detail: 'Creando varias rutas candidatas para esta solicitud.' },
+        { title: 'Validando paradas...', detail: 'Detectando duplicados y validando coherencia geográfica.' },
+        { title: 'Reintentando paradas inválidas...', detail: 'Pidiendo automáticamente alternativas para las no válidas.' },
+        { title: 'Seleccionando mejor ruta...', detail: 'Evaluando distancia, diversidad y coherencia temática.' },
+    ];
+
+    const PROGRESS_STEPS_ADICIONALES = [
+        { title: 'Analizando sugerencias del guía...', detail: 'Aplicando tus indicaciones para nuevas propuestas.' },
+        { title: 'Generando nuevas paradas...', detail: 'Buscando alternativas adicionales sin duplicar la selección actual.' },
+        { title: 'Validando calidad de paradas...', detail: 'Filtrando por coherencia geográfica y duplicidad.' },
+    ];
+
+    function actualizarMensajeProgreso(step) {
+        if (loadingStatusTitle) loadingStatusTitle.textContent = step.title;
+        if (loadingStatusDetail) loadingStatusDetail.textContent = step.detail;
+    }
+
+    function iniciarMensajesProgreso(tipo = 'generar') {
+        detenerMensajesProgreso();
+        const steps = tipo === 'adicionales' ? PROGRESS_STEPS_ADICIONALES : PROGRESS_STEPS_GENERAR;
+        progressStepIndex = 0;
+        actualizarMensajeProgreso(steps[progressStepIndex]);
+
+        progressTimerId = window.setInterval(() => {
+            progressStepIndex = (progressStepIndex + 1) % steps.length;
+            actualizarMensajeProgreso(steps[progressStepIndex]);
+        }, 5000);
+    }
+
+    function detenerMensajesProgreso() {
+        if (progressTimerId) {
+            window.clearInterval(progressTimerId);
+            progressTimerId = null;
+        }
+    }
+
+    function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
+        if (!rutaId || !sesionGeneracionId) return;
+
+        try {
+            const raw = window.localStorage.getItem(IA_SESSION_STORAGE_KEY);
+            const mapa = raw ? JSON.parse(raw) : {};
+            mapa[String(rutaId)] = String(sesionGeneracionId);
+            window.localStorage.setItem(IA_SESSION_STORAGE_KEY, JSON.stringify(mapa));
+        } catch (_error) {
+            // Si localStorage no está disponible, continuamos sin persistencia en frontend.
+        }
+    }
 
     // ── Geolocalización anticipada ────────────────────────────────────────────
     // Se lanza en cuanto el módulo se carga, sin esperar al submit.
@@ -20,6 +84,10 @@
         pantallaCarga.style.display = estaCargando ? 'flex' : 'none';
         boton.disabled = estaCargando;
         boton.textContent = estaCargando ? 'Generando...' : 'Generar la ruta';
+        if (!estaCargando) {
+            detenerMensajesProgreso();
+            actualizarMensajeProgreso({ title: 'Generando ruta...', detail: 'Preparando el proceso...' });
+        }
     }
 
     async function recogerMetadata() {
@@ -147,6 +215,7 @@
             mood: moodSeleccionados,
             deseos: leerDeseos(),
             metadata,
+            modo_seleccion: true,
         };
     }
 
@@ -166,6 +235,29 @@
         }
 
         return data;
+    }
+
+    async function obtenerEstadoSesionGeneracion(sesionGeneracionId) {
+        if (!sesionGeneracionId || !config?.urls?.obtenerSesion) return null;
+
+        const url = config.urls.obtenerSesion.replace('__SESSION_ID__', encodeURIComponent(sesionGeneracionId));
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': config.csrfToken,
+                },
+            });
+
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            if (data?.status !== 'OK') return null;
+            return data.datos;
+        } catch (_error) {
+            return null;
+        }
     }
 
     function renderizarMapa(paradas) {
@@ -192,6 +284,26 @@
         estado.classList.remove('d-none');
     }
 
+    function firmaParada(parada) {
+        const nombre = String(parada?.nombre || '').trim().toLowerCase();
+        const coords = Array.isArray(parada?.coordenadas) ? parada.coordenadas : [null, null];
+        const lat = Number(coords[0]);
+        const lon = Number(coords[1]);
+        const latKey = Number.isFinite(lat) ? lat.toFixed(5) : 'x';
+        const lonKey = Number.isFinite(lon) ? lon.toFixed(5) : 'x';
+        return `${nombre}|${latKey}|${lonKey}`;
+    }
+
+    function actualizarResumenSeleccionParadas() {
+        if (!resumenSeleccionParadas) return;
+
+        const total = propuestasParadasActivas.length;
+        const seleccionadas = obtenerIndicesSeleccionados().length;
+        const rechazadas = Math.max(0, total - seleccionadas);
+        resumenSeleccionParadas.textContent = `Paradas seleccionadas: ${seleccionadas} · Paradas rechazadas: ${rechazadas}`;
+        resumenSeleccionParadas.classList.remove('d-none');
+    }
+
     function renderizarRuta(datos) {
         seccionResultados.classList.remove('d-none');
         listaParadas.innerHTML = '';
@@ -212,6 +324,117 @@
         renderizarMapa(datos.paradas || []);
     }
 
+    function renderizarRutaPropuesta(datos, opciones = {}) {
+        seccionResultados.classList.remove('d-none');
+        listaParadas.innerHTML = '';
+
+        rutaMeta.classList.remove('d-none');
+        rutaMeta.textContent = `${datos.titulo || 'Ruta propuesta'} · ${datos.duracion_horas || datos.duracion_estimada || '-'}h · Selecciona paradas`;
+
+        const firmasSeleccionadas = opciones.firmasSeleccionadas || null;
+        const firmasPrevias = opciones.firmasPrevias || null;
+
+        propuestasParadasActivas = Array.isArray(datos.paradas) ? datos.paradas : [];
+        propuestasParadasActivas.forEach((parada, idx) => {
+            const firma = firmaParada(parada);
+            let checked = true;
+            if (firmasSeleccionadas && firmasPrevias) {
+                if (firmasSeleccionadas.has(firma)) checked = true;
+                else if (firmasPrevias.has(firma)) checked = false;
+                else checked = true;
+            } else if (firmasSeleccionadas) {
+                checked = firmasSeleccionadas.has(firma) || !firmasSeleccionadas.size;
+            }
+            listaParadas.insertAdjacentHTML(
+                'beforeend',
+                `<label class="list-group-item border-start border-warning border-4 mb-2">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <div class="fw-bold text-dark">Parada ${parada.orden || idx + 1}: ${parada.nombre || `Parada ${idx + 1}`}</div>
+                            <div class="small text-muted">${parada.descripcion || parada.desc || parada.justificacion || 'Sin descripción'}</div>
+                        </div>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input parada-propuesta-check" type="checkbox" data-index="${idx}" ${checked ? 'checked' : ''}>
+                        </div>
+                    </div>
+                </label>`,
+            );
+        });
+
+        ayudaSeleccionParadas?.classList.remove('d-none');
+        accionesSeleccionRuta?.classList.remove('d-none');
+        actualizarResumenSeleccionParadas();
+
+        document.querySelectorAll('.parada-propuesta-check').forEach((check) => {
+            check.addEventListener('change', actualizarResumenSeleccionParadas);
+        });
+
+        renderizarMapa(propuestasParadasActivas);
+    }
+
+    function obtenerIndicesSeleccionados() {
+        return Array.from(document.querySelectorAll('.parada-propuesta-check:checked'))
+            .map((check) => Number(check.dataset.index))
+            .filter((idx) => Number.isInteger(idx));
+    }
+
+    async function confirmarSeleccionRutaIA() {
+        if (!sesionGeneracionActiva) {
+            throw new Error('No hay una sesión de generación activa para confirmar.');
+        }
+
+        const seleccion = obtenerIndicesSeleccionados();
+        if (!seleccion.length) {
+            throw new Error('Debes seleccionar al menos una parada para guardar la ruta.');
+        }
+
+        const response = await fetch(config.urls.confirmar, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': config.csrfToken,
+            },
+            body: JSON.stringify({
+                sesion_generacion_id: sesionGeneracionActiva,
+                seleccion_indices: seleccion,
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.status !== 'OK') {
+            throw new Error(data.mensaje || 'No se pudo confirmar la selección de paradas.');
+        }
+
+        return data;
+    }
+
+    async function generarParadasAdicionalesIA() {
+        if (!sesionGeneracionActiva) {
+            throw new Error('No hay una sesión activa para generar más paradas.');
+        }
+
+        const sugerencias = (inputSugerenciasAdicionales?.value || '').trim();
+        const response = await fetch(config.urls.adicionales, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': config.csrfToken,
+            },
+            body: JSON.stringify({
+                sesion_generacion_id: sesionGeneracionActiva,
+                cantidad: 3,
+                sugerencias,
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.status !== 'OK') {
+            throw new Error(data.mensaje || 'No se pudieron generar más paradas.');
+        }
+
+        return data;
+    }
+
     document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {
             this.closest('.mood-btn').classList.toggle('active', this.checked);
@@ -222,16 +445,22 @@
         event.preventDefault();
         estado.classList.add('d-none');
         setCargando(true);
+        iniciarMensajesProgreso('generar');
 
         try {
             const payload = await leerFormulario();
             const data = await enviarPeticion(payload);
+            sesionGeneracionActiva = data.sesion_generacion_id || null;
+
             form.classList.add('d-none');
             document.getElementById('subtitulo-form').classList.add('d-none');
-            renderizarRuta(data.datos_ruta);
+            renderizarRutaPropuesta(data.datos_ruta || {});
 
             estado.className = 'alert alert-success mt-3';
-            estado.innerHTML = `${data.mensaje} — <a href="/catalogo/${data.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.`;
+            estado.innerHTML = `
+                ${data.mensaje}
+                <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${data.checkpoint_actual || 'ruta_generada'}</span>
+            `;
             estado.classList.remove('d-none');
         } catch (error) {
             console.error(error);
@@ -242,5 +471,86 @@
     });
 
     inicializarDeseos();
+
+    if (btnConfirmarSeleccion) {
+        btnConfirmarSeleccion.addEventListener('click', async () => {
+            estado.classList.add('d-none');
+            btnConfirmarSeleccion.disabled = true;
+            btnConfirmarSeleccion.textContent = 'Guardando...';
+
+            try {
+                const confirmacion = await confirmarSeleccionRutaIA();
+                guardarSesionGeneracionEnStorage(confirmacion.ruta_id, confirmacion.sesion_generacion_id);
+                const estadoSesion = await obtenerEstadoSesionGeneracion(confirmacion.sesion_generacion_id);
+                const checkpoint = estadoSesion?.checkpoint_actual || confirmacion.checkpoint_actual || 'ruta_guardada';
+
+                accionesSeleccionRuta?.classList.add('d-none');
+                ayudaSeleccionParadas?.classList.add('d-none');
+                renderizarRuta(confirmacion.datos_ruta || {});
+
+                estado.className = 'alert alert-success mt-3';
+                estado.innerHTML = `
+                    ${confirmacion.mensaje}
+                    <span class="badge bg-success ms-2">Checkpoint IA: ${checkpoint}</span>
+                    <br>
+                    <a href="/catalogo/${confirmacion.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.
+                `;
+                estado.classList.remove('d-none');
+            } catch (error) {
+                console.error(error);
+                renderizarErrores(error.message);
+            } finally {
+                btnConfirmarSeleccion.disabled = false;
+                btnConfirmarSeleccion.textContent = 'Guardar ruta con selección';
+            }
+        });
+    }
+
+    if (btnGenerarAdicionales) {
+        btnGenerarAdicionales.addEventListener('click', async () => {
+            estado.classList.add('d-none');
+            btnGenerarAdicionales.disabled = true;
+            btnGenerarAdicionales.textContent = 'Generando...';
+            setCargando(true);
+            iniciarMensajesProgreso('adicionales');
+
+            try {
+                const firmasSeleccionadas = new Set(
+                    obtenerIndicesSeleccionados().map((idx) => firmaParada(propuestasParadasActivas[idx]))
+                );
+                const firmasPrevias = new Set(propuestasParadasActivas.map((p) => firmaParada(p)));
+
+                const resultado = await generarParadasAdicionalesIA();
+                const estadoSesion = await obtenerEstadoSesionGeneracion(resultado.sesion_generacion_id);
+                const checkpoint = estadoSesion?.checkpoint_actual || resultado.checkpoint_actual || 'paradas_adicionales_generadas';
+                const propuestas = resultado?.datos?.paradas_propuestas || [];
+
+                renderizarRutaPropuesta(
+                    {
+                        titulo: 'Ruta propuesta actualizada',
+                        duracion_horas: null,
+                        paradas: propuestas,
+                    },
+                    { firmasSeleccionadas, firmasPrevias },
+                );
+
+                if (inputSugerenciasAdicionales) inputSugerenciasAdicionales.value = '';
+
+                estado.className = 'alert alert-success mt-3';
+                estado.innerHTML = `
+                    ${resultado.mensaje}
+                    <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${checkpoint}</span>
+                `;
+                estado.classList.remove('d-none');
+            } catch (error) {
+                console.error(error);
+                renderizarErrores(error.message);
+            } finally {
+                setCargando(false);
+                btnGenerarAdicionales.disabled = false;
+                btnGenerarAdicionales.textContent = 'Generar más paradas';
+            }
+        });
+    }
 
 })();

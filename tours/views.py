@@ -112,17 +112,17 @@ def mapa_turista_anonimo(request, token):
     if not TuristaSesion.objects.filter(turista=turista, sesion_tour=sesion).exists():
         return redirect("tours:join_tour", token=token)
 
+    snapshot = services.get_route_snapshot(sesion)
+
     return render(
         request,
         "turista/turista_mapa.html",
         {
             "sesion":              sesion,
             "turista":             turista,
-            "paradas":             sesion.ruta.paradas.all(),
-            "paradas_json":        services.serializar_paradas(sesion),
-            # Geometría pre-calculada en BD. None si la ruta aún no tiene
-            # geometría guardada (p.ej. < 2 paradas o sin ejecutar recalcular_rutas).
-            "geometria_ruta_json": sesion.ruta.geometria_ruta_coords,
+            "paradas":             snapshot["paradas"],
+            "paradas_json":        json.dumps(snapshot["paradas"]),
+            "geometria_ruta_json": snapshot["geometria_ruta"],
             "current_user_name":   turista.alias,
         },
     )
@@ -165,6 +165,7 @@ def crear_sesion(request):
         fecha_inicio=timezone.now(),
         ruta=ruta,
     )
+    services.set_route_snapshot(sesion)
     return redirect("tours:guia_sesion", sesion_id=sesion.id)
 
 
@@ -269,14 +270,16 @@ def mapa_guia(request, sesion_id):
     if not services.es_guia_de_sesion(request.user, sesion):
         return JsonResponse({"error": "No autorizado."}, status=403)
 
+    snapshot = services.get_route_snapshot(sesion)
+
     return render(
         request,
         "turista/turista_mapa.html",
         {
             "sesion":              sesion,
-            "paradas":             sesion.ruta.paradas.all(),
-            "paradas_json":        services.serializar_paradas(sesion),
-            "geometria_ruta_json": sesion.ruta.geometria_ruta_coords,
+            "paradas":             snapshot["paradas"],
+            "paradas_json":        json.dumps(snapshot["paradas"]),
+            "geometria_ruta_json": snapshot["geometria_ruta"],
             "es_guia":             True,
             "current_user_name":   request.user.username,
         },

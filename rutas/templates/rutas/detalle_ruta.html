@@ -4,178 +4,7 @@
 {% block title %}AURA - Detalle de Ruta{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/pages/route_detail.css' %}">
-<style>
-    .map-container-ruta {
-        height: 500px;
-        width: 100%;
-        border-radius: 1rem;
-        border: 1px solid #dee2e6;
-    }
-
-    .list-paradas-container {
-        max-height: 500px;
-        overflow-y: auto;
-    }
-
-    .meta-pill {
-        display: inline-block;
-        padding: 0.3rem 0.75rem;
-        border-radius: 999px;
-        background-color: #eef2ff;
-        color: #4338ca;
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin-right: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .mood-edit-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-
-    .mood-edit-item {
-        border: 1px solid #dee2e6;
-        border-radius: 999px;
-        padding: 0.35rem 0.7rem;
-        background: #fff;
-    }
-
-    .titulo-edit-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-
-    .btn-edit {
-        border: 1px solid #c7d2fe;
-        background: #fff;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.8rem;
-        font-weight: 600;
-        line-height: 1;
-        padding: 0.35rem 0.75rem;
-        color: #4338ca;
-        cursor: pointer;
-    }
-
-    .btn-edit:hover { background: #eef2ff; color: #3730a3; }
-
-    .meta-edit-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-    .parada-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-    .parada-edit-form { margin-top: 0.75rem; }
-
-    .add-stop-form {
-        border: 1px dashed #cbd5e1;
-        border-radius: 10px;
-        padding: 0.75rem;
-        margin-bottom: 0.75rem;
-        background: #f8fafc;
-    }
-
-    .map-edit-hint { font-size: 0.875rem; }
-
-    .parada-item { border-radius: 8px; transition: background 0.15s; }
-    .parada-item.drag-over { background: #eef2ff; }
-    .drag-handle { cursor: grab; color: #9ca3af; font-size: 0.85rem; }
-    .parada-coords-preview { font-size: 0.8rem; color: #6b7280; margin-top: 0.25rem; }
-
-    /* ── Panel métricas (S2.1-29) ──────────────────────────────────────── */
-    .ruta-metrics-panel {
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-        align-items: center;
-        padding: 0.6rem 1rem;
-        background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%);
-        border: 1px solid #c7d2fe;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        font-size: 0.875rem;
-    }
-
-    .metric-item { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; color: #3730a3; }
-    .metric-value { color: #1e1b4b; }
-    .metric-sep { color: #c7d2fe; font-weight: 300; font-size: 1.1rem; }
-    .metrics-empty { color: #6b7280; font-size: 0.82rem; font-style: italic; }
-
-    /* Botón de recálculo */
-    .btn-recalcular {
-        margin-left: auto;
-        border: 1px solid #6366f1;
-        background: #fff;
-        color: #4f46e5;
-        border-radius: 999px;
-        padding: 0.3rem 0.8rem;
-        font-size: 0.8rem;
-        font-weight: 600;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        transition: background 0.15s;
-    }
-
-    .btn-recalcular:hover { background: #eef2ff; }
-    .btn-recalcular:disabled { opacity: 0.6; cursor: wait; }
-
-    /* Badge de estado en el mapa */
-    .map-route-status {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 1000;
-        background: rgba(255,255,255,0.92);
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 0.35rem 0.7rem;
-        font-size: 0.78rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-        pointer-events: none;
-    }
-
-    .map-route-status.ok    { color: #059669; border-color: #a7f3d0; background: rgba(240,253,250,0.95); }
-    .map-route-status.warn  { color: #d97706; border-color: #fcd34d; background: rgba(255,251,235,0.95); }
-    .map-route-status.error { color: #dc2626; border-color: #fca5a5; background: rgba(254,242,242,0.95); }
-
-    .map-wrapper { position: relative; }
-
-    .segmento-badge { font-size: 0.75rem; color: #6b7280; margin-top: 0.2rem; }
-
-    .reorder-active .parada-item {
-        cursor: grab;
-        border: 1px dashed #6366f1 !important;
-    }
-
-    .ia-suggestions-panel {
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        background: #f8fafc;
-        padding: 0.75rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .ia-suggestion-item {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        background: #fff;
-        padding: 0.6rem;
-        margin-top: 0.5rem;
-    }
-
-    .ia-suggestion-meta {
-        font-size: 0.8rem;
-        color: #6b7280;
-    }
-
-    .ia-suggestions-inline {
-        margin-top: 0.75rem;
-    }
-
-    .ia-suggestion-item__actions {
-        margin-top: 0.5rem;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/detalle_ruta.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -227,6 +56,37 @@
             </span>
         {% endif %}
     </div>
+
+    {% with restricciones=ia_checkpoint_contexto.restricciones_usuario rechazadas=ia_checkpoint_contexto.paradas_rechazadas %}
+    {% if restricciones or rechazadas %}
+    <div class="checkpoint-context-box">
+        <div class="fw-semibold small mb-2">Historial de la IA para esta ruta</div>
+        {% if restricciones %}
+        <div class="small mb-2">
+            <strong>Contexto:</strong>
+            <ul class="mb-0 mt-1">
+                {% for restriccion in restricciones %}
+                <li>{{ restriccion }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if rechazadas %}
+        <div class="small">
+            <strong>Paradas rechazadas durante la selección:</strong>
+            <ul class="mb-0 mt-1">
+                {% for parada in rechazadas %}
+                <li>
+                    {{ parada.nombre|default:'Sin nombre' }}
+                    {% if parada.motivo_rechazo %}- {{ parada.motivo_rechazo }}{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% endwith %}
 
     {# ── Meta ─────────────────────────────────────────────────────────────── #}
     <div class="card shadow-sm border-0 mb-3">
