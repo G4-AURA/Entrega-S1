@@ -1923,11 +1923,11 @@ def _solicitar_alternativa_parada(payload, parada_invalida, motivo, paradas_acep
     return _normalizar_poi_generado(alternativa, 1)
 
 
-def _optimizar_pois_en_ruta(pois, payload):
+def _optimizar_pois_en_ruta(pois, payload, descripcion_ia="Ruta generada con IA."):
     if not pois or len(pois) < 2:
         return {
             'titulo': f"Ruta {payload.get('mood')}",
-            'descripcion': 'Ruta generada sin optimización necesaria.',
+            'descripcion': descripcion_ia,
             'duracion_estimada': payload.get('duracion'),
             'nivel_exigencia': payload.get('exigencia'),
             'mood': payload.get('mood'),
@@ -1983,7 +1983,7 @@ def _optimizar_pois_en_ruta(pois, payload):
 
     return {
         'titulo': f"Ruta {payload.get('mood')} Inteligente",
-        'descripcion': 'Ruta optimizada con algoritmo TSP (Traveling Salesperson Problem).',
+        'descripcion': descripcion_ia,
         'duracion_estimada': payload.get('duracion'),
         'nivel_exigencia': payload.get('exigencia'),
         'mood': payload.get('mood'),
@@ -2058,21 +2058,30 @@ def _generar_pois_base(payload, variacion):
         {bloque_restricciones}
         {bloque_allowlist}
 
-        Devuelve SOLO JSON válido con una lista de 5 a 8 POIs:
-        [
-          {{"nombre": "...", "coords": [lat, lon], "desc": "...", "categoria": "..."}}
-        ]
+        Devuelve SOLO un objeto JSON válido con esta estructura exacta:
+        {{
+            "descripcion": "Escribe aquí una descripción atractiva y comercial (máx 3 líneas) sobre lo que el turista va a experimentar en esta variación de la ruta.",
+            "paradas": [
+                {{"nombre": "...", "coords": [lat, lon], "desc": "...", "categoria": "..."}}
+            ]
+        }}
     """
     return llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
 
 
 def _generar_ruta_alternativa_con_reintentos(payload, variacion):
     respuesta = _generar_pois_base(payload, variacion)
-    if not isinstance(respuesta, list):
+    descripcion_ia = "Ruta generada con IA."
+    if isinstance(respuesta, dict):
+        candidatos_raw = respuesta.get('paradas', [])
+        descripcion_ia = respuesta.get('descripcion', descripcion_ia)
+    elif isinstance(respuesta, list):
+        candidatos_raw = respuesta
+    else:
         raise ErrorIntegracionIA('La IA devolvió un formato inválido para la ruta alternativa.')
 
     candidatos = []
-    for idx, poi in enumerate(respuesta, start=1):
+    for idx, poi in enumerate(candidatos_raw, start=1): 
         normalizado = _normalizar_poi_generado(poi, idx)
         if normalizado:
             candidatos.append(normalizado)
@@ -2107,7 +2116,7 @@ def _generar_ruta_alternativa_con_reintentos(payload, variacion):
                 }
             )
 
-    ruta = _optimizar_pois_en_ruta(validas, payload)
+    ruta = _optimizar_pois_en_ruta(validas, payload, descripcion_ia)
     distancia_total_km = _calcular_distancia_total_km(ruta.get('paradas') or [])
     diversidad = _calcular_diversidad_paradas(ruta.get('paradas') or [])
     coherencia = _calcular_coherencia_tematica(ruta.get('paradas') or [], payload.get('mood') or [])
@@ -2121,7 +2130,6 @@ def _generar_ruta_alternativa_con_reintentos(payload, variacion):
         },
         'paradas_rechazadas_validacion': rechazadas,
     }
-
 
 def _seleccionar_mejor_alternativa(alternativas):
     if not alternativas:
