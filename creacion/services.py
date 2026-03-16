@@ -940,20 +940,7 @@ def llamar_gemini_bypass(prompt, api_key):
         except Exception as exc:
             raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
-<<<<<<< feat/ValidacionCoordenadas
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
-=======
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=20)
-        response.raise_for_status()
-
-        resultado = response.json()
-        texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
-        return json.loads(texto_json)
-        
-    except Exception as e:
-        raise ErrorIntegracionIA(f"No se pudieron generar paradas con IA en este momento: {str(e)}")
->>>>>>> develop
 
 def calcular_distancia(coord1, coord2):
     """Calcula distancia euclidiana entre dos puntos [lat, lon]"""
