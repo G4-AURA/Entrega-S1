@@ -6,9 +6,13 @@
     let pageManual = 1;
     let pageIa = 1;
 
-    document.addEventListener('DOMContentLoaded', function() {
-        cargarRutas('manual');
-        cargarRutas('ia');
+    document.addEventListener('DOMContentLoaded', async function() {
+        await Promise.all([cargarRutas('manual'), cargarRutas('ia')]);
+
+        if (new URLSearchParams(window.location.search).get('tipo') === 'ia') {
+            const seccionIa = document.getElementById('rutas-ia-section');
+            if (seccionIa) seccionIa.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
 
         document.getElementById('limite-rutas').addEventListener('change', function(e) {
             currentLimit = parseInt(e.target.value);
