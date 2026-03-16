@@ -429,7 +429,7 @@ class GeneracionRutaResilienteIATests(TestCase):
         self.assertIn('Real Alcázar', nombres)
         self.assertEqual(len(alternativa['paradas_rechazadas_validacion']), 0)
 
-    @patch('creacion.services._generar_ruta_alternativa_con_reintentos')
+    @patch('creacion.services._ejecutar_grafo_para_alternativa')
     def test_consultar_langgraph_evalua_alternativas_y_elige_mejor(self, mock_generar_alternativa):
         alternativa_corta = {
             'ruta': {
