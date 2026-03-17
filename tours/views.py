@@ -23,6 +23,18 @@ from . import services
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
 
 
+def _render_ruta_no_autorizada(request):
+    return render(
+        request,
+        "tours/join_error.html",
+        {
+            "error": "Estas accediendo a una ruta que no es tuya.",
+            "show_contact_hint": False,
+        },
+        status=403,
+    )
+
+
 # ===========================================================================
 # TURISTAS ANÃ“NIMOS
 # Flujo Ãºnico: /live/code/<codigo>/ â†’ alias â†’ /live/<token>/mapa/
@@ -155,9 +167,7 @@ def crear_sesion(request):
         es_guia = False
 
     if not es_guia:
-        return JsonResponse(
-            {"error": "No autorizado para crear sesiÃ³n para esta ruta."}, status=403
-        )
+        return _render_ruta_no_autorizada(request)
 
     sesion = SesionTour.objects.create(
         codigo_acceso=services.generar_codigo_unico(),
@@ -175,7 +185,7 @@ def guia_sesion(request, sesion_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
     if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+        return _render_ruta_no_autorizada(request)
 
     return render(request, "tours/guia_sesion.html", {"sesion": sesion})
 
@@ -325,7 +335,7 @@ def mapa_guia(request, sesion_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
     if not services.es_guia_de_sesion(request.user, sesion):
-        return JsonResponse({"error": "No autorizado."}, status=403)
+        return _render_ruta_no_autorizada(request)
 
     snapshot = services.get_route_snapshot(sesion)
 

@@ -23,9 +23,11 @@
             Volver al inicio
         </a>
 
+        {% if show_contact_hint|default_if_none:True %}
         <p style="color:var(--text-muted);font-size:.8rem;margin-top:1.5rem;margin-bottom:0;">
             Si crees que esto es un error, contacta a tu guía turístico.
         </p>
+        {% endif %}
 
     </div>
 </div>
