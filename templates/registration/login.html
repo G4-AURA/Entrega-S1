@@ -51,68 +51,6 @@
                style="color:var(--brand-color);">Regístrate como Guía</a>
         </div>
 
-        <div class="auth-divider">o</div>
-
-        <div class="auth-tourist-note">
-            ¿Eres turista? Usa el botón
-            <strong>Acceder a Tour</strong> para unirte con el código de tu guía.
-        </div>
-
-    </div>
-</div>
-
-<!-- FAB: acceso turista -->
-<button class="fab-button btn"
-        data-bs-toggle="modal"
-        data-bs-target="#joinTourModal"
-        title="Acceder a tour como turista">
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
-        <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
-    </svg>
-    <span>Acceder a Tour</span>
-</button>
-
-<!-- Modal acceso por código -->
-<div class="modal fade" id="joinTourModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg" style="border-radius:var(--radius-xl);">
-            <div class="modal-body p-4 p-md-5 text-center">
-
-                <div class="d-inline-flex align-items-center justify-content-center mb-4"
-                     style="width:64px;height:64px;background:var(--brand-light);border-radius:18px;color:var(--brand-color);">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" viewBox="0 0 16 16">
-                        <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
-                    </svg>
-                </div>
-
-                <h3 class="fw-bold mb-1" style="font-family:'Manrope',sans-serif;font-size:1.375rem;letter-spacing:-.03em;">Acceder a Tour</h3>
-                <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:1.75rem;">
-                    Introduce el código que te dio tu guía
-                </p>
-
-                <div id="mensaje-codigo" class="d-none mb-3" role="alert"
-                     style="background:var(--danger-light);border:1px solid rgba(239,68,68,.2);border-radius:var(--radius);padding:.75rem 1rem;color:#991B1B;font-size:.82rem;text-align:left;"></div>
-
-                <input type="text"
-                       id="codigo-input"
-                       class="form-control input-code fw-bold mb-4"
-                       style="font-size:1.75rem;padding:1rem;letter-spacing:8px;text-align:center;background:var(--bg-app);"
-                       placeholder="ABC123"
-                       maxlength="10"
-                       autocomplete="off">
-
-                <div class="d-grid gap-2">
-                    <button id="btn-ir-tour" class="btn btn-brand btn-lg fw-bold py-3" style="border-radius:var(--radius);">
-                        Continuar al Tour
-                    </button>
-                    <button class="btn fw-semibold" style="color:var(--text-muted);font-size:.875rem;"
-                            data-bs-dismiss="modal">
-                        Cancelar
-                    </button>
-                </div>
-
-            </div>
-        </div>
     </div>
 </div>
 
