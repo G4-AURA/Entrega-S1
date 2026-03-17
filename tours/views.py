@@ -217,6 +217,47 @@ def estado_cronometro(request, sesion_id):
             "estado": sesion.estado,
             "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
             "duracion_horas": sesion.ruta.duracion_horas,
+            "parada_actual_id": sesion.parada_actual_id,
+        }
+    )
+
+
+@login_required
+@require_POST
+def seleccionar_parada_actual(request, sesion_id):
+    """Permite al guía fijar la parada actual de la sesión."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    parada_id = body.get("parada_id")
+    if parada_id is None:
+        return JsonResponse({"error": "El campo parada_id es obligatorio."}, status=400)
+
+    try:
+        parada_id = int(parada_id)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "parada_id debe ser un entero."}, status=400)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=400)
+
+    sesion.parada_actual = parada
+    sesion.save(update_fields=["parada_actual"])
+    services.set_route_snapshot(sesion)
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "sesion_id": sesion.id,
+            "parada_actual_id": sesion.parada_actual_id,
         }
     )
 @login_required

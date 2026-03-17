@@ -20,6 +20,9 @@ let guiaMarker        = null;
 let miUbicacionMarker = null;
 let countdownTimerId  = null;
 let countdownPollId   = null;
+const paradasMarkers  = new Map();
+const paradasDataById = new Map();
+let paradaSeleccionadaId = null;
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -54,6 +57,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── Dibujar recorrido y paradas ───────────────────────────────────────
     _dibujarRutaYParadas();
+    _initParadaFocusButtons();
 
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
@@ -120,41 +124,20 @@ function _dibujarRutaYParadas() {
 
         bounds.push([parada.lat, parada.lng]);
 
-        const esActual = parada.es_actual;
-        const size     = esActual ? 34 : 26;
-
-        const iconHtml = esActual
-            ? `<div style="
-                  background:#4f46e5;
-                  width:${size}px;height:${size}px;
-                  border-radius:50%;border:3px solid white;
-                  box-shadow:0 2px 10px rgba(79,70,229,.45);
-                  display:flex;align-items:center;justify-content:center;">
-                  <span style="color:white;font-size:14px;font-weight:700;">${parada.orden}</span>
-               </div>`
-            : `<div style="
-                  background:#d1d5db;
-                  width:${size}px;height:${size}px;
-                  border-radius:50%;border:2px solid white;
-                  box-shadow:0 1px 5px rgba(0,0,0,.18);
-                  display:flex;align-items:center;justify-content:center;">
-                  <span style="color:#6b7280;font-size:11px;font-weight:600;">${parada.orden}</span>
-               </div>`;
-
-        L.marker([parada.lat, parada.lng], {
-            icon: L.divIcon({
-                className:  '',
-                html:       iconHtml,
-                iconSize:   [size, size],
-                iconAnchor: [size / 2, size / 2],
-                popupAnchor:[0, -(size / 2) - 4],
-            }),
+        const marker = L.marker([parada.lat, parada.lng], {
+            icon: _buildParadaIcon(parada),
         })
         .addTo(map)
         .bindPopup(
             `<strong>${parada.nombre}</strong>` +
             `<br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`
         );
+
+        if (parada.id != null) {
+            const paradaId = String(parada.id);
+            paradasMarkers.set(paradaId, marker);
+            paradasDataById.set(paradaId, parada);
+        }
     });
 
     // Si no hay geometría, ajustar la vista a los marcadores
@@ -322,6 +305,10 @@ function _initSessionCountdown() {
         if (!data || !data.estado) return;
         const remoteStarted = data.estado === 'en_curso';
 
+        if (data.parada_actual_id != null) {
+            _resaltarParadaSeleccionada(String(data.parada_actual_id));
+        }
+
         if (remoteStarted && data.fecha_inicio) {
             const parsedStart = Date.parse(data.fecha_inicio);
             if (Number.isFinite(parsedStart)) startTimestamp = parsedStart;
@@ -342,7 +329,9 @@ function _initSessionCountdown() {
 
     const fetchCountdownState = () => {
         if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl) return;
-        fetch(countdownStatusUrl)
+        const separator = countdownStatusUrl.includes('?') ? '&' : '?';
+        const liveStatusUrl = `${countdownStatusUrl}${separator}_=${Date.now()}`;
+        fetch(liveStatusUrl, { cache: 'no-store' })
             .then(r => r.ok ? r.json() : Promise.reject())
             .then(applyRemoteState)
             .catch(() => {});
@@ -352,7 +341,7 @@ function _initSessionCountdown() {
     else setWaitingUi();
 
     fetchCountdownState();
-    countdownPollId = setInterval(fetchCountdownState, 5000);
+    countdownPollId = setInterval(fetchCountdownState, 1200);
 
     if (startBtn) {
         startBtn.addEventListener('click', () => {
@@ -473,4 +462,120 @@ function _initChat() {
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
+}
+
+function _initParadaFocusButtons() {
+    const focusButtons = document.querySelectorAll('.parada-focus-btn');
+    if (!focusButtons.length) return;
+
+    focusButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const paradaId = button.getAttribute('data-parada-id');
+            if (!paradaId || !map) return;
+
+            if (typeof selectCurrentStopUrl === 'undefined' || !selectCurrentStopUrl) return;
+
+            button.disabled = true;
+            try {
+                const response = await fetch(selectCurrentStopUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': _getCsrf(),
+                    },
+                    body: JSON.stringify({ parada_id: Number.parseInt(paradaId, 10) }),
+                });
+
+                if (!response.ok) throw new Error('No se pudo actualizar la parada actual.');
+
+                _resaltarParadaSeleccionada(paradaId);
+            } catch {
+                return;
+            } finally {
+                button.disabled = false;
+            }
+
+            const marker = paradasMarkers.get(paradaId);
+            if (marker) {
+                const pos = marker.getLatLng();
+                map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+                marker.openPopup();
+                return;
+            }
+
+            const parada = paradasDataById.get(paradaId)
+                || (Array.isArray(paradasData) ? paradasData.find(item => String(item.id) === paradaId) : null);
+
+            if (!parada || parada.lat == null || parada.lng == null) return;
+
+            map.flyTo([parada.lat, parada.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+        });
+    });
+}
+
+function _resaltarParadaSeleccionada(paradaId) {
+    if (!paradaId) return;
+
+    if (paradaSeleccionadaId && paradaSeleccionadaId !== paradaId) {
+        const previousMarker = paradasMarkers.get(paradaSeleccionadaId);
+        const previousParada = paradasDataById.get(paradaSeleccionadaId);
+        if (previousMarker && previousParada) {
+            previousMarker.setIcon(_buildParadaIcon(previousParada));
+            previousMarker.setZIndexOffset(0);
+        }
+    }
+
+    document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
+        item.classList.remove('selected-stop');
+    });
+
+    const marker = paradasMarkers.get(paradaId);
+    const parada = paradasDataById.get(paradaId);
+    if (marker && parada) {
+        marker.setIcon(_buildParadaIcon(parada, true));
+        marker.setZIndexOffset(1200);
+    }
+
+    const timelineItem = document.querySelector(`.timeline-item[data-parada-id="${paradaId}"]`);
+    if (timelineItem) {
+        timelineItem.classList.add('selected-stop');
+    }
+
+    document.querySelectorAll('.parada-focus-btn').forEach(btn => {
+        const btnParadaId = btn.getAttribute('data-parada-id');
+        const isSelected = btnParadaId === paradaId;
+        btn.textContent = isSelected ? 'Parada actual seleccionada' : 'Seleccionar parada actual';
+        btn.classList.toggle('is-selected', isSelected);
+    });
+
+    paradaSeleccionadaId = paradaId;
+}
+
+function _buildParadaIcon(parada, highlighted = false) {
+    const esActual = Boolean(parada && parada.es_actual);
+    const size = highlighted ? 40 : (esActual ? 34 : 26);
+    const backgroundColor = highlighted ? '#f97316' : (esActual ? '#4f46e5' : '#d1d5db');
+    const borderWidth = highlighted ? 3 : (esActual ? 3 : 2);
+    const borderColor = highlighted ? '#fff7ed' : '#ffffff';
+    const shadow = highlighted
+        ? '0 0 0 4px rgba(249,115,22,.25),0 4px 12px rgba(249,115,22,.45)'
+        : (esActual ? '0 2px 10px rgba(79,70,229,.45)' : '0 1px 5px rgba(0,0,0,.18)');
+    const textColor = highlighted || esActual ? '#ffffff' : '#6b7280';
+    const textSize = highlighted ? 15 : (esActual ? 14 : 11);
+    const textWeight = highlighted ? 800 : (esActual ? 700 : 600);
+
+    return L.divIcon({
+        className: '',
+        html: `<div style="
+                background:${backgroundColor};
+                width:${size}px;height:${size}px;
+                border-radius:50%;border:${borderWidth}px solid ${borderColor};
+                box-shadow:${shadow};
+                display:flex;align-items:center;justify-content:center;">
+                <span style="color:${textColor};font-size:${textSize}px;font-weight:${textWeight};">${parada.orden}</span>
+              </div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -(size / 2) - 4],
+    });
 }

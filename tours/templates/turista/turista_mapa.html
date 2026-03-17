@@ -76,14 +76,26 @@
 
             <div class="timeline">
                 {% for parada in paradas %}
-                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
-                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
-                        style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
-                        {{ parada.nombre }}
-                    </h6>
-                    <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
-                        Parada {{ parada.orden }} del recorrido
-                    </p>
+                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}" data-parada-id="{{ parada.id }}">
+                    <div class="timeline-item-main">
+                        <h6 class="timeline-stop-name mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
+                            style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
+                            {{ parada.nombre }}
+                        </h6>
+                        <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
+                            Parada {{ parada.orden }} del recorrido
+                        </p>
+                    </div>
+                    {% if es_guia %}
+                    <button
+                        type="button"
+                        class="parada-focus-btn"
+                        data-parada-id="{{ parada.id }}"
+                        aria-label="Seleccionar parada actual: {{ parada.nombre }}"
+                        title="Seleccionar parada actual">
+                        Seleccionar parada actual
+                    </button>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -127,7 +139,8 @@
     const currentUserName = '{{ current_user_name|escapejs }}';
     const geometriaRuta   = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
     const startCountdownUrl = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
+    const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
     const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
 </script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026031603"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026031704"></script>
 {% endblock %}
