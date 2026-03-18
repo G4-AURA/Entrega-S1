@@ -10,6 +10,8 @@
     const rutaMeta = document.getElementById('ruta-meta');
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
+    const selectExigencia = document.getElementById('exigencia');
+    const exigenciaAyuda = document.getElementById('exigencia-ayuda');
     const ayudaSeleccionParadas = document.getElementById('seleccion-paradas-ayuda');
     const resumenSeleccionParadas = document.getElementById('resumen-seleccion-paradas');
     const accionesSeleccionRuta = document.getElementById('acciones-seleccion-ruta');
@@ -38,6 +40,12 @@
         { title: 'Validando calidad de paradas...', detail: 'Filtrando por coherencia geográfica y duplicidad.' },
     ];
 
+    const EXIGENCIA_DESCRIPCIONES = {
+        baja: 'Ritmo tranquilo, trayectos cortos y pausas frecuentes. Recomendada para paseos relajados o grupos con movilidad reducida.',
+        media: 'Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.',
+        alta: 'Ritmo intenso, más distancia caminada y menos pausas. Pensada para grupos habituados a caminar.',
+    };
+
     function actualizarMensajeProgreso(step) {
         if (loadingStatusTitle) loadingStatusTitle.textContent = step.title;
         if (loadingStatusDetail) loadingStatusDetail.textContent = step.detail;
@@ -60,6 +68,13 @@
             window.clearInterval(progressTimerId);
             progressTimerId = null;
         }
+    }
+
+    function actualizarAyudaExigencia() {
+        if (!selectExigencia || !exigenciaAyuda) return;
+
+        const clave = String(selectExigencia.value || '').toLowerCase();
+        exigenciaAyuda.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
     }
 
     function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
@@ -441,6 +456,11 @@
         });
     });
 
+    if (selectExigencia) {
+        selectExigencia.addEventListener('change', actualizarAyudaExigencia);
+        actualizarAyudaExigencia();
+    }
+    
     form.addEventListener('submit', async function (event) {
         event.preventDefault();
         estado.classList.add('d-none');
