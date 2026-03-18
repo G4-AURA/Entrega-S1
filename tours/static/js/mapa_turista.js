@@ -18,6 +18,12 @@
 let map               = null;
 let guiaMarker        = null;
 let miUbicacionMarker = null;
+const turistasMarkers = new Map();
+let countdownTimerId  = null;
+let countdownPollId   = null;
+const paradasMarkers  = new Map();
+const paradasDataById = new Map();
+let paradaSeleccionadaId = null;
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -52,14 +58,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── Dibujar recorrido y paradas ───────────────────────────────────────
     _dibujarRutaYParadas();
+    _initParadaFocusButtons();
 
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
 
-    // ── Posición del guía (polling cada 5 s, solo turistas) ───────────────
+    // ── Polling de posiciones en vivo ──────────────────────────────────────
     if (!esGuia) {
         _obtenerUbicacionGuia();
         setInterval(_obtenerUbicacionGuia, 5000);
+    } else {
+        _obtenerUbicacionesTuristas();
+        setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
     // ── Panel expandible ──────────────────────────────────────────────────
@@ -86,6 +96,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // ── Chat ──────────────────────────────────────────────────────────────
+    _initSessionCountdown();
     _initChat();
 });
 
@@ -117,41 +128,20 @@ function _dibujarRutaYParadas() {
 
         bounds.push([parada.lat, parada.lng]);
 
-        const esActual = parada.es_actual;
-        const size     = esActual ? 34 : 26;
-
-        const iconHtml = esActual
-            ? `<div style="
-                  background:#4f46e5;
-                  width:${size}px;height:${size}px;
-                  border-radius:50%;border:3px solid white;
-                  box-shadow:0 2px 10px rgba(79,70,229,.45);
-                  display:flex;align-items:center;justify-content:center;">
-                  <span style="color:white;font-size:14px;font-weight:700;">${parada.orden}</span>
-               </div>`
-            : `<div style="
-                  background:#d1d5db;
-                  width:${size}px;height:${size}px;
-                  border-radius:50%;border:2px solid white;
-                  box-shadow:0 1px 5px rgba(0,0,0,.18);
-                  display:flex;align-items:center;justify-content:center;">
-                  <span style="color:#6b7280;font-size:11px;font-weight:600;">${parada.orden}</span>
-               </div>`;
-
-        L.marker([parada.lat, parada.lng], {
-            icon: L.divIcon({
-                className:  '',
-                html:       iconHtml,
-                iconSize:   [size, size],
-                iconAnchor: [size / 2, size / 2],
-                popupAnchor:[0, -(size / 2) - 4],
-            }),
+        const marker = L.marker([parada.lat, parada.lng], {
+            icon: _buildParadaIcon(parada),
         })
         .addTo(map)
         .bindPopup(
             `<strong>${parada.nombre}</strong>` +
             `<br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`
         );
+
+        if (parada.id != null) {
+            const paradaId = String(parada.id);
+            paradasMarkers.set(paradaId, marker);
+            paradasDataById.set(paradaId, parada);
+        }
     });
 
     // Si no hay geometría, ajustar la vista a los marcadores
@@ -201,6 +191,12 @@ function _iniciarRastreoLocal() {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
                     body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
+                }).catch(() => {});
+            } else {
+                fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                    body:    JSON.stringify({ latitud: lat, longitud: lng }),
                 }).catch(() => {});
             }
         },
@@ -254,6 +250,143 @@ function _obtenerUbicacionGuia() {
 function _getCsrf() {
     const c = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('csrftoken='));
     return c ? c.slice('csrftoken='.length) : '';
+}
+
+
+// ── Cronómetro de sesión ──────────────────────────────────────────────────
+
+function _initSessionCountdown() {
+    const timerContainer = document.getElementById('session-countdown');
+    const timerValue = document.getElementById('session-countdown-time');
+    const startBtn = document.getElementById('start-countdown-btn');
+    if (!timerContainer || !timerValue) return;
+
+    const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
+        ? duracionRutaHoras
+        : 1;
+    const countdownMs = Math.round(horasBase * 60 * 60 * 1000);
+    let sesionIniciada = (typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso');
+    let startTimestamp = (typeof sesionFechaInicioEpochMs !== 'undefined' && Number.isFinite(sesionFechaInicioEpochMs))
+        ? sesionFechaInicioEpochMs
+        : Date.now();
+
+    const setWaitingUi = () => {
+        timerValue.textContent = _formatRemainingTime(countdownMs);
+        timerContainer.classList.remove('finished');
+        timerContainer.classList.add('waiting');
+    };
+
+    const startTicker = () => {
+        if (countdownTimerId) {
+            clearInterval(countdownTimerId);
+            countdownTimerId = null;
+        }
+
+        timerContainer.classList.remove('waiting');
+        let endTimestamp = startTimestamp + countdownMs;
+        let remainingSeconds = Math.max(0, Math.floor((endTimestamp - Date.now()) / 1000));
+        let lastTickAt = Date.now();
+
+        const render = () => {
+            timerValue.textContent = _formatRemainingTime(remainingSeconds * 1000);
+            if (remainingSeconds === 0) {
+                timerContainer.classList.add('finished');
+                if (countdownTimerId) {
+                    clearInterval(countdownTimerId);
+                    countdownTimerId = null;
+                }
+            } else {
+                timerContainer.classList.remove('finished');
+            }
+        };
+
+        render();
+        countdownTimerId = setInterval(() => {
+            const tickNow = Date.now();
+            const elapsedSeconds = Math.max(1, Math.floor((tickNow - lastTickAt) / 1000));
+            remainingSeconds = Math.max(0, remainingSeconds - elapsedSeconds);
+            lastTickAt = tickNow;
+            if (remainingSeconds > 0) endTimestamp = tickNow + (remainingSeconds * 1000);
+            render();
+        }, 1000);
+    };
+
+    const applyRemoteState = (data) => {
+        if (!data || !data.estado) return;
+        const remoteStarted = data.estado === 'en_curso';
+
+        if (data.parada_actual_id != null) {
+            _resaltarParadaSeleccionada(String(data.parada_actual_id));
+        }
+
+        if (remoteStarted && data.fecha_inicio) {
+            const parsedStart = Date.parse(data.fecha_inicio);
+            if (Number.isFinite(parsedStart)) startTimestamp = parsedStart;
+        }
+
+        if (remoteStarted) {
+            sesionIniciada = true;
+            if (startBtn) {
+                startBtn.disabled = true;
+                startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+            }
+            startTicker();
+        } else {
+            sesionIniciada = false;
+            if (!countdownTimerId) setWaitingUi();
+        }
+    };
+
+    const fetchCountdownState = () => {
+        if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl) return;
+        const separator = countdownStatusUrl.includes('?') ? '&' : '?';
+        const liveStatusUrl = `${countdownStatusUrl}${separator}_=${Date.now()}`;
+        fetch(liveStatusUrl, { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(applyRemoteState)
+            .catch(() => {});
+    };
+
+    if (sesionIniciada) startTicker();
+    else setWaitingUi();
+
+    fetchCountdownState();
+    countdownPollId = setInterval(fetchCountdownState, 1200);
+
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            if (sesionIniciada) return;
+            if (typeof startCountdownUrl === 'undefined' || !startCountdownUrl) return;
+
+            startBtn.disabled = true;
+            fetch(startCountdownUrl, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': _getCsrf(), 'Accept': 'application/json' },
+            })
+                .then(r => r.ok ? r.json() : Promise.reject())
+                .then(data => {
+                    if (data && data.estado === 'en_curso' && data.fecha_inicio) {
+                        const parsed = Date.parse(data.fecha_inicio);
+                        if (Number.isFinite(parsed)) startTimestamp = parsed;
+                        sesionIniciada = true;
+                        startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+                        startTicker();
+                    } else {
+                        startBtn.disabled = false;
+                    }
+                })
+                .catch(() => { startBtn.disabled = false; });
+        });
+    }
+}
+
+function _formatRemainingTime(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 
@@ -339,4 +472,172 @@ function _initChat() {
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
+}
+
+
+function _obtenerUbicacionesTuristas() {
+    if (!map || !esGuia) return;
+
+    fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(data => _renderizarTuristasEnMapa(data.turistas || []))
+        .catch(() => {});
+}
+
+
+function _renderizarTuristasEnMapa(turistas) {
+    const visibles = new Set();
+
+    turistas.forEach(turista => {
+        if (typeof turista.lat !== 'number' || typeof turista.lng !== 'number') return;
+
+        const key = String(turista.turista_id);
+        visibles.add(key);
+        const pos = [turista.lat, turista.lng];
+
+        let marker = turistasMarkers.get(key);
+        if (!marker) {
+            marker = L.marker(pos, {
+                icon: L.divIcon({
+                    className: '',
+                    html: `<div style="
+                            background:#0ea5e9;width:24px;height:24px;
+                            border-radius:50%;border:2px solid white;
+                            box-shadow:0 2px 8px rgba(14,165,233,.45);
+                            display:flex;align-items:center;justify-content:center;
+                            color:white;font-size:12px;font-weight:700;">T</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                }),
+                zIndexOffset: 850,
+            }).addTo(map);
+            turistasMarkers.set(key, marker);
+        } else {
+            marker.setLatLng(pos);
+        }
+
+        marker.bindPopup(`Turista: ${turista.alias || 'Anónimo'}`);
+    });
+
+    Array.from(turistasMarkers.keys()).forEach(key => {
+        if (visibles.has(key)) return;
+        const marker = turistasMarkers.get(key);
+        if (marker) {
+            map.removeLayer(marker);
+            turistasMarkers.delete(key);
+        }
+function _initParadaFocusButtons() {
+    const focusButtons = document.querySelectorAll('.parada-focus-btn');
+    if (!focusButtons.length) return;
+
+    focusButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const paradaId = button.getAttribute('data-parada-id');
+            if (!paradaId || !map) return;
+
+            if (typeof selectCurrentStopUrl === 'undefined' || !selectCurrentStopUrl) return;
+
+            button.disabled = true;
+            try {
+                const response = await fetch(selectCurrentStopUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': _getCsrf(),
+                    },
+                    body: JSON.stringify({ parada_id: Number.parseInt(paradaId, 10) }),
+                });
+
+                if (!response.ok) throw new Error('No se pudo actualizar la parada actual.');
+
+                _resaltarParadaSeleccionada(paradaId);
+            } catch {
+                return;
+            } finally {
+                button.disabled = false;
+            }
+
+            const marker = paradasMarkers.get(paradaId);
+            if (marker) {
+                const pos = marker.getLatLng();
+                map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+                marker.openPopup();
+                return;
+            }
+
+            const parada = paradasDataById.get(paradaId)
+                || (Array.isArray(paradasData) ? paradasData.find(item => String(item.id) === paradaId) : null);
+
+            if (!parada || parada.lat == null || parada.lng == null) return;
+
+            map.flyTo([parada.lat, parada.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+        });
+    });
+}
+
+function _resaltarParadaSeleccionada(paradaId) {
+    if (!paradaId) return;
+
+    if (paradaSeleccionadaId && paradaSeleccionadaId !== paradaId) {
+        const previousMarker = paradasMarkers.get(paradaSeleccionadaId);
+        const previousParada = paradasDataById.get(paradaSeleccionadaId);
+        if (previousMarker && previousParada) {
+            previousMarker.setIcon(_buildParadaIcon(previousParada));
+            previousMarker.setZIndexOffset(0);
+        }
+    }
+
+    document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
+        item.classList.remove('selected-stop');
+    });
+
+    const marker = paradasMarkers.get(paradaId);
+    const parada = paradasDataById.get(paradaId);
+    if (marker && parada) {
+        marker.setIcon(_buildParadaIcon(parada, true));
+        marker.setZIndexOffset(1200);
+    }
+
+    const timelineItem = document.querySelector(`.timeline-item[data-parada-id="${paradaId}"]`);
+    if (timelineItem) {
+        timelineItem.classList.add('selected-stop');
+    }
+
+    document.querySelectorAll('.parada-focus-btn').forEach(btn => {
+        const btnParadaId = btn.getAttribute('data-parada-id');
+        const isSelected = btnParadaId === paradaId;
+        btn.textContent = isSelected ? 'Parada actual seleccionada' : 'Seleccionar parada actual';
+        btn.classList.toggle('is-selected', isSelected);
+    });
+
+    paradaSeleccionadaId = paradaId;
+}
+
+function _buildParadaIcon(parada, highlighted = false) {
+    const esActual = Boolean(parada && parada.es_actual);
+    const size = highlighted ? 40 : (esActual ? 34 : 26);
+    const backgroundColor = highlighted ? '#f97316' : (esActual ? '#4f46e5' : '#d1d5db');
+    const borderWidth = highlighted ? 3 : (esActual ? 3 : 2);
+    const borderColor = highlighted ? '#fff7ed' : '#ffffff';
+    const shadow = highlighted
+        ? '0 0 0 4px rgba(249,115,22,.25),0 4px 12px rgba(249,115,22,.45)'
+        : (esActual ? '0 2px 10px rgba(79,70,229,.45)' : '0 1px 5px rgba(0,0,0,.18)');
+    const textColor = highlighted || esActual ? '#ffffff' : '#6b7280';
+    const textSize = highlighted ? 15 : (esActual ? 14 : 11);
+    const textWeight = highlighted ? 800 : (esActual ? 700 : 600);
+
+    return L.divIcon({
+        className: '',
+        html: `<div style="
+                background:${backgroundColor};
+                width:${size}px;height:${size}px;
+                border-radius:50%;border:${borderWidth}px solid ${borderColor};
+                box-shadow:${shadow};
+                display:flex;align-items:center;justify-content:center;">
+                <span style="color:${textColor};font-size:${textSize}px;font-weight:${textWeight};">${parada.orden}</span>
+              </div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -(size / 2) - 4],
+    });
 }
