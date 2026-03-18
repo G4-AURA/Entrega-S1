@@ -495,6 +495,83 @@ class CatalogoViewTest(TestCase):
         self.assertEqual(response.status_code, 405)
 
 
+class RutaDetalleMetaValidationViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='meta_view_user',
+            email='meta_view@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Meta',
+            descripcion='Ruta para validar edición meta',
+            duracion_horas=2.0,
+            num_personas=10,
+            nivel_exigencia=Ruta.Exigencia.MEDIA,
+            guia=self.guia,
+        )
+        self.url = reverse('ruta-detalle', kwargs={'ruta_id': self.ruta.id})
+        self.client.force_login(self.user)
+
+    def test_rechaza_duracion_extremadamente_grande_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '1e309',
+                'num_personas': '10',
+                'nivel_exigencia': Ruta.Exigencia.MEDIA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_error=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 2.0)
+        self.assertEqual(self.ruta.num_personas, 10)
+
+    def test_rechaza_asistentes_extremadamente_grandes_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '2',
+                'num_personas': '99999999999999999999999999999999999999999999',
+                'nivel_exigencia': Ruta.Exigencia.MEDIA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_error=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 2.0)
+        self.assertEqual(self.ruta.num_personas, 10)
+
+    def test_acepta_valores_validos_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '3.5',
+                'num_personas': '25',
+                'nivel_exigencia': Ruta.Exigencia.ALTA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_updated=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 3.5)
+        self.assertEqual(self.ruta.num_personas, 25)
+        self.assertEqual(self.ruta.nivel_exigencia, Ruta.Exigencia.ALTA)
+
+
 class RutaEdicionValidacionesServiceTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
