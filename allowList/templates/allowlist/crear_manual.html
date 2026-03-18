@@ -1,0 +1,401 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AURA · Añadir POI manualmente{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --al-accent:    #0f766e;
+    --al-accent-lt: #ccfbf1;
+    --al-accent-dk: #134e4a;
+    --al-manual:    #4338ca;
+    --al-manual-lt: #e0e7ff;
+}
+
+.manual-layout {
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    gap: 1.5rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    align-items: start;
+}
+@media (max-width: 860px) {
+    .manual-layout { grid-template-columns: 1fr; }
+}
+
+/* ── Form card ── */
+.form-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 1.75rem;
+}
+.form-card-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 800;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.f-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 0.4rem;
+}
+.f-required { color: #dc2626; margin-left: .15rem; }
+.f-input {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.925rem;
+    background: var(--bg-white);
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+.f-input:focus { outline: none; border-color: var(--al-manual); box-shadow: 0 0 0 2px var(--al-manual-lt); }
+.f-input.error { border-color: #dc2626 !important; }
+
+.coords-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.coords-row .f-input { margin-bottom: 0; }
+
+/* Botón ubicar en mapa */
+.btn-map-pick {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 0.65rem;
+    color: var(--al-manual);
+    font-weight: 700;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.btn-map-pick:hover {
+    background: var(--al-manual-lt);
+    border-color: var(--al-manual);
+}
+.map-hint { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1rem; margin-top: -0.75rem; }
+
+/* Botón guardar */
+.btn-guardar {
+    width: 100%;
+    background: var(--al-manual);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.8rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.btn-guardar:hover:not(:disabled) { background: #3730a3; }
+.btn-guardar:disabled { opacity: 0.5; cursor: wait; }
+
+/* ── Mapa panel derecho ── */
+.map-panel {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
+    position: sticky;
+    top: 80px;
+}
+.map-panel-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+#manual-mapa { height: 460px; width: 100%; }
+
+/* ── Feedback de éxito ── */
+.success-banner {
+    background: var(--al-accent-lt);
+    border: 1px solid var(--al-accent);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    color: var(--al-accent-dk);
+    display: none;
+}
+.success-banner.show { display: flex; }
+
+/* ── Toast ── */
+.al-toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: #1e293b; color: white;
+    border-radius: 10px; padding: 0.9rem 1.4rem;
+    font-size: 0.875rem; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s ease; max-width: 360px;
+}
+.al-toast.show { transform: translateY(0); opacity: 1; }
+.al-toast.ok  { border-left: 4px solid #10b981; }
+.al-toast.err { border-left: 4px solid #ef4444; }
+
+/* Error inline */
+.f-error-msg { color: #dc2626; font-size: 0.78rem; margin-top: -0.75rem; margin-bottom: 0.75rem; display: none; }
+.f-error-msg.show { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem;">
+    <a href="{% url 'allowlist:panel' %}" style="color:var(--al-accent);font-weight:600;text-decoration:none;font-size:.875rem;">
+        ← Volver al panel
+    </a>
+</div>
+
+<div class="manual-layout">
+
+    <!-- ── Formulario ── -->
+    <div>
+        <!-- Banner de éxito -->
+        <div class="success-banner" id="success-banner">
+            <span style="font-size:1.5rem;">✅</span>
+            <div>
+                <div id="success-msg">POI creado correctamente.</div>
+                <a href="{% url 'allowlist:panel' %}" style="color:var(--al-accent);font-size:.85rem;">Ver en el panel →</a>
+            </div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-card-title">✏️ Alta de POI manual</div>
+
+            <!-- Nombre -->
+            <label class="f-label" for="m-nombre">Nombre del lugar<span class="f-required">*</span></label>
+            <input type="text" id="m-nombre" class="f-input" placeholder="Ej: Catedral de Sevilla" maxlength="255">
+            <div class="f-error-msg" id="err-nombre"></div>
+
+            <!-- Categoría -->
+            <label class="f-label" for="m-categoria">Categoría<span class="f-required">*</span></label>
+            <select id="m-categoria" class="f-input">
+                <option value="">— Selecciona una categoría —</option>
+                {% for value, label in categorias %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            <div class="f-error-msg" id="err-categoria"></div>
+
+            <!-- Ciudad -->
+            <label class="f-label" for="m-ciudad">Ciudad</label>
+            <input type="text" id="m-ciudad" class="f-input" placeholder="Ej: Sevilla" maxlength="120">
+
+            <!-- Dirección -->
+            <label class="f-label" for="m-direccion">Dirección</label>
+            <input type="text" id="m-direccion" class="f-input" placeholder="Calle, número…" maxlength="255">
+
+            <!-- Coordenadas -->
+            <label class="f-label">Ubicación (coordenadas)<span class="f-required">*</span></label>
+            <div class="coords-row" style="margin-bottom:.5rem;">
+                <div>
+                    <label style="font-size:.75rem;color:var(--text-muted);font-weight:600;">Latitud</label>
+                    <input type="number" id="m-lat" class="f-input" step="any" placeholder="37.3886">
+                </div>
+                <div>
+                    <label style="font-size:.75rem;color:var(--text-muted);font-weight:600;">Longitud</label>
+                    <input type="number" id="m-lon" class="f-input" step="any" placeholder="-5.9823">
+                </div>
+            </div>
+            <div class="f-error-msg" id="err-coords"></div>
+
+            <!-- Botón mapa -->
+            <button class="btn-map-pick" type="button" id="btn-open-map">
+                🗺️ Elegir ubicación en el mapa
+            </button>
+            <div class="map-hint" id="map-hint" style="display:none;">
+                Haz clic en el mapa de la derecha para fijar la ubicación.
+            </div>
+
+            <!-- Guardar -->
+            <button class="btn-guardar" id="btn-guardar" type="button">
+                💾 Guardar en Allowlist
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Mapa ── -->
+    <div class="map-panel">
+        <div class="map-panel-header">🗺️ Mapa de ubicación</div>
+        <div id="manual-mapa"></div>
+    </div>
+
+</div>
+
+<!-- Toast -->
+<div class="al-toast" id="al-toast"></div>
+
+<script>
+let mapa = null;
+let marcador = null;
+let modoSeleccionMapa = false;
+
+function getCsrf() {
+    return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+}
+function showToast(msg, tipo = 'ok') {
+    const t = document.getElementById('al-toast');
+    t.textContent = msg;
+    t.className = `al-toast ${tipo} show`;
+    setTimeout(() => t.classList.remove('show'), 3500);
+}
+function clearError(id) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = ''; el.classList.remove('show'); }
+}
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.classList.add('show'); }
+}
+function clearAllErrors() {
+    ['err-nombre','err-categoria','err-coords'].forEach(clearError);
+    ['m-nombre','m-categoria','m-lat','m-lon'].forEach(id => {
+        document.getElementById(id)?.classList.remove('error');
+    });
+}
+
+// ── Inicializar mapa ──
+document.addEventListener('DOMContentLoaded', () => {
+    mapa = L.map('manual-mapa').setView([37.3886, -5.9823], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(mapa);
+
+    mapa.on('click', (e) => {
+        if (!modoSeleccionMapa) return;
+        const { lat, lng } = e.latlng;
+        document.getElementById('m-lat').value = lat.toFixed(6);
+        document.getElementById('m-lon').value = lng.toFixed(6);
+        if (marcador) marcador.setLatLng([lat, lng]);
+        else marcador = L.marker([lat, lng]).addTo(mapa);
+        clearError('err-coords');
+        showToast('Ubicación seleccionada en el mapa.', 'ok');
+    });
+});
+
+// Actualizar marcador al escribir coords manualmente
+['m-lat', 'm-lon'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+        const lat = parseFloat(document.getElementById('m-lat').value);
+        const lon = parseFloat(document.getElementById('m-lon').value);
+        if (!isNaN(lat) && !isNaN(lon)) {
+            if (marcador) marcador.setLatLng([lat, lon]);
+            else marcador = L.marker([lat, lon]).addTo(mapa);
+            mapa.setView([lat, lon], Math.max(mapa.getZoom(), 14));
+        }
+    });
+});
+
+// Activar modo selección mapa
+document.getElementById('btn-open-map').addEventListener('click', () => {
+    modoSeleccionMapa = !modoSeleccionMapa;
+    const btn = document.getElementById('btn-open-map');
+    const hint = document.getElementById('map-hint');
+    if (modoSeleccionMapa) {
+        btn.style.background = 'var(--al-manual-lt)';
+        btn.style.borderColor = 'var(--al-manual)';
+        btn.innerHTML = '✅ Modo mapa activo — Haz clic en el mapa';
+        hint.style.display = '';
+        mapa.getContainer().style.cursor = 'crosshair';
+    } else {
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.innerHTML = '🗺️ Elegir ubicación en el mapa';
+        hint.style.display = 'none';
+        mapa.getContainer().style.cursor = '';
+    }
+});
+
+// ── Guardar ──
+document.getElementById('btn-guardar').addEventListener('click', async () => {
+    clearAllErrors();
+    const nombre    = document.getElementById('m-nombre').value.trim();
+    const categoria = document.getElementById('m-categoria').value;
+    const ciudad    = document.getElementById('m-ciudad').value.trim();
+    const direccion = document.getElementById('m-direccion').value.trim();
+    const latRaw    = document.getElementById('m-lat').value.trim();
+    const lonRaw    = document.getElementById('m-lon').value.trim();
+
+    let valido = true;
+
+    if (!nombre) {
+        showError('err-nombre', 'El nombre es obligatorio.');
+        document.getElementById('m-nombre').classList.add('error');
+        valido = false;
+    }
+    if (!categoria) {
+        showError('err-categoria', 'Selecciona una categoría.');
+        document.getElementById('m-categoria').classList.add('error');
+        valido = false;
+    }
+    if (!latRaw || !lonRaw || isNaN(parseFloat(latRaw)) || isNaN(parseFloat(lonRaw))) {
+        showError('err-coords', 'Introduce coordenadas válidas o selecciona la ubicación en el mapa.');
+        document.getElementById('m-lat').classList.add('error');
+        document.getElementById('m-lon').classList.add('error');
+        valido = false;
+    }
+    if (!valido) return;
+
+    const btn = document.getElementById('btn-guardar');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Guardando…';
+
+    try {
+        const resp = await fetch('{% url "allowlist:api_crear_manual" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+            body: JSON.stringify({
+                nombre, categoria, ciudad, direccion,
+                lat: parseFloat(latRaw),
+                lon: parseFloat(lonRaw),
+            }),
+        });
+        const data = await resp.json();
+
+        if (resp.status === 201 && data.status === 'OK') {
+            document.getElementById('success-msg').textContent = data.mensaje;
+            document.getElementById('success-banner').classList.add('show');
+            // Limpiar formulario
+            ['m-nombre','m-ciudad','m-direccion','m-lat','m-lon'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('m-categoria').value = '';
+            if (marcador) { mapa.removeLayer(marcador); marcador = null; }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            showToast(data.mensaje || 'Error al guardar.', 'err');
+        }
+    } catch { showToast('Error de red.', 'err'); }
+    finally {
+        btn.disabled = false;
+        btn.innerHTML = '💾 Guardar en Allowlist';
+    }
+});
+</script>
+{% endblock %}

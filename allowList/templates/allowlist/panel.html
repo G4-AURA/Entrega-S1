@@ -1,0 +1,412 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AURA · Allowlist de POIs{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --al-accent:    #0f766e;
+    --al-accent-lt: #ccfbf1;
+    --al-accent-dk: #134e4a;
+    --al-warn:      #b45309;
+    --al-warn-lt:   #fef3c7;
+    --al-danger:    #dc2626;
+    --al-danger-lt: #fee2e2;
+    --al-osm:       #3d6e29;
+    --al-osm-lt:    #dcfce7;
+    --al-manual:    #4338ca;
+    --al-manual-lt: #e0e7ff;
+}
+
+/* ── Stats bar ── */
+.al-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.al-stat-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.al-stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    font-family: 'Manrope', sans-serif;
+    line-height: 1;
+}
+.al-stat-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+
+/* ── Action buttons ── */
+.al-actions { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.al-btn-osm {
+    background: var(--al-osm);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.65rem 1.25rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.15s;
+}
+.al-btn-osm:hover { background: var(--al-accent-dk); color: white; }
+.al-btn-manual {
+    background: var(--al-manual);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.65rem 1.25rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.15s;
+}
+.al-btn-manual:hover { background: #3730a3; color: white; }
+
+/* ── Filters ── */
+.al-filters {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+}
+.al-filter-group { display: flex; flex-direction: column; gap: 0.25rem; min-width: 140px; }
+.al-filter-label { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.al-filter-input {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.875rem;
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+.al-filter-input:focus { outline: none; border-color: var(--al-accent); box-shadow: 0 0 0 2px var(--al-accent-lt); }
+.al-btn-filter {
+    background: var(--al-accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    align-self: flex-end;
+}
+
+/* ── Table ── */
+.al-table-wrap { background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
+.al-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.al-table th {
+    background: var(--bg-surface);
+    padding: 0.65rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom: 1px solid var(--border-color);
+}
+.al-table td { padding: 0.7rem 1rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.al-table tr:last-child td { border-bottom: none; }
+.al-table tr:hover td { background: var(--bg-surface); }
+
+.badge-osm    { background: var(--al-osm-lt);    color: var(--al-osm);    border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.72rem; font-weight: 700; }
+.badge-manual { background: var(--al-manual-lt); color: var(--al-manual); border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.72rem; font-weight: 700; }
+
+.al-btn-action {
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: background 0.15s;
+}
+.al-btn-toggle { color: var(--al-accent); }
+.al-btn-toggle:hover { background: var(--al-accent-lt); }
+.al-btn-delete { color: var(--al-danger); }
+.al-btn-delete:hover { background: var(--al-danger-lt); }
+
+/* ── Pagination ── */
+.al-pagination { display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+.al-page-btn {
+    border: 1px solid var(--border-color);
+    background: var(--bg-white);
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.al-page-btn:disabled { opacity: 0.4; cursor: default; }
+.al-page-info { font-size: 0.8rem; color: var(--text-muted); }
+
+/* ── Loading / empty ── */
+.al-loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+.al-empty { text-align: center; padding: 3rem; }
+.al-empty-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+
+/* ── Toast ── */
+.al-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    background: #1e293b;
+    color: white;
+    border-radius: 10px;
+    padding: 0.9rem 1.4rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    max-width: 360px;
+}
+.al-toast.show { transform: translateY(0); opacity: 1; }
+.al-toast.ok  { border-left: 4px solid #10b981; }
+.al-toast.err { border-left: 4px solid #ef4444; }
+
+@media (max-width: 768px) {
+    .al-stats { grid-template-columns: 1fr 1fr; }
+    .al-table th:nth-child(4),
+    .al-table td:nth-child(4),
+    .al-table th:nth-child(5),
+    .al-table td:nth-child(5) { display: none; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:1200px;margin:0 auto;">
+
+    <br>
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+        <div>
+            <h1 style="font-family:'Manrope',sans-serif;font-size:1.6rem;font-weight:800;margin:0;letter-spacing:-.03em;">
+                🗂️ Allowlist de POIs
+            </h1>
+            <p style="color:var(--text-muted);font-size:0.875rem;margin:.25rem 0 0;">
+                Base de datos de lugares autorizados para el motor de generación de rutas.
+            </p>
+        </div>
+        <div class="al-actions" style="margin:0;">
+            <a href="{% url 'allowlist:buscar_osm' %}" class="al-btn-osm">
+                🌍 Curar desde OSM
+            </a>
+            <a href="{% url 'allowlist:crear_manual' %}" class="al-btn-manual">
+                ✏️ Añadir manualmente
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="al-stats">
+        <div class="al-stat-card">
+            <span class="al-stat-value" style="color:var(--al-osm);" id="stat-osm">{{ total_osm }}</span>
+            <span class="al-stat-label">Importados desde OSM</span>
+        </div>
+        <div class="al-stat-card">
+            <span class="al-stat-value" style="color:var(--al-manual);" id="stat-manual">{{ total_manual }}</span>
+            <span class="al-stat-label">Creados manualmente</span>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="al-filters">
+        <div class="al-filter-group">
+            <span class="al-filter-label">Ciudad</span>
+            <input type="text" class="al-filter-input" id="f-ciudad" placeholder="Ej: Sevilla">
+        </div>
+        <div class="al-filter-group">
+            <span class="al-filter-label">Categoría</span>
+            <select class="al-filter-input" id="f-categoria">
+                <option value="">Todas</option>
+                {% for value, label in categorias %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="al-filter-group">
+            <span class="al-filter-label">Fuente</span>
+            <select class="al-filter-input" id="f-fuente">
+                <option value="">Todas</option>
+                {% for value, label in fuentes %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="al-btn-filter" onclick="cargarPOIs(1)">Filtrar</button>
+    </div>
+
+    <!-- Table -->
+    <div class="al-table-wrap" id="tabla-wrap">
+        <div class="al-loading" id="tabla-loading">
+            <div class="spinner-border" style="color:var(--al-accent);width:2rem;height:2rem;" role="status"></div>
+            <p style="margin-top:.75rem;font-size:.875rem;">Cargando POIs...</p>
+        </div>
+        <table class="al-table" id="tabla-pois" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Categoría</th>
+                    <th>Ciudad</th>
+                    <th>Fuente</th>
+                    <th style="text-align:right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tabla-body"></tbody>
+        </table>
+        <div class="al-empty" id="tabla-empty" style="display:none;">
+            <div class="al-empty-icon">📭</div>
+            <p style="color:var(--text-muted);margin:0;">No hay POIs que coincidan con los filtros.</p>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="al-pagination">
+        <button class="al-page-btn" id="btn-prev" onclick="cambiarPagina(-1)" disabled>← Anterior</button>
+        <span class="al-page-info" id="pag-info">—</span>
+        <button class="al-page-btn" id="btn-next" onclick="cambiarPagina(1)" disabled>Siguiente →</button>
+    </div>
+
+</div>
+
+<!-- Toast -->
+<div class="al-toast" id="al-toast"></div>
+
+<script>
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+let currentPage = 1;
+let totalPages  = 1;
+
+function getCsrf() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+        || document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+}
+
+function showToast(msg, tipo = 'ok') {
+    const t = document.getElementById('al-toast');
+    t.textContent = msg;
+    t.className = `al-toast ${tipo} show`;
+    setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+async function cargarPOIs(page = 1) {
+    currentPage = page;
+    const ciudad   = document.getElementById('f-ciudad').value;
+    const categoria= document.getElementById('f-categoria').value;
+    const fuente   = document.getElementById('f-fuente').value;
+
+    document.getElementById('tabla-loading').style.display = '';
+    document.getElementById('tabla-pois').style.display = 'none';
+    document.getElementById('tabla-empty').style.display = 'none';
+
+    const params = new URLSearchParams({ page, limit: 20 });
+    if (ciudad)    params.set('ciudad', ciudad);
+    if (categoria) params.set('categoria', categoria);
+    if (fuente)    params.set('fuente', fuente);
+
+    try {
+        const resp = await fetch(`{% url 'allowlist:api_listar' %}?${params}`);
+        const data = await resp.json();
+
+        document.getElementById('tabla-loading').style.display = 'none';
+        totalPages = data.total_pages || 1;
+
+        if (!data.results || data.results.length === 0) {
+            document.getElementById('tabla-empty').style.display = '';
+        } else {
+            renderTabla(data.results);
+            document.getElementById('tabla-pois').style.display = '';
+        }
+
+        document.getElementById('pag-info').textContent =
+            `Página ${data.page} de ${data.total_pages} (${data.total} POIs)`;
+        document.getElementById('btn-prev').disabled = data.page <= 1;
+        document.getElementById('btn-next').disabled = data.page >= data.total_pages;
+
+    } catch (err) {
+        document.getElementById('tabla-loading').style.display = 'none';
+        document.getElementById('tabla-empty').style.display = '';
+        document.getElementById('tabla-empty').innerHTML =
+            '<div class="al-empty-icon">⚠️</div><p style="color:var(--al-danger)">Error al cargar los datos.</p>';
+    }
+}
+
+function renderTabla(pois) {
+    const tbody = document.getElementById('tabla-body');
+    tbody.innerHTML = '';
+    pois.forEach(poi => {
+        const fuenteBadge = poi.fuente === 'osm'
+            ? '<span class="badge-osm">OSM</span>'
+            : '<span class="badge-manual">Manual</span>';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                title="${poi.nombre}">${poi.nombre}</td>
+            <td style="font-size:0.8rem;color:var(--text-muted);">${poi.categoria_label}</td>
+            <td>${poi.ciudad || '—'}</td>
+            <td>${fuenteBadge}</td>
+            <td style="text-align:right;">
+                <button class="al-btn-action al-btn-delete" onclick="eliminarPOI(${poi.id}, this)">Eliminar</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+
+async function eliminarPOI(id, btn) {
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/allowList/api/eliminar/${id}/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrf() },
+        });
+        const data = await resp.json();
+        if (data.status === 'OK') {
+            showToast(data.mensaje, 'ok');
+            cargarPOIs(currentPage);
+        } else {
+            showToast(data.mensaje || 'Error', 'err');
+        }
+    } catch { showToast('Error de red', 'err'); }
+    finally { btn.disabled = false; }
+}
+
+function cambiarPagina(delta) {
+    const nuevaPagina = currentPage + delta;
+    if (nuevaPagina >= 1 && nuevaPagina <= totalPages) {
+        cargarPOIs(nuevaPagina);
+    }
+}
+
+// Cargar al inicio
+document.addEventListener('DOMContentLoaded', () => cargarPOIs(1));
+</script>
+{% endblock %}

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AuthUser, Guia, Ruta, Parada
+from .models import AuthUser, Guia, Ruta, Parada, Curiosidad
 
 # Autenticación de usuarios 
 @admin.register(AuthUser)
@@ -42,3 +42,28 @@ class RutaAdmin(admin.ModelAdmin):
 class ParadaAdmin(admin.ModelAdmin):
 	list_display = ("orden", "nombre", "coordenadas", "ruta")
 	search_fields = ("nombre", "ruta__titulo")
+
+@admin.register(Curiosidad)
+class CuriosidadAdmin(admin.ModelAdmin):
+    # Columnas que se verán en la lista general
+    list_display = (
+        "titulo", 
+        "parada", 
+        "tipo", 
+        "ciudad", 
+        "fecha_generacion"
+    )
+    
+    # Filtros laterales para encontrar cosas rápido
+    list_filter = ("tipo", "ciudad", "fecha_generacion")
+    
+    # Buscador por texto (puedes buscar por el nombre de la parada también)
+    search_fields = (
+        "titulo", 
+        "texto", 
+        "parada__nombre", 
+        "ciudad"
+    )
+    
+    # Hace que la fecha no se pueda editar manualmente
+    readonly_fields = ("fecha_generacion",)
