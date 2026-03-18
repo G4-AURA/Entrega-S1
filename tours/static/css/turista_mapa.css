@@ -348,11 +348,40 @@ main.container {
 
 .chat-message {
     max-width: 90%;
-    padding: 8px 12px;
-    border-radius: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
     font-size: 0.875rem;
     line-height: 1.4;
     word-wrap: break-word;
+    border: 1px solid var(--msg-border, #e5e7eb);
+    background: var(--msg-bg, #f3f4f6);
+    color: var(--msg-text, #111827);
+}
+
+.chat-message-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.chat-message-sender {
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--msg-sender, #374151);
+}
+
+.chat-message-time {
+    font-size: 0.68rem;
+    opacity: 0.8;
+    white-space: nowrap;
+    color: var(--msg-sender, #6b7280);
+}
+
+.chat-message-bubble {
+    white-space: pre-wrap;
 }
 
 .chat-message.mine {
@@ -366,6 +395,14 @@ main.container {
     background: var(--bg-surface);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
+}
+
+.chat-message.sent {
+    align-self: flex-end;
+}
+
+.chat-message.received {
+    align-self: flex-start;
 }
 
 .chat-input-container {
