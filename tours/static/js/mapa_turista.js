@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', function () {
     _dibujarRutaYParadas();
     _initParadaFocusButtons();
 
+
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
 
@@ -409,6 +410,36 @@ function _initChat() {
         ? currentUserName
         : (document.body.getAttribute('data-username') || '');
 
+    function _colorFromSender(senderKey, isGuide) {
+        if (isGuide) {
+            return {
+                bg: '#fef3c7',
+                border: '#fcd34d',
+                sender: '#92400e',
+                text: '#111827',
+            };
+        }
+
+        const key = String(senderKey || 'Participante');
+        let hash = 0;
+        for (let i = 0; i < key.length; i += 1) {
+            hash = ((hash * 33) ^ key.charCodeAt(i)) >>> 0;
+        }
+
+        const palette = [
+            { bg: '#fee2e2', border: '#fca5a5', sender: '#b91c1c', text: '#111827' },
+            { bg: '#ffedd5', border: '#fdba74', sender: '#c2410c', text: '#111827' },
+            { bg: '#ecfccb', border: '#bef264', sender: '#3f6212', text: '#111827' },
+            { bg: '#cffafe', border: '#67e8f9', sender: '#155e75', text: '#111827' },
+            { bg: '#e0f2fe', border: '#7dd3fc', sender: '#075985', text: '#111827' },
+            { bg: '#ede9fe', border: '#a78bfa', sender: '#5b21b6', text: '#111827' },
+            { bg: '#fce7f3', border: '#f9a8d4', sender: '#9d174d', text: '#111827' },
+            { bg: '#e2e8f0', border: '#94a3b8', sender: '#334155', text: '#111827' },
+        ];
+
+        return palette[hash % palette.length];
+    }
+
     function renderMessages(msgs) {
         if (!msgs || !msgs.length) return;
         chatMessages.querySelector('.chat-empty')?.remove();
@@ -421,6 +452,13 @@ function _initChat() {
             const div = document.createElement('div');
             div.className = `chat-message ${msg.nombre_remitente === me ? 'sent' : 'received'}`;
             div.setAttribute('data-message-id', msg.id);
+
+            const senderKey = msg.remitente_key || msg.nombre_remitente;
+            const senderColors = _colorFromSender(senderKey, Boolean(msg.es_guia));
+            div.style.setProperty('--msg-bg', senderColors.bg);
+            div.style.setProperty('--msg-border', senderColors.border);
+            div.style.setProperty('--msg-sender', senderColors.sender);
+            div.style.setProperty('--msg-text', senderColors.text);
 
             const t = new Date(msg.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
             div.innerHTML = `
@@ -526,6 +564,9 @@ function _renderizarTuristasEnMapa(turistas) {
             map.removeLayer(marker);
             turistasMarkers.delete(key);
         }
+    });
+}
+
 function _initParadaFocusButtons() {
     const focusButtons = document.querySelectorAll('.parada-focus-btn');
     if (!focusButtons.length) return;
@@ -587,6 +628,13 @@ function _resaltarParadaSeleccionada(paradaId) {
         }
     }
 
+    // Sincroniza el estado visual del itinerario para todos los usuarios.
+    document.querySelectorAll('.timeline-item').forEach(item => {
+        item.classList.remove('active', 'selected-stop');
+        const stopName = item.querySelector('.timeline-stop-name');
+        if (stopName) stopName.classList.add('text-muted');
+    });
+
     document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
         item.classList.remove('selected-stop');
     });
@@ -600,7 +648,10 @@ function _resaltarParadaSeleccionada(paradaId) {
 
     const timelineItem = document.querySelector(`.timeline-item[data-parada-id="${paradaId}"]`);
     if (timelineItem) {
+        timelineItem.classList.add('active');
         timelineItem.classList.add('selected-stop');
+        const stopName = timelineItem.querySelector('.timeline-stop-name');
+        if (stopName) stopName.classList.remove('text-muted');
     }
 
     document.querySelectorAll('.parada-focus-btn').forEach(btn => {

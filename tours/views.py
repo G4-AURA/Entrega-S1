@@ -8,9 +8,11 @@ Roles:
   - Turista â†’ siempre anÃ³nimo, identificado por alias + cookie de sesiÃ³n Django
 """
 import json
+from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -611,6 +613,7 @@ def obtener_mensajes(request, sesion_id):
 
     desde_str = request.GET.get("desde")
     limite_str = request.GET.get("limite", "50")
+    desde_dt = None
 
     try:
         limite = int(limite_str)
@@ -623,26 +626,73 @@ def obtener_mensajes(request, sesion_id):
     qs = MensajeChat.objects.filter(sesion_tour=sesion)
 
     if desde_str:
-        desde_dt = parse_datetime(desde_str)
-        if not desde_dt:
+        parsed_desde_dt = parse_datetime(desde_str)
+        if not parsed_desde_dt:
             return JsonResponse(
                 {"error": "El parámetro desde debe ser una fecha ISO-8601 válida."},
                 status=400,
             )
-        qs = qs.filter(momento__gt=desde_dt)
+
+        desde_dt = parsed_desde_dt
+
+        # Evita perder mensajes cuando varios comparten exactamente el mismo timestamp.
+        primer_id_mismo_momento = (
+            qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
+        )
+        if primer_id_mismo_momento is None:
+            qs = qs.filter(momento__gt=desde_dt)
+        else:
+            qs = qs.filter(
+                Q(momento__gt=desde_dt)
+                | (Q(momento=desde_dt) & Q(id__gt=primer_id_mismo_momento))
+            )
 
     mensajes_qs = qs.order_by("-momento", "-id")[:limite]
     mensajes_ordenados = list(reversed(list(mensajes_qs)))
 
-    mensajes = [
-        {
-            "id":               m.id,
-            "nombre_remitente": m.nombre_remitente,
-            "texto":            m.texto,
-            "momento":          m.momento.isoformat(),
-        }
-        for m in mensajes_ordenados
-    ]
+    guia_user_id = None
+    try:
+        guia_user_id = sesion.ruta.guia.user.user_id
+    except AttributeError:
+        guia_user_id = None
+
+    def _build_sender_key(mensaje: MensajeChat) -> str:
+        if mensaje.remitente_id:
+            return f"user:{mensaje.remitente_id}"
+        if mensaje.turista_id:
+            return f"tourist:{mensaje.turista_id}"
+        return f"name:{mensaje.nombre_remitente}"
+
+    mensajes = []
+    ultimo_momento_serializado = None
+
+    for m in mensajes_ordenados:
+        momento_serializado = m.momento
+
+        if desde_dt is not None:
+            desde_cmp = desde_dt
+            if timezone.is_naive(momento_serializado) and timezone.is_aware(desde_cmp):
+                desde_cmp = timezone.make_naive(desde_cmp, timezone.get_current_timezone())
+            elif timezone.is_aware(momento_serializado) and timezone.is_naive(desde_cmp):
+                desde_cmp = timezone.make_aware(desde_cmp, timezone.get_current_timezone())
+
+            if momento_serializado <= desde_cmp:
+                momento_serializado = desde_cmp + timedelta(microseconds=1)
+
+        if ultimo_momento_serializado is not None and momento_serializado <= ultimo_momento_serializado:
+            momento_serializado = ultimo_momento_serializado + timedelta(microseconds=1)
+
+        mensajes.append(
+            {
+                "id":               m.id,
+                "nombre_remitente": m.nombre_remitente,
+                "remitente_key":    _build_sender_key(m),
+                "es_guia":          bool(guia_user_id and m.remitente_id == guia_user_id),
+                "texto":            m.texto,
+                "momento":          momento_serializado.isoformat(),
+            }
+        )
+        ultimo_momento_serializado = momento_serializado
 
     return JsonResponse(
         {
