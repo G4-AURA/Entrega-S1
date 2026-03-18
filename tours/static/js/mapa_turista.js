@@ -628,6 +628,13 @@ function _resaltarParadaSeleccionada(paradaId) {
         }
     }
 
+    // Sincroniza el estado visual del itinerario para todos los usuarios.
+    document.querySelectorAll('.timeline-item').forEach(item => {
+        item.classList.remove('active', 'selected-stop');
+        const stopName = item.querySelector('.timeline-stop-name');
+        if (stopName) stopName.classList.add('text-muted');
+    });
+
     document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
         item.classList.remove('selected-stop');
     });
@@ -641,7 +648,10 @@ function _resaltarParadaSeleccionada(paradaId) {
 
     const timelineItem = document.querySelector(`.timeline-item[data-parada-id="${paradaId}"]`);
     if (timelineItem) {
+        timelineItem.classList.add('active');
         timelineItem.classList.add('selected-stop');
+        const stopName = timelineItem.querySelector('.timeline-stop-name');
+        if (stopName) stopName.classList.remove('text-muted');
     }
 
     document.querySelectorAll('.parada-focus-btn').forEach(btn => {
