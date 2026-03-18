@@ -1,3 +1,5 @@
+from unittest.mock import Mock, patch
+
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
@@ -5,7 +7,8 @@ from django.urls import reverse
 from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
 
-from .models import AuthUser, Guia, Ruta, Parada
+from .models import AuthUser, Curiosidad, Guia, Ruta, Parada
+from .services import ServicioCuriosidadesIA
 
 
 class AuthUserModelTest(TestCase):
@@ -492,3 +495,65 @@ class CatalogoViewTest(TestCase):
         response = self.client.post(self.catalogo_url)
         # POST no es permitido
         self.assertEqual(response.status_code, 405)
+
+
+class ServicioCuriosidadesIACacheTest(TestCase):
+    """Tests de almacenamiento y cacheo de curiosidades IA por parada."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='curiosidadesuser',
+            email='curiosidades@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Curiosidades',
+            duracion_horas=2.0,
+            num_personas=10,
+            guia=self.guia,
+            mood=['Historia']
+        )
+        self.parada = Parada.objects.create(
+            orden=1,
+            nombre='Catedral de Sevilla',
+            coordenadas=Point(-5.9927, 37.3861),
+            ruta=self.ruta,
+        )
+
+    @patch('rutas.services.genai.Client')
+    def test_primera_solicitud_genera_y_guarda_curiosidad(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo":"La Giralda y su secreto","texto":"La Giralda fue minarete antes de ser campanario cristiano.","tipo":"Historia","busqueda_imagen":"seville giralda tower"}'
+        )
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            resultado = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        self.assertEqual(Curiosidad.objects.filter(parada=self.parada).count(), 1)
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertEqual(curiosidad.ciudad, 'Sevilla')
+        self.assertEqual(curiosidad.titulo, 'La Giralda y su secreto')
+        self.assertEqual(curiosidad.texto, 'La Giralda fue minarete antes de ser campanario cristiano.')
+        self.assertEqual(resultado['titulo'], 'La Giralda y su secreto')
+        mock_client.models.generate_content.assert_called_once()
+
+    @patch('rutas.services.genai.Client')
+    def test_segunda_solicitud_reutiliza_cache_sin_ia(self, mock_client_class):
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo":"Murallas y leyendas","texto":"La muralla medieval protegía la ciudad de riadas del Guadalquivir.","tipo":"Historia","busqueda_imagen":"seville medieval wall"}'
+        )
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            primera = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+            segunda = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        self.assertEqual(Curiosidad.objects.filter(parada=self.parada).count(), 1)
+        self.assertEqual(primera['titulo'], segunda['titulo'])
+        self.assertEqual(primera['texto'], segunda['texto'])
+        mock_client.models.generate_content.assert_called_once()
