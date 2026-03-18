@@ -103,11 +103,11 @@
                 {% csrf_token %}
                 <input type="hidden" name="form_type" value="meta">
                 <div class="col-12 col-md-3">
-                    <input type="number" step="0.1" min="0.1" name="duracion_horas"
+                    <input type="number" step="0.1" min="0.5" max="24" name="duracion_horas"
                            class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
                 </div>
                 <div class="col-12 col-md-3">
-                    <input type="number" min="1" name="num_personas"
+                    <input type="number" min="1" max="50" name="num_personas"
                            class="form-control" value="{{ ruta.num_personas }}" required>
                 </div>
                 <div class="col-12 col-md-3">
