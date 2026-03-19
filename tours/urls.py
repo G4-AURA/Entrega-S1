@@ -11,6 +11,7 @@ urlpatterns = [
     # ------------------------------------------------------------------
     path("live/code/<str:codigo>/", views.join_tour_by_code, name="join_tour_by_code"),
     path("live/<uuid:token>/", views.join_tour, name="join_tour"),
+    path("live/<uuid:token>/espera/", views.sala_espera, name="sala_espera"),
     path("live/<uuid:token>/mapa/", views.mapa_turista_anonimo, name="mapa_turista_anonimo"),
     # ------------------------------------------------------------------
     # Guías (requieren @login_required)
@@ -22,11 +23,15 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/regenerar_codigo/", views.regenerar_codigo, name="regenerar_codigo"),
     path("sesiones/<int:sesion_id>/cerrar_acceso/", views.cerrar_acceso, name="cerrar_acceso"),
     path("sesiones/<int:sesion_id>/participantes/", views.participantes_sesion, name="participantes_sesion"),
+    path("sesiones/<int:sesion_id>/cronometro/estado/", views.estado_cronometro, name="estado_cronometro"),
+    path("sesiones/<int:sesion_id>/parada_actual/", views.seleccionar_parada_actual, name="seleccionar_parada_actual"),
     # ------------------------------------------------------------------
     # API REST — ubicación y chat
     # ------------------------------------------------------------------
     path("ubicacion/", views.registrar_ubicacion, name="registrar_ubicacion"),
+    path("sesiones/<int:sesion_id>/ubicacion_turista/", views.registrar_ubicacion_turista, name="registrar_ubicacion_turista"),
     path("sesiones/<int:sesion_id>/ubicacion_guia/", views.obtener_ubicacion_guia, name="ubicacion_guia"),
+    path("sesiones/<int:sesion_id>/ubicaciones_turistas/", views.obtener_ubicaciones_turistas, name="ubicaciones_turistas"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
     path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
 ]

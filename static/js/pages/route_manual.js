@@ -135,6 +135,12 @@
     }
 
     function leerFormulario() {
+        const moodsSeleccionados = Array.from(
+            document.querySelectorAll('#ruta-etiquetas input[name="mood"]:checked')
+        ).map(function (checkbox) {
+            return checkbox.value;
+        });
+
         const paradas = Array.from(container.querySelectorAll('.stop-card')).map(function (card, index) {
             const nombreInput = card.querySelector('.stop-nombre');
             const ubicacionInput = card.querySelector('.stop-ubicacion');
@@ -153,7 +159,7 @@
             duracion_horas: document.getElementById('ruta-duracion')?.value || '',
             num_personas: document.getElementById('ruta-personas')?.value || '',
             nivel_exigencia: document.getElementById('ruta-exigencia')?.value || '',
-            mood: [],
+            mood: moodsSeleccionados,
             paradas,
         };
     }
@@ -302,6 +308,15 @@
             window.location.href = config.urls.volver;
         });
     }
+
+    document.querySelectorAll('#ruta-etiquetas .manual-tag-pill input[type="checkbox"]').forEach(function (checkbox) {
+        checkbox.addEventListener('change', function () {
+            const tag = this.closest('.manual-tag-pill');
+            if (tag) {
+                tag.classList.toggle('active', this.checked);
+            }
+        });
+    });
 
     btnGuardar.addEventListener('click', async function () {
         const originalText = btnGuardar.innerHTML;
