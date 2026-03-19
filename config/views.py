@@ -29,25 +29,27 @@ class SuperuserAwareLoginView(LoginView):
         return next_url or super().get_success_url()
 
 
-@login_required
 def home_router(request):
     """
     Redirige a los usuarios autenticados según su rol.
-    Turistas ya no tienen cuenta — cualquier usuario logueado es un guía
-    (o superusuario), por lo que todos van al catálogo.
+    Si no están autenticados, muestra la landing page inicial.
     """
-    user = request.user
+    if request.user.is_authenticated:
+        user = request.user
 
-    # 1. Si es Superusuario -> Panel de allowlist
-    if user.is_superuser:
-        return redirect("allowlist:panel")
+        # 1. Si es Superusuario -> Panel de allowlist
+        if user.is_superuser:
+            return redirect("allowlist:panel")
 
-    # 2. Si es Guía -> Al catálogo
-    if hasattr(user, 'auth_profile') and hasattr(user.auth_profile, 'guia'):
+        # 2. Si es Guía -> Al catálogo
+        if hasattr(user, 'auth_profile') and hasattr(user.auth_profile, 'guia'):
+            return redirect("catalogo")
+
+        # 3. Fallback de seguridad
         return redirect("catalogo")
 
-    # 3. Si no es nada (por si acaso) -> Al mapa principal
-    return redirect("/")
+    # Si NO está autenticado, renderizamos la nueva pantalla inicial
+    return render(request, "landing.html")
 
 
 def registro(request):
