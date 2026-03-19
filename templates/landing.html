@@ -4,43 +4,7 @@
 {% block title %}AURA - Bienvenido{% endblock %}
 
 {% block extra_css %}
-<style>
-    .landing-wrapper {
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        background-color: var(--bg-app);
-        padding: 2rem 1rem;
-    }
-    .role-card {
-        border-radius: var(--radius-xl, 16px);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        cursor: pointer;
-        border: 2px solid transparent;
-        background: white;
-    }
-    .role-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08)!important;
-        border-color: var(--brand-color);
-    }
-    a.role-card {
-        text-decoration: none;
-        color: inherit;
-    }
-    .icon-box {
-        width: 72px;
-        height: 72px;
-        background-color: var(--brand-light, #e9ecef);
-        color: var(--brand-color, #0d6efd);
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 1.5rem;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/pages/landing.css' %}">
 {% endblock %}
 
 {% block navbar %}{% endblock %}
