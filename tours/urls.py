@@ -11,6 +11,7 @@ urlpatterns = [
     # ------------------------------------------------------------------
     path("live/code/<str:codigo>/", views.join_tour_by_code, name="join_tour_by_code"),
     path("live/<uuid:token>/", views.join_tour, name="join_tour"),
+    path("live/<uuid:token>/espera/", views.sala_espera, name="sala_espera"),
     path("live/<uuid:token>/mapa/", views.mapa_turista_anonimo, name="mapa_turista_anonimo"),
     # ------------------------------------------------------------------
     # Guías (requieren @login_required)

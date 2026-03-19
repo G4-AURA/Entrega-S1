@@ -35,7 +35,15 @@ def join_tour_by_code(request, codigo):
     Punto de entrada para turistas. Resuelve el cÃ³digo legible al token UUID
     interno y redirige. El cÃ³digo es insensible a mayÃºsculas/minÃºsculas.
     """
-    sesion = get_object_or_404(SesionTour, codigo_acceso=codigo.upper())
+    sesion = SesionTour.objects.filter(codigo_acceso=codigo.upper()).first()
+
+    if not sesion:
+        return render(
+            request,
+            "tours/join_error.html",
+            {"error": "El código introducido no es válido. Comprueba que lo has escrito correctamente."},
+            status=404,
+        )
 
     if sesion.esta_finalizada:
         return render(
@@ -68,7 +76,7 @@ def join_tour(request, token):
         if turista and TuristaSesion.objects.filter(
             turista=turista, sesion_tour=sesion, activo=True
         ).exists():
-            return redirect("tours:mapa_turista_anonimo", token=token)
+            return redirect("tours:sala_espera", token=token)
 
     if request.method == "POST":
         alias = request.POST.get("alias", "").strip()
@@ -96,9 +104,49 @@ def join_tour(request, token):
 
         request.session["turista_id"] = turista.id
         request.session["turista_alias"] = turista.alias
-        return redirect("tours:mapa_turista_anonimo", token=token)
+        return redirect("tours:sala_espera", token=token)
 
     return render(request, "tours/join_tour.html", {"sesion": sesion})
+
+
+def sala_espera(request, token):
+    """
+    Sala de espera para el turista tras unirse al tour.
+ 
+    - Si el tour está PENDIENTE: botón deshabilitado.
+    - Si el tour está EN_CURSO:  botón habilitado → redirige al mapa.
+ 
+    El turista debe estar registrado en la sesión; si no, lo mandamos
+    de vuelta al formulario de alias.
+    """
+    from django.shortcuts import get_object_or_404, redirect, render
+    from .models import SesionTour, TuristaSesion
+    from . import services
+ 
+    sesion = get_object_or_404(SesionTour, token=token)
+ 
+    if sesion.esta_finalizada:
+        return render(
+            request,
+            "tours/join_error.html",
+            {"error": "Esta sesión ya ha finalizado."},
+            status=410,
+        )
+ 
+    turista = services.obtener_turista_anonimo(request)
+    if not turista or not TuristaSesion.objects.filter(
+        turista=turista, sesion_tour=sesion, activo=True
+    ).exists():
+        return redirect("tours:join_tour", token=token)
+ 
+    return render(
+        request,
+        "turista/sala_espera.html",
+        {
+            "sesion": sesion,
+            "turista": turista,
+        },
+    )
 
 
 def mapa_turista_anonimo(request, token):
