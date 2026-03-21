@@ -20,9 +20,34 @@
         <h1 class="auth-title">Crear cuenta de guía</h1>
         <p class="auth-subtitle">Regístrate para crear y gestionar tus tours en AURA</p>
 
-        <form method="post" class="django-form">
+        <form method="post" class="django-form" novalidate>
             {% csrf_token %}
-            {{ form.as_p }}
+
+            {% if form.non_field_errors %}
+                <ul class="errorlist">
+                    {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+
+            {% for field in form %}
+                <p>
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}
+                        <ul class="errorlist">
+                            {% for error in field.errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                    {% if field.help_text %}
+                        <small>{{ field.help_text|safe }}</small>
+                    {% endif %}
+                </p>
+            {% endfor %}
+
             <button type="submit" class="btn btn-brand btn-lg fw-bold w-100 mt-2"
                     style="border-radius:var(--radius);">
                 Crear cuenta
