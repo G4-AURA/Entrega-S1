@@ -159,6 +159,31 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
 
+# --- CACHE CONFIGURATION (S2.2-29) ---
+USE_REDIS_CACHE = os.getenv('USE_REDIS_CACHE', 'False').lower() in ('true', '1', 't')
+REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+ROUTE_SNAPSHOT_CACHE_TTL = int(os.getenv('ROUTE_SNAPSHOT_CACHE_TTL', '180'))
+
+if USE_REDIS_CACHE:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_CACHE_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'IGNORE_EXCEPTIONS': True,
+            },
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'aura-local-cache',
+        }
+    }
+
+
 # --- STATIC FILES ---
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = 'static/'
@@ -174,7 +199,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # --- LOGIN / LOGOUT ---
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/accounts/login/'
+LOGOUT_REDIRECT_URL = '/'
 
 
 # --- API KEYS ---

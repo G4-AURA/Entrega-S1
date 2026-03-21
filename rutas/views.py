@@ -14,9 +14,22 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from creacion import services as creacion_services
 from . import services
 from .models import Parada, Ruta
 MAX_RUTAS_PAGE_SIZE = 9
+
+
+def _render_ruta_no_autorizada(request):
+    return render(
+        request,
+        "tours/join_error.html",
+        {
+            "error": "Estas accediendo a una ruta que no es tuya.",
+            "show_contact_hint": False,
+        },
+        status=403,
+    )
 
 
 # ================================================
@@ -106,8 +119,15 @@ def ruta_detalle_view(request, ruta_id):
     ruta = get_object_or_404(
         Ruta.objects.select_related("guia").prefetch_related("paradas"),
         id=ruta_id,
-        guia__user__user=request.user,
     )
+
+    try:
+        es_propietario = ruta.guia.user.user == request.user
+    except AttributeError:
+        es_propietario = False
+
+    if not es_propietario:
+        return _render_ruta_no_autorizada(request)
 
     if request.method == "POST":
         form_type = request.POST.get("form_type")
@@ -221,6 +241,7 @@ def ruta_detalle_view(request, ruta_id):
         "stop_reordered": request.GET.get("stop_reordered") == "1",
         "stop_error":     request.GET.get("stop_error")     == "1",
         "exigencia_choices": Ruta.Exigencia.choices,
+        "ia_checkpoint_contexto": creacion_services.obtener_contexto_checkpoint_por_ruta(ruta.id),
     }
     return render(request, "rutas/detalle_ruta.html", context)
 
