@@ -2,11 +2,13 @@
 venv/
 env/
 .venv*
+.vscode/
 
 # Archivos compilados de Python
 __pycache__/
 *.py[cod]
 *$py.class
+pyproject.toml
 
 # Base de datos local por defecto de Django
 db.sqlite3
