@@ -281,3 +281,59 @@ def recalcular_ruta_api(request, ruta_id):
 
     return JsonResponse(services.serializar_resultado_graphhopper(ruta))
 
+
+@login_required
+@require_GET
+@user_passes_test(es_guia)
+def obtener_curiosidad_parada_api(request, parada_id):
+    """
+    Obtiene la curiosidad de una parada.
+
+    Si la curiosidad ya existe en BD, se devuelve directamente.
+    Si no existe, se genera con IA, se persiste y se devuelve.
+    """
+    paradas_qs = Parada.objects.select_related("ruta", "ruta__guia", "ruta__guia__user", "ruta__guia__user__user")
+
+    if request.user.is_superuser:
+        parada = get_object_or_404(paradas_qs, id=parada_id)
+    else:
+        parada = get_object_or_404(
+            paradas_qs,
+            id=parada_id,
+            ruta__guia__user__user=request.user,
+        )
+
+    ciudad = (request.GET.get("ciudad") or "Sevilla").strip() or "Sevilla"
+
+    try:
+        curiosidad, generada = services.obtener_o_generar_curiosidad_parada(
+            parada=parada,
+            ciudad=ciudad,
+        )
+    except Exception as exc:
+        return JsonResponse(
+            {
+                "status": "error",
+                "mensaje": f"No se pudo obtener la curiosidad: {exc}",
+            },
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "generada": generada,
+            "curiosidad": {
+                "id": curiosidad.id,
+                "parada_id": curiosidad.parada_id,
+                "ciudad": curiosidad.ciudad,
+                "titulo": curiosidad.titulo,
+                "texto": curiosidad.texto,
+                "tipo": curiosidad.tipo,
+                "imagen_url": curiosidad.imagen_url,
+                "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
+            },
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
+
