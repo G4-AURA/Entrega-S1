@@ -17,10 +17,11 @@ import math
 from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.db import IntegrityError
 from django.db.models import Prefetch
 from google import genai
 
-from .models import Parada, Ruta
+from .models import Curiosidad, Parada, Ruta
 from tours.models import SESION_TOUR
 
 logger = logging.getLogger(__name__)
@@ -466,3 +467,54 @@ class ServicioCuriosidadesIA:
             raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
         except Exception as e:
             raise Exception(f"Error al comunicarse con la API de IA: {str(e)}")
+
+
+def _normalizar_tipo_curiosidad(tipo_ia: str) -> str:
+    tipos_validos = {valor for valor, _ in Curiosidad.TipoCuriosidad.choices}
+    tipo_limpio = (tipo_ia or "").strip()
+    if tipo_limpio in tipos_validos:
+        return tipo_limpio
+    return Curiosidad.TipoCuriosidad.DATO_CURIOSO
+
+
+def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla") -> tuple[Curiosidad, bool]:
+    """
+    Devuelve la curiosidad asociada a una parada.
+
+    Flujo:
+      1) Si ya existe en BD, se reutiliza.
+      2) Si no existe, se genera con IA, se persiste y se devuelve.
+
+    Returns:
+        (curiosidad, fue_generada)
+    """
+    curiosidad_existente = Curiosidad.objects.filter(parada=parada).first()
+    if curiosidad_existente:
+        return curiosidad_existente, False
+
+    servicio_ia = ServicioCuriosidadesIA()
+    datos_ia = servicio_ia.generar_curiosidad(parada=parada, ciudad=ciudad)
+
+    titulo = str(datos_ia.get("titulo") or "Curiosidad de la parada").strip()
+    texto = str(datos_ia.get("texto") or "No se pudo generar una descripción.").strip()
+
+    if not titulo:
+        titulo = "Curiosidad de la parada"
+    if not texto:
+        texto = "No se pudo generar una descripción."
+
+    try:
+        curiosidad = Curiosidad.objects.create(
+            parada=parada,
+            ciudad=ciudad,
+            titulo=titulo,
+            texto=texto,
+            tipo=_normalizar_tipo_curiosidad(datos_ia.get("tipo")),
+            imagen_url=None,
+        )
+    except IntegrityError:
+        # Si hay una petición concurrente, devolvemos la fila ya creada.
+        curiosidad = Curiosidad.objects.get(parada=parada)
+        return curiosidad, False
+
+    return curiosidad, True
