@@ -399,10 +399,34 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
         closeBtn.addEventListener('click', () => card.remove());
     }
 
+    if (parada && parada.id) {
+        const contenedorId = `curiosidad-timeline-${parada.id}`;
+        const contenedor = document.getElementById(contenedorId);
+        
+        if (contenedor) {
+            const tipoEl = document.getElementById(`curiosidad-timeline-tipo-${parada.id}`);
+            if (tipoEl && curiosidad.tipo) tipoEl.textContent = curiosidad.tipo;
+            
+            const tituloEl = document.getElementById(`curiosidad-timeline-titulo-${parada.id}`);
+            if (tituloEl && curiosidad.titulo) tituloEl.textContent = curiosidad.titulo;
+            
+            const textoEl = document.getElementById(`curiosidad-timeline-texto-${parada.id}`);
+            if (textoEl && curiosidad.texto) textoEl.textContent = curiosidad.texto;
+         
+            contenedor.style.display = 'block';
+           
+            const timelineItem = contenedor.closest('.timeline-item');
+            if (timelineItem) {
+                timelineItem.classList.add('active');
+                const stopName = timelineItem.querySelector('.timeline-stop-name');
+                if (stopName) stopName.classList.remove('text-muted');
+            }
+        }
+    }
     setTimeout(() => {
         const mounted = document.getElementById('curiosidad-auto-card');
         if (mounted) mounted.remove();
-    }, 12000);
+    }, 30000);
 }
 
 function _escapeHtml(value) {
