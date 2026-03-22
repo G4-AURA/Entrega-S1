@@ -1,0 +1,158 @@
+/* ── Panel de sesión ────────────────────────────────────────────────── */
+.session-dashboard {
+    min-height: 100vh;
+    background: var(--bg-app);
+}
+
+.session-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.session-card {
+    background: var(--bg-white);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* ── Estado ─────────────────────────────────────────────────────────── */
+.session-status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px;
+    animation: pulse 2s infinite;
+}
+
+.status-dot--active {
+    background: var(--success);
+    box-shadow: 0 0 0 3px var(--success-light);
+}
+
+.status-dot--pending {
+    background: var(--warning);
+    box-shadow: 0 0 0 3px var(--warning-light);
+}
+
+.status-dot--closed {
+    background: var(--danger);
+    box-shadow: 0 0 0 3px var(--danger-light);
+}
+
+.sesion-estado-label {
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.sesion-estado--active {
+    color: var(--success);
+}
+
+.sesion-estado--pending {
+    color: var(--warning);
+}
+
+.sesion-estado--closed {
+    color: var(--danger);
+}
+
+/* ── Código de acceso ──────────────────────────────────────────────– */
+.session-code-display {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 2rem;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 4px;
+    padding: 1.25rem;
+    background: var(--brand-light);
+    border-radius: 10px;
+    color: var(--brand-color);
+    margin-bottom: 1.5rem;
+}
+
+/* ── QR Code ────────────────────────────────────────────────────────── */
+.qr-center {
+    text-align: center;
+}
+
+/* ── Botones de acción ────────────────────────────────────────────────── */
+.action-btn-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.action-btn-row button {
+    flex: 1;
+    min-width: 150px;
+}
+
+/* ── Lista de participantes ─────────────────────────────────────────── */
+.participant-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.participant-item:last-child {
+    border-bottom: none;
+}
+
+.participant-name {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.participant-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--brand-light);
+    color: var(--brand-color);
+    font-weight: 700;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.participant-time {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Animación de pulso */
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 1;
+    }
+}

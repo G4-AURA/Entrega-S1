@@ -31,12 +31,28 @@ GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH') or None
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 # DEBUG: En la nube será False. En local (si está en .env) será True.
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.run.app').split(',')
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,https://*.run.app').split(',')
+# 1. ALLOWED_HOSTS: El punto al principio (.run.app) es la clave para subdominios
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.run.app', # Permite tu-app.run.app y sprint-1---tu-app.run.app
+]
+# Si prefieres usar la variable de entorno, asegúrate de incluir el punto:
+env_hosts = os.getenv('ALLOWED_HOSTS')
+if env_hosts:
+    ALLOWED_HOSTS += env_hosts.split(',')
 
-
+# 2. CSRF_TRUSTED_ORIGINS: Muy importante el comodín con el protocolo https://
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+    'https://*.run.app', # <--- El asterisco permite CUALQUIER etiqueta de Cloud Run
+]
+env_csrf = os.getenv('CSRF_TRUSTED_ORIGINS')
+if env_csrf:
+    CSRF_TRUSTED_ORIGINS += env_csrf.split(',')
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -49,6 +65,7 @@ INSTALLED_APPS = [
     'tours',
     'creacion',
     'rutas',
+    'allowList',
 ]
 
 MIDDLEWARE = [
@@ -142,6 +159,31 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
 
+# --- CACHE CONFIGURATION (S2.2-29) ---
+USE_REDIS_CACHE = os.getenv('USE_REDIS_CACHE', 'False').lower() in ('true', '1', 't')
+REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+ROUTE_SNAPSHOT_CACHE_TTL = int(os.getenv('ROUTE_SNAPSHOT_CACHE_TTL', '180'))
+
+if USE_REDIS_CACHE:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_CACHE_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'IGNORE_EXCEPTIONS': True,
+            },
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'aura-local-cache',
+        }
+    }
+
+
 # --- STATIC FILES ---
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = 'static/'
@@ -156,8 +198,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- LOGIN / LOGOUT ---
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/catalogo/'
-LOGOUT_REDIRECT_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
 
 
 # --- API KEYS ---

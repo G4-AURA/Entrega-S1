@@ -11,15 +11,23 @@ Roles:
 S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 """
 import logging
+import json
+import math
 
+from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Prefetch
+from google import genai
 
 from .models import Parada, Ruta
 from tours.models import SESION_TOUR
 
 logger = logging.getLogger(__name__)
+MIN_DURACION_HORAS = 0.5
+MAX_DURACION_HORAS = 24.0
+MIN_NUM_PERSONAS = 1
+MAX_NUM_PERSONAS = 50
 
 
 # ================================================
@@ -35,10 +43,12 @@ def obtener_datos_catalogo_paginado(user, limit, page_number, tipo):
         .prefetch_related(
             Prefetch('paradas', queryset=Parada.objects.all())
         )
-        .filter(guia__user__user=user)
         .distinct()
         .order_by("-id")
     )
+
+    if not user.is_superuser:
+        rutas_qs = rutas_qs.filter(guia__user__user=user)
 
     if tipo == "ia":
         rutas_qs = rutas_qs.filter(es_generada_ia=True)
@@ -136,6 +146,8 @@ def actualizar_titulo_ruta(ruta, raw_titulo):
 
 
 def actualizar_descripcion_ruta(ruta, descripcion):
+    if len(descripcion or "") > 150:
+        raise ValueError("La descripción no puede superar los 150 caracteres.")
     ruta.descripcion = descripcion
     ruta.save(update_fields=["descripcion"])
 
@@ -146,7 +158,9 @@ def actualizar_duracion_ruta(ruta, raw_duracion):
     except (TypeError, ValueError):
         raise ValueError("Valores numéricos inválidos (duración)")
 
-    if duracion_horas <= 0 or duracion_horas > 24:
+    if not math.isfinite(duracion_horas):
+        raise ValueError("Valores numéricos inválidos (duración)")
+    if duracion_horas < MIN_DURACION_HORAS or duracion_horas > MAX_DURACION_HORAS:
         raise ValueError("Valores numéricos inválidos (duración)")
 
     ruta.duracion_horas = duracion_horas
@@ -159,7 +173,7 @@ def actualizar_personas_ruta(ruta, raw_personas):
     except (TypeError, ValueError):
         raise ValueError("Valores numéricos inválidos (número de personas)")
 
-    if num_personas <= 0 or num_personas > 50:
+    if num_personas < MIN_NUM_PERSONAS or num_personas > MAX_NUM_PERSONAS:
         raise ValueError("Valores numéricos inválidos (número de personas)")
 
     ruta.num_personas = num_personas
@@ -193,6 +207,8 @@ def _validar_coordenadas(raw_lat, raw_lon):
     try:
         lat = float((raw_lat or "").strip())
         lon = float((raw_lon or "").strip())
+        if not math.isfinite(lat) or not math.isfinite(lon):
+            raise ValueError("Coordenadas fuera de rango")
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise ValueError("Coordenadas fuera de rango")
         return lat, lon
@@ -385,3 +401,68 @@ def serializar_resultado_graphhopper(ruta) -> dict:
         "duracion_total_min": ruta.duracion_total_min,
         "segmentos": segmentos_data,
     }
+
+# ================================================
+# GENERACIÓN DE CURIOSIDADES (IA) - S2.2-36
+# ================================================
+
+class ServicioCuriosidadesIA:
+    """
+    Servicio encargado de generar curiosidades turísticas usando la API nueva de Gemini.
+    S2.2-36.
+    """
+    def __init__(self):
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+    def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
+        """
+        Genera el prompt, llama a la IA y devuelve un diccionario con los datos estructurados.
+        """
+       # Extraemos los temas reales de la ruta. Si no tiene, usamos uno por defecto.
+        if getattr(parada, 'ruta', None) and getattr(parada.ruta, 'mood', None):
+            temas_ruta = ", ".join(parada.ruta.mood)
+        else:
+            temas_ruta = "Historia, Cultura y Curiosidades locales"
+        
+        prompt = f"""
+        Actúa como un guía turístico experto y carismático de la aplicación AURA. Tu misión es generar una píldora de conocimiento (curiosidad) sobre una parada turística específica. El tono debe ser divulgativo, ameno, fácil de entender para turistas y sorprendente.
+
+        Contexto de la parada:
+        - Ciudad: {ciudad}
+        - Lugar: {parada.nombre}
+        - Enfoque temático: {temas_ruta}
+
+        Restricciones Estrictas:
+        1. Responde ÚNICA Y EXCLUSIVAMENTE con un objeto JSON válido.
+        2. No incluyas saludos, explicaciones, ni formato markdown (no uses ```json).
+        3. El texto debe estar en Español.
+
+        Estructura JSON requerida:
+        {{
+          "titulo": "Un titular gancho y atractivo (máximo 10 palabras)",
+          "texto": "Un dato curioso, histórico o cultural sorprendente sobre el lugar. Debe ser fácil de leer en el móvil (máximo 60 palabras)",
+          "tipo": "Clasifica la curiosidad eligiendo EXACTAMENTE uno de estos valores: [Historia, Arquitectura, Personaje, Evento, Dato Curioso]",
+          "busqueda_imagen": "3 o 4 palabras clave muy precisas EN INGLÉS para buscar una foto real de este detalle en una API de imágenes"
+        }}
+        """
+
+        try:
+            respuesta = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            
+            texto_ia = respuesta.text.strip()
+
+            if texto_ia.startswith("```json"):
+                texto_ia = texto_ia[7:-3].strip()
+            elif texto_ia.startswith("```"):
+                texto_ia = texto_ia[3:-3].strip()
+
+            datos_curiosidad = json.loads(texto_ia)
+            return datos_curiosidad
+
+        except json.JSONDecodeError:
+            raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
+        except Exception as e:
+            raise Exception(f"Error al comunicarse con la API de IA: {str(e)}")

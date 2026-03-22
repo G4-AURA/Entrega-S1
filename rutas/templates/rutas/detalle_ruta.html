@@ -1,151 +1,10 @@
 {% extends 'base.html' %}
-{% load l10n %}
+{% load l10n static %}
 
 {% block title %}AURA - Detalle de Ruta{% endblock %}
 
 {% block extra_css %}
-<style>
-    .map-container-ruta {
-        height: 500px;
-        width: 100%;
-        border-radius: 1rem;
-        border: 1px solid #dee2e6;
-    }
-
-    .list-paradas-container {
-        max-height: 500px;
-        overflow-y: auto;
-    }
-
-    .meta-pill {
-        display: inline-block;
-        padding: 0.3rem 0.75rem;
-        border-radius: 999px;
-        background-color: #eef2ff;
-        color: #4338ca;
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin-right: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .mood-edit-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-
-    .mood-edit-item {
-        border: 1px solid #dee2e6;
-        border-radius: 999px;
-        padding: 0.35rem 0.7rem;
-        background: #fff;
-    }
-
-    .titulo-edit-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-
-    .btn-edit {
-        border: 1px solid #c7d2fe;
-        background: #fff;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.8rem;
-        font-weight: 600;
-        line-height: 1;
-        padding: 0.35rem 0.75rem;
-        color: #4338ca;
-        cursor: pointer;
-    }
-
-    .btn-edit:hover { background: #eef2ff; color: #3730a3; }
-
-    .meta-edit-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-    .parada-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-    .parada-edit-form { margin-top: 0.75rem; }
-
-    .add-stop-form {
-        border: 1px dashed #cbd5e1;
-        border-radius: 10px;
-        padding: 0.75rem;
-        margin-bottom: 0.75rem;
-        background: #f8fafc;
-    }
-
-    .map-edit-hint { font-size: 0.875rem; }
-
-    .parada-item { border-radius: 8px; transition: background 0.15s; }
-    .parada-item.drag-over { background: #eef2ff; }
-    .drag-handle { cursor: grab; color: #9ca3af; font-size: 0.85rem; }
-    .parada-coords-preview { font-size: 0.8rem; color: #6b7280; margin-top: 0.25rem; }
-
-    /* ── Panel métricas (S2.1-29) ──────────────────────────────────────── */
-    .ruta-metrics-panel {
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-        align-items: center;
-        padding: 0.6rem 1rem;
-        background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%);
-        border: 1px solid #c7d2fe;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        font-size: 0.875rem;
-    }
-
-    .metric-item { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; color: #3730a3; }
-    .metric-value { color: #1e1b4b; }
-    .metric-sep { color: #c7d2fe; font-weight: 300; font-size: 1.1rem; }
-    .metrics-empty { color: #6b7280; font-size: 0.82rem; font-style: italic; }
-
-    /* Botón de recálculo */
-    .btn-recalcular {
-        margin-left: auto;
-        border: 1px solid #6366f1;
-        background: #fff;
-        color: #4f46e5;
-        border-radius: 999px;
-        padding: 0.3rem 0.8rem;
-        font-size: 0.8rem;
-        font-weight: 600;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        transition: background 0.15s;
-    }
-
-    .btn-recalcular:hover { background: #eef2ff; }
-    .btn-recalcular:disabled { opacity: 0.6; cursor: wait; }
-
-    /* Badge de estado en el mapa */
-    .map-route-status {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 1000;
-        background: rgba(255,255,255,0.92);
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 0.35rem 0.7rem;
-        font-size: 0.78rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-        pointer-events: none;
-    }
-
-    .map-route-status.ok    { color: #059669; border-color: #a7f3d0; background: rgba(240,253,250,0.95); }
-    .map-route-status.warn  { color: #d97706; border-color: #fcd34d; background: rgba(255,251,235,0.95); }
-    .map-route-status.error { color: #dc2626; border-color: #fca5a5; background: rgba(254,242,242,0.95); }
-
-    .map-wrapper { position: relative; }
-
-    .segmento-badge { font-size: 0.75rem; color: #6b7280; margin-top: 0.2rem; }
-
-    .reorder-active .parada-item {
-        cursor: grab;
-        border: 1px dashed #6366f1 !important;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/detalle_ruta.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -170,14 +29,15 @@
                        value="{{ ruta.titulo }}" required>
             </div>
             <div class="mb-2">
-                <textarea name="descripcion" class="form-control" rows="2"
+                <textarea name="descripcion" class="form-control" rows="2" maxlength="150"
                           placeholder="Descripción (opcional)">{{ ruta.descripcion }}</textarea>
+                <small class="text-muted">Máximo 150 caracteres</small>
             </div>
             <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
         </form>
     </div>
 
-    {# ── Panel métricas (S2.1-29) + botón recalcular ──────────────────────── #}
+    {# ── Panel métricas (S2.1-29) ─────────────────────────────────────────── #}
     <div id="panel-metricas" class="ruta-metrics-panel">
         {% if distancia_total_km and duracion_total_min %}
             <span class="metric-item">
@@ -196,14 +56,38 @@
                 ℹ️ Ruta sin calcular. Usa el botón para obtener distancia y tiempo real.
             </span>
         {% endif %}
+    </div>
 
-        {# Botón siempre visible para forzar recálculo (S2.1-32) #}
-        {% if paradas|length >= 2 %}
-        <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper">
-            🔄 Recalcular ruta
-        </button>
+    {% with restricciones=ia_checkpoint_contexto.restricciones_usuario rechazadas=ia_checkpoint_contexto.paradas_rechazadas %}
+    {% if restricciones or rechazadas %}
+    <div class="checkpoint-context-box">
+        <div class="fw-semibold small mb-2">Historial de la IA para esta ruta</div>
+        {% if restricciones %}
+        <div class="small mb-2">
+            <strong>Contexto:</strong>
+            <ul class="mb-0 mt-1">
+                {% for restriccion in restricciones %}
+                <li>{{ restriccion }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if rechazadas %}
+        <div class="small">
+            <strong>Paradas rechazadas durante la selección:</strong>
+            <ul class="mb-0 mt-1">
+                {% for parada in rechazadas %}
+                <li>
+                    {{ parada.nombre|default:'Sin nombre' }}
+                    {% if parada.motivo_rechazo %}- {{ parada.motivo_rechazo }}{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
         {% endif %}
     </div>
+    {% endif %}
+    {% endwith %}
 
     {# ── Meta ─────────────────────────────────────────────────────────────── #}
     <div class="card shadow-sm border-0 mb-3">
@@ -220,14 +104,18 @@
                 {% csrf_token %}
                 <input type="hidden" name="form_type" value="meta">
                 <div class="col-12 col-md-3">
-                    <input type="number" step="0.1" min="0.1" name="duracion_horas"
+
+                    <label class="form-label">Duración (horas)</label>
+                    <input type="number" step="0.1" min="0.1" max="24" name="duracion_horas"
                            class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
                 </div>
                 <div class="col-12 col-md-3">
-                    <input type="number" min="1" name="num_personas"
+                    <label class="form-label">Número de personas</label>
+                    <input type="number" min="1" max="50" name="num_personas"
                            class="form-control" value="{{ ruta.num_personas }}" required>
                 </div>
                 <div class="col-12 col-md-3">
+                    <label class="form-label">Nivel de exigencia</label>
                     <select name="nivel_exigencia" class="form-select" required>
                         {% for value, label in exigencia_choices %}
                         <option value="{{ value }}"
@@ -387,6 +275,11 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm btn-editar-parada"
                                 data-parada-id="{{ parada.id }}">Editar</button>
+                        <button type="button"
+                                class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
+                                data-parada-id="{{ parada.id }}">
+                            ✨ IA
+                        </button>
                         <form method="post" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
@@ -396,6 +289,15 @@
                                 Eliminar
                             </button>
                         </form>
+                    </div>
+
+                    <div class="ia-suggestions-panel ia-suggestions-inline d-none"
+                         id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <strong class="small">Sugerencias IA para esta parada</strong>
+                            <span id="estado-sugerencias-ia-{{ parada.id }}" class="ia-suggestion-meta"></span>
+                        </div>
+                        <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
                     </div>
 
                     <form method="post" class="parada-edit-form d-none"
@@ -436,12 +338,20 @@
         </div>
     </div>
 
+    <div class="recalc-cta mt-4">
+        <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper"
+                {% if paradas|length < 2 %}disabled{% endif %}>
+            🔄 Calcular ruta
+        </button>
+    </div>
+
 </section>
 {% endblock %}
 
 {% block extra_js %}
 {{ paradas_json|json_script:"paradas-json" }}
 {{ geometria_ruta_json|json_script:"geometria-ruta-json" }}
+<script src="{% static 'js/pages/route_detail.js' %}"></script>
 
 <script>
 /**
@@ -456,6 +366,7 @@ const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-json').
 const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId        = {{ ruta.id }};
 const csrfToken     = '{{ csrf_token }}';
+const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
 const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
@@ -540,38 +451,31 @@ function actualizarPanelMetricas(data) {
     const panel = document.getElementById('panel-metricas');
     if (!panel) return;
 
-    const btnRecalcular = document.getElementById('btn-recalcular');
-
     if (data.distancia_total_km && data.duracion_total_min) {
-        const btnHtml = paradas.length >= 2
-            ? `<button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta">🔄 Recalcular ruta</button>`
-            : '';
-
         panel.innerHTML = `
             <span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>
             <span class="metric-sep">|</span>
             <span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>
             <span class="metric-sep">|</span>
-            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>
-            ${btnHtml}`;
+            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
     } else {
-        const btnHtml = paradas.length >= 2
-            ? `<button type="button" id="btn-recalcular" class="btn-recalcular">🔄 Recalcular ruta</button>`
-            : '';
         panel.innerHTML = `
-            <span class="metrics-empty">ℹ️ Ruta sin calcular.</span>
-            ${btnHtml}`;
+            <span class="metrics-empty">ℹ️ Ruta sin calcular.</span>`;
     }
-
-    // Re-asignar listener al nuevo botón tras reemplazar el innerHTML
-    const nuevoBtn = document.getElementById('btn-recalcular');
-    if (nuevoBtn) nuevoBtn.addEventListener('click', handleRecalcular);
 }
 
 // ── Recálculo AJAX (S2.1-32) ──────────────────────────────────────────────
 async function recalcularRutaAjax() {
     const btn = document.getElementById('btn-recalcular');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+    let huboError = false;
+    if (btn) {
+        if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
+            window.RouteDetailUI.setRecalcularButtonLoading(btn, true, false);
+        } else {
+            btn.disabled = true;
+            btn.textContent = '⏳ Calculando...';
+        }
+    }
     setBadge('warn', '⏳ Calculando...');
 
     try {
@@ -584,7 +488,7 @@ async function recalcularRutaAjax() {
             const errText = await resp.text().catch(() => '');
             console.error('[AURA] Recálculo HTTP', resp.status, errText);
             setBadge('error', `❌ Error ${resp.status} al calcular`);
-            if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar'; }
+            huboError = true;
             return null;
         }
 
@@ -600,8 +504,17 @@ async function recalcularRutaAjax() {
     } catch (err) {
         console.error('[AURA] Error de red al recalcular:', err);
         setBadge('error', '❌ Sin conexión al servidor');
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar'; }
+        huboError = true;
         return null;
+    } finally {
+        if (btn) {
+            if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
+                window.RouteDetailUI.setRecalcularButtonLoading(btn, false, huboError);
+            } else {
+                btn.disabled = false;
+                btn.textContent = huboError ? '🔄 Reintentar' : '🔄 Calcular ruta';
+            }
+        }
     }
 }
 
@@ -691,10 +604,161 @@ function activateAddStopMode() {
     }
 }
 
+
+function getPanelSugerenciasParada(paradaId) {
+    return {
+        panel: document.getElementById(`panel-sugerencias-ia-${paradaId}`),
+        estado: document.getElementById(`estado-sugerencias-ia-${paradaId}`),
+        lista: document.getElementById(`lista-sugerencias-ia-${paradaId}`),
+    };
+}
+
+const sugerenciasCachePorParada = new Map();
+
+function cerrarTodosLosPanelesIASugerencias() {
+    document.querySelectorAll('.ia-suggestions-inline').forEach((panel) => {
+        panel.classList.add('d-none');
+    });
+}
+
+function renderSugerenciasIAEnParada(paradaId, candidatos) {
+    const { lista } = getPanelSugerenciasParada(paradaId);
+    if (!lista) return;
+    if (!Array.isArray(candidatos) || !candidatos.length) {
+        sugerenciasCachePorParada.set(String(paradaId), []);
+        lista.innerHTML = '<div class="small text-muted mt-2">No se recibieron sugerencias válidas.</div>';
+        return;
+    }
+
+    sugerenciasCachePorParada.set(String(paradaId), candidatos);
+
+    lista.innerHTML = candidatos.map((c, idx) => {
+        const [lat, lon] = Array.isArray(c.coordenadas) ? c.coordenadas : [null, null];
+        const latNum = Number(lat);
+        const lonNum = Number(lon);
+        const hasCoords = Number.isFinite(latNum) && Number.isFinite(lonNum);
+        const coordsText = hasCoords ? `${latNum.toFixed(5)}, ${lonNum.toFixed(5)}` : 'Sin coordenadas';
+
+        return `
+            <div class="ia-suggestion-item">
+                <div class="fw-semibold">${c.nombre || `Parada sugerida ${idx + 1}`}</div>
+                <div class="ia-suggestion-meta">${coordsText}</div>
+                <div class="ia-suggestion-meta">Categoría: ${c.categoria || 'general'} · Confianza: ${Math.round((Number(c.nivel_confianza || 0) * 100))}%</div>
+                <div class="small mt-1">${c.justificacion || 'Sin justificación proporcionada.'}</div>
+                <div class="ia-suggestion-item__actions">
+                    <button type="button"
+                            class="btn btn-success btn-sm btn-usar-sugerencia-ia"
+                            data-parada-id="${paradaId}"
+                            data-candidate-index="${idx}"
+                            ${hasCoords ? '' : 'disabled'}>
+                        Usar esta parada
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateRecalcularButton() {
+    const paradas = document.querySelectorAll('.parada-item');
+    const btn = document.getElementById('btn-recalcular');
+    if (btn) {
+        btn.disabled = paradas.length < 1;
+    }
+}
+
+// Llamar al cargar la página
+updateRecalcularButton();
+
+function agregarSugerenciaComoNuevaParada(candidato) {
+    const form = document.getElementById('form-agregar-parada');
+    if (!form) return;
+
+    const nameInput = form.querySelector('input[name="nombre"]');
+    const latInput = form.querySelector('input[name="lat"]');
+    const lonInput = form.querySelector('input[name="lon"]');
+
+    const lat = Number(candidato.lat);
+    const lon = Number(candidato.lon);
+    if (!nameInput || !latInput || !lonInput || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return;
+    }
+
+    nameInput.value = candidato.nombre || nameInput.value;
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lon.toFixed(6);
+
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+}
+
+async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
+    const { panel, estado, lista } = getPanelSugerenciasParada(paradaId);
+    if (!panel || !estado || !lista || !triggerButton) return;
+
+    cerrarTodosLosPanelesIASugerencias();
+    panel.classList.remove('d-none');
+    estado.textContent = 'Generando...';
+    lista.innerHTML = '';
+    triggerButton.disabled = true;
+
+    try {
+        const response = await fetch(sugerenciasIaUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({ cantidad: 3 }),
+        });
+
+        const payload = await response.json();
+
+        if (!response.ok || payload.status !== 'OK') {
+            estado.textContent = payload?.mensaje || `Error ${response.status}`;
+            lista.innerHTML = '<div class="small text-danger mt-2">No se pudieron generar sugerencias en este momento.</div>';
+            return;
+        }
+
+        const candidatos = payload.datos?.candidatos || [];
+        estado.textContent = `${candidatos.length} sugerencias generadas`;
+        renderSugerenciasIAEnParada(paradaId, candidatos);
+    } catch (_error) {
+        estado.textContent = 'Error de red';
+        lista.innerHTML = '<div class="small text-danger mt-2">No se pudo contactar con el servidor.</div>';
+    } finally {
+        triggerButton.disabled = false;
+    }
+}
+
 if (btnAgregarParada) btnAgregarParada.addEventListener('click', activateAddStopMode);
 
 document.querySelectorAll('.btn-editar-parada').forEach(btn => {
     btn.addEventListener('click', () => activateParadaEditMode(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
+    btn.addEventListener('click', () => cargarSugerenciasIAParaParada(btn.dataset.paradaId, btn));
+});
+
+document.addEventListener('click', (event) => {
+    const usarBtn = event.target.closest('.btn-usar-sugerencia-ia');
+    if (!usarBtn) return;
+
+    const paradaId = usarBtn.dataset.paradaId;
+    const candidateIndex = Number(usarBtn.dataset.candidateIndex);
+    const candidatos = sugerenciasCachePorParada.get(String(paradaId)) || [];
+    const candidato = candidatos[candidateIndex];
+    const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
+    const lat = coords[0];
+    const lon = coords[1];
+
+    const confirmacion = window.confirm(
+        'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
+    );
+    if (!confirmacion) return;
+
+    agregarSugerenciaComoNuevaParada({ nombre: candidato?.nombre || '', lat, lon });
 });
 
 mapa.on('click', (event) => {

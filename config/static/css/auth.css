@@ -1,0 +1,274 @@
+/* ── Página de autenticación ─────────────────────────────────────────── */
+.auth-page-wrapper {
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.auth-card {
+    max-width: 480px;
+    margin: 0 auto;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-white);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.auth-card .card-body {
+    padding: 2.5rem;
+}
+
+.auth-logo {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.auth-logo img {
+    height: 48px;
+    width: auto;
+}
+
+.auth-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    text-align: center;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ── Formulario ──────────────────────────────────────────────────── */
+.auth-card .form-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.auth-card .form-control,
+.auth-card .form-select {
+    width: 100%;
+    display: block;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+
+.auth-card .form-control:focus {
+    border-color: var(--brand-color);
+    box-shadow: 0 0 0 3px var(--brand-light);
+    outline: none;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────– */
+.auth-divider {
+    text-align: center;
+    margin: 1.5rem 0;
+    position: relative;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: calc(50% - 20px);
+    height: 1px;
+    background: var(--border-color);
+}
+
+.auth-divider::before {
+    left: 0;
+}
+
+.auth-divider::after {
+    right: 0;
+}
+
+/* ── Nota para turistas ──────────────────────────────────────────– */
+.auth-tourist-note {
+    background: var(--brand-light);
+    border: 1px solid var(--brand-color);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    color: var(--brand-hover);
+    text-align: center;
+}
+
+.auth-tourist-note a {
+    color: var(--brand-color);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.auth-tourist-note a:hover {
+    text-decoration: underline;
+}
+
+/* ── FAB (Floating Action Button) ────────────────────────────────– */
+.fab-button {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: var(--brand-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.2s;
+    z-index: 999;
+    padding: 0;
+    font-size: 0;
+}
+
+.fab-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.fab-button:active {
+    transform: scale(0.95);
+}
+
+.fab-button svg {
+    width: 24px;
+    height: 24px;
+}
+
+.fab-button span {
+    display: none;
+}
+
+@media (min-width: 576px) {
+    .fab-button {
+        width: auto;
+        padding: 0.75rem 1.25rem;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        display: inline-flex;
+        gap: 0.5rem;
+    }
+
+    .fab-button span {
+        display: inline;
+    }
+}
+
+/* ── Modal ────────────────────────────────────────────────────── */
+.modal-backdrop {
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal-content {
+    border: 1px solid var(--border-color);
+}
+
+/* ── Input de código ─────────────────────────────────────────────── */
+.input-code {
+    font-family: 'Monaco', monospace;
+    text-transform: uppercase;
+    letter-spacing: 8px;
+    font-size: 1.75rem !important;
+    text-align: center !important;
+}
+
+/* ── Mensaje de error ────────────────────────────────────────────── */
+.alert-error {
+    background: var(--danger-light);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    color: #991b1b;
+    font-size: 0.875rem;
+}
+
+.alert-error .material-icons-round {
+    font-size: 18px;
+}
+
+/* ── Texto de ayuda ────────────────────────────────────────────── */
+.form-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* ── Django form rendering ──────────────────────────────────────── */
+.django-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.django-form p {
+    margin-bottom: 0;
+}
+
+.django-form label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.django-form input:not([type="hidden"]),
+.django-form select {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+
+.django-form input:not([type="hidden"]):focus,
+.django-form select:focus {
+    border-color: var(--brand-color);
+    box-shadow: 0 0 0 3px var(--brand-light);
+    outline: none;
+}
+
+/* ── Errores de formulario ──────────────────────────────────────– */
+.errorlist {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+    color: #991b1b;
+    font-size: 0.85rem;
+}
+
+.errorlist li {
+    background: var(--danger-light);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.errorlist li:last-child {
+    margin-bottom: 0;
+}

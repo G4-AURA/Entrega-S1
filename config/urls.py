@@ -16,7 +16,6 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from django.contrib.auth import views as auth_views
 from config import views
 from tours import views as tours_views
 from django.views.generic import TemplateView
@@ -33,10 +32,9 @@ urlpatterns = [
     path('tours/', include('tours.urls')),
     path('', include('rutas.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
+    path("allowList/", include("allowList.urls")),
     
-    
-    
-    
+    path('accounts/login/', views.SuperuserAwareLoginView.as_view(), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('registro/', registro, name='registro'),
 

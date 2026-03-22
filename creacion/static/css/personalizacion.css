@@ -6,7 +6,7 @@
 .gradient-card {
     border: 0;
     border-radius: 1rem;
-    background: linear-gradient(135deg, #f8f9ff 0%, #eef4ff 100%);
+    background: linear-gradient(135deg, var(--brand-light) 0%, #f0f4ff 100%);
 }
 
 .form-label {
@@ -17,7 +17,7 @@
     height: 500px;
     width: 100%;
     border-radius: 1rem;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-color);
 }
 
 .list-paradas-container {
@@ -28,7 +28,7 @@
 .loading-overlay {
     position: fixed;
     inset: 0;
-    background: rgb(15 23 42 / 55%);
+    background: rgba(15, 23, 42, 0.55);
     z-index: 1080;
     display: none;
     align-items: center;
@@ -38,11 +38,12 @@
 
 .loading-overlay__card {
     width: min(92vw, 420px);
+    border-radius: 1rem;
 }
 
 .loading-overlay__spinner {
-    width: 3rem;
-    height: 3rem;
+    width: 3.5rem;
+    height: 3.5rem;
 }
 
 .mood-buttons {
@@ -53,10 +54,10 @@
 
 .mood-btn {
     padding: 0.5rem 1rem;
-    border: 2px solid #dee2e6;
+    border: 2px solid var(--border-color);
     border-radius: 2rem;
-    background: #fff;
-    color: #6c757d;
+    background: var(--bg-white);
+    color: var(--text-muted);
     cursor: pointer;
     transition: all 0.2s;
     font-size: 0.95rem;
@@ -64,16 +65,16 @@
 }
 
 .mood-btn:hover {
-    border-color: #0d6efd;
-    color: #0d6efd;
+    border-color: var(--brand-color);
+    color: var(--brand-color);
 }
 
 .mood-btn.active {
-    background: #0d6efd;
-    color: #fff;
-    border-color: #0d6efd;
+    background: var(--brand-color);
+    color: white;
+    border-color: var(--brand-color);
 }
 
-.mood-btn input[type='checkbox'] {
+.mood-btn input[type="checkbox"] {
     display: none;
 }
