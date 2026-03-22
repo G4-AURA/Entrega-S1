@@ -151,6 +151,38 @@ def join_tour(request, token):
     return render(request, "tours/join_tour.html", {"sesion": sesion})
 
 
+def sala_espera(request, token):
+    """Sala de espera para turistas hasta que el guía inicie el tour."""
+    sesion = get_object_or_404(SesionTour, token=token)
+
+    if sesion.esta_finalizada:
+        return _render_join_error(
+            request,
+            "Esta sesión ya ha finalizado.",
+            410,
+        )
+
+    turista = services.obtener_turista_anonimo(request)
+    if not turista or not TuristaSesion.objects.filter(
+        turista=turista,
+        sesion_tour=sesion,
+        activo=True,
+    ).exists():
+        return redirect("tours:join_tour", token=token)
+
+    if sesion.estado == SesionTour.EN_CURSO:
+        return redirect("tours:mapa_turista_anonimo", token=token)
+
+    return render(
+        request,
+        "turista/sala_espera.html",
+        {
+            "sesion": sesion,
+            "turista": turista,
+        },
+    )
+
+
 def mapa_turista_anonimo(request, token):
     """
     Mapa en vivo para el turista anónimo verificado por cookie.
@@ -261,6 +293,79 @@ def iniciar_tour(request, sesion_id):
             "sesion_id": sesion.id,
             "estado": sesion.estado,
             "codigo_acceso": sesion.codigo_acceso,
+        }
+    )
+
+
+@login_required
+@require_GET
+def estado_cronometro(request, sesion_id):
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return _json_error("Acceso denegado.", 403)
+
+    duracion_horas = float(sesion.ruta.duracion_horas or 0)
+    duracion_segundos = max(int(duracion_horas * 3600), 0)
+    transcurrido_segundos = 0
+
+    if sesion.fecha_inicio:
+        transcurrido_segundos = max(
+            int((timezone.now() - sesion.fecha_inicio).total_seconds()),
+            0,
+        )
+
+    restante_segundos = max(duracion_segundos - transcurrido_segundos, 0)
+
+    return JsonResponse(
+        {
+            "sesion_id": sesion.id,
+            "estado": sesion.estado,
+            "duracion_horas": duracion_horas,
+            "restante_segundos": restante_segundos,
+            "agotado": restante_segundos == 0,
+        }
+    )
+
+
+@login_required
+@require_POST
+def seleccionar_parada_actual(request, sesion_id):
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    try:
+        services.validar_guia_de_sesion(request.user, sesion, "seleccionar la parada actual")
+        services.validar_sesion_no_finalizada(sesion, "seleccionar la parada actual")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        body = {}
+
+    parada_id = body.get("parada_id", request.POST.get("parada_id"))
+    if parada_id is None:
+        return _json_error("El campo parada_id es obligatorio.", 400)
+
+    try:
+        parada_id = int(parada_id)
+    except (TypeError, ValueError):
+        return _json_error("El campo parada_id debe ser numérico.", 400)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return _json_error("La parada no pertenece a la ruta de esta sesión.", 404)
+
+    sesion.parada_actual = parada
+    sesion.save(update_fields=["parada_actual"])
+    services.set_route_snapshot(sesion)
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "parada_actual_id": parada.id,
+            "parada_actual_nombre": parada.nombre,
         }
     )
 
@@ -476,6 +581,118 @@ def obtener_ubicacion_guia(request, sesion_id):
             "message": "El guía aún no ha compartido su ubicación.",
         }
     )
+
+
+@require_POST
+def registrar_ubicacion_turista(request, sesion_id):
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    turista = services.obtener_turista_request(request)
+    if not turista:
+        return _json_error("Acceso denegado.", 403)
+
+    es_participante_activo = TuristaSesion.objects.filter(
+        turista=turista,
+        sesion_tour=sesion,
+        activo=True,
+    ).exists()
+    if not es_participante_activo:
+        return _json_error("Acceso denegado.", 403)
+
+    try:
+        services.validar_sesion_en_curso(sesion, "registrar ubicaciones")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return _json_error("JSON inválido.", 400)
+
+    latitud = body.get("latitud")
+    longitud = body.get("longitud")
+    if any(v is None for v in (latitud, longitud)):
+        return _json_error("Los campos latitud y longitud son obligatorios.", 400)
+
+    try:
+        latitud, longitud = float(latitud), float(longitud)
+    except (TypeError, ValueError):
+        return _json_error("Latitud/longitud deben ser numéricas.", 400)
+
+    if not (-90 <= latitud <= 90) or not (-180 <= longitud <= 180):
+        return _json_error("Coordenadas fuera de rango válido.", 400)
+
+    ubicacion = UbicacionVivo.objects.create(
+        coordenadas=Point(longitud, latitud, srid=4326),
+        timestamp=timezone.now(),
+        sesion_tour=sesion,
+        usuario=None,
+        turista=turista,
+    )
+
+    return JsonResponse(
+        {
+            "ubicacion_id": ubicacion.id,
+            "sesion_id": sesion.id,
+            "turista_id": turista.id,
+            "latitud": latitud,
+            "longitud": longitud,
+            "timestamp": ubicacion.timestamp.isoformat(),
+        },
+        status=201,
+    )
+
+
+@require_GET
+def obtener_ubicaciones_turistas(request, sesion_id):
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not request.user.is_authenticated:
+        return _json_error("Acceso denegado.", 403)
+
+    try:
+        services.validar_guia_de_sesion(request.user, sesion, "consultar ubicaciones de turistas")
+    except services.TourServiceError as exc:
+        return _service_error_response(exc)
+
+    turistas_activos_ids = list(
+        TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).values_list(
+            "turista_id", flat=True
+        )
+    )
+
+    if not turistas_activos_ids:
+        return JsonResponse({"turistas": []})
+
+    ubicaciones = (
+        UbicacionVivo.objects.filter(
+            sesion_tour=sesion,
+            turista_id__in=turistas_activos_ids,
+            coordenadas__isnull=False,
+        )
+        .select_related("turista")
+        .order_by("turista_id", "-timestamp")
+    )
+
+    resultados = []
+    vistos = set()
+    for ubicacion in ubicaciones:
+        turista_id = ubicacion.turista_id
+        if not turista_id or turista_id in vistos:
+            continue
+        vistos.add(turista_id)
+
+        resultados.append(
+            {
+                "turista_id": turista_id,
+                "alias": ubicacion.turista.alias,
+                "lat": ubicacion.coordenadas.y,
+                "lng": ubicacion.coordenadas.x,
+                "timestamp": ubicacion.timestamp.isoformat(),
+            }
+        )
+
+    return JsonResponse({"turistas": resultados})
 
 
 # ===========================================================================
