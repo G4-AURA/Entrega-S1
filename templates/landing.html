@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AURA - Bienvenido{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/pages/landing.css' %}">
+{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<div class="landing-wrapper">
+    <div class="text-center mb-5">
+        <img src="{% static 'img/logo_aura.png' %}" alt="Logo AURA" width="140" class="mb-4">
+        <h1 class="fw-bold" style="font-family:'Manrope',sans-serif; letter-spacing:-.03em;">Bienvenido a AURA</h1>
+        <p class="text-muted">Selecciona cómo deseas acceder a la plataforma</p>
+    </div>
+
+    <div class="container">
+        <div class="row g-4 justify-content-center" style="max-width: 900px; margin: 0 auto;">
+            
+            <div class="col-12 col-md-6">
+                <div class="card h-100 border-0 shadow-sm role-card text-center p-4 p-md-5" data-bs-toggle="modal" data-bs-target="#joinTourModal">
+                    <div class="card-body d-flex flex-column align-items-center p-0">
+                        <div class="icon-box">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
+                            </svg>
+                        </div>
+                        <h3 class="fw-bold mb-3">Soy Turista</h3>
+                        <p class="text-muted mb-4 flex-grow-1">Tengo un código de acceso de mi guía y quiero unirme al tour.</p>
+                        <button class="btn btn-brand btn-lg w-100 fw-bold mt-auto" style="border-radius:var(--radius);">
+                            Introducir código
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <a href="{% url 'login' %}" class="card h-100 border-0 shadow-sm role-card text-center p-4 p-md-5">
+                    <div class="card-body d-flex flex-column align-items-center p-0">
+                        <div class="icon-box">
+                            <span class="material-icons-round" style="font-size: 36px;">map</span>
+                        </div>
+                        <h3 class="fw-bold mb-3">Soy Guía</h3>
+                        <p class="text-muted mb-4 flex-grow-1">Quiero iniciar sesión o registrarme para crear y gestionar mis propias rutas.</p>
+                        <button class="btn btn-outline-primary btn-lg w-100 fw-bold mt-auto" style="border-radius:var(--radius); border-color: var(--brand-color); color: var(--brand-color);">
+                            Acceso para guías
+                        </button>
+                    </div>
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="joinTourModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:var(--radius-xl);">
+            <div class="modal-body p-4 p-md-5 text-center">
+
+                <div class="d-inline-flex align-items-center justify-content-center mb-4"
+                     style="width:64px;height:64px;background:var(--brand-light);border-radius:18px;color:var(--brand-color);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
+                    </svg>
+                </div>
+
+                <h3 class="fw-bold mb-1" style="font-family:'Manrope',sans-serif;font-size:1.375rem;letter-spacing:-.03em;">Acceder a Tour</h3>
+                <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:1.75rem;">
+                    Introduce el código que te dio tu guía
+                </p>
+
+                <div id="mensaje-codigo" class="d-none mb-3" role="alert"
+                     style="background:var(--danger-light);border:1px solid rgba(239,68,68,.2);border-radius:var(--radius);padding:.75rem 1rem;color:#991B1B;font-size:.82rem;text-align:left;"></div>
+
+                <input type="text"
+                       id="codigo-input"
+                       class="form-control input-code fw-bold mb-4"
+                       style="font-size:1.75rem;padding:1rem;letter-spacing:8px;text-align:center;background:var(--bg-app);text-transform: uppercase;"
+                       placeholder="ABC123"
+                       maxlength="10"
+                       autocomplete="off">
+
+                <div class="d-grid gap-2">
+                    <button id="btn-ir-tour" class="btn btn-brand btn-lg fw-bold py-3" style="border-radius:var(--radius);">
+                        Continuar al Tour
+                    </button>
+                    <button class="btn fw-semibold" style="color:var(--text-muted);font-size:.875rem;"
+                            data-bs-dismiss="modal">
+                        Cancelar
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/auth.js' %}"></script>
+{% endblock %}

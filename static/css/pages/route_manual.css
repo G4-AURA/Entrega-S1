@@ -301,6 +301,49 @@ textarea.input-field {
     margin-bottom: 24px;
 }
 
+.main-card {
+    margin-bottom: 32px;
+}
+
+.manual-tags-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.manual-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 14px;
+    background: #fff;
+    color: var(--text-main);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.manual-tag-pill input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.manual-tag-pill:hover {
+    border-color: var(--primary);
+    background: #eef2ff;
+}
+
+.manual-tag-pill.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    box-shadow: 0 4px 10px rgb(79 70 229 / 25%);
+}
+
 .map-modal-overlay {
     position: fixed;
     inset: 0;
