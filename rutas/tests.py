@@ -560,6 +560,76 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         mock_client.models.generate_content.assert_called_once()
 
 
+class CuriosidadParadaApiTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='curiosidaduser',
+            email='curiosidad@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Curiosidad',
+            duracion_horas=2.0,
+            num_personas=10,
+            guia=self.guia,
+        )
+        self.parada = Parada.objects.create(
+            orden=1,
+            nombre='Catedral',
+            coordenadas=Point(-5.992, 37.388),
+            ruta=self.ruta,
+        )
+        self.url = reverse('parada-curiosidad', args=[self.parada.id])
+
+    def test_devuelve_curiosidad_existente_sin_invocar_ia(self):
+        Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Título existente',
+            texto='Texto existente',
+            tipo=Curiosidad.TipoCuriosidad.HISTORIA,
+        )
+        self.client.force_login(self.user)
+
+        with patch('rutas.services.ServicioCuriosidadesIA.generar_curiosidad') as mock_ia:
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertFalse(data['generada'])
+        self.assertEqual(data['curiosidad']['titulo'], 'Título existente')
+        mock_ia.assert_not_called()
+
+    def test_genera_y_persiste_curiosidad_si_no_existe(self):
+        self.client.force_login(self.user)
+
+        with patch(
+            'rutas.services.ServicioCuriosidadesIA.generar_curiosidad',
+            return_value={
+                'titulo': 'Sevilla bajo tus pies',
+                'texto': 'Un dato histórico breve para turistas.',
+                'tipo': Curiosidad.TipoCuriosidad.EVENTO,
+            },
+        ) as mock_ia:
+            response = self.client.get(f'{self.url}?ciudad=Sevilla')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['generada'])
+        self.assertEqual(data['curiosidad']['titulo'], 'Sevilla bajo tus pies')
+
+        self.assertEqual(Curiosidad.objects.filter(parada=self.parada).count(), 1)
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertEqual(curiosidad.ciudad, 'Sevilla')
+        self.assertEqual(curiosidad.tipo, Curiosidad.TipoCuriosidad.EVENTO)
+        mock_ia.assert_called_once()
+
+
 class RutaDetalleMetaValidationViewTests(TestCase):
     def setUp(self):
         self.client = Client()

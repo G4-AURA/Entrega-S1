@@ -24,4 +24,9 @@ urlpatterns = [
         views.recalcular_ruta_api,
         name="ruta-recalcular",
     ),
+    path(
+        "api/paradas/<int:parada_id>/curiosidad/",
+        views.obtener_curiosidad_parada_api,
+        name="parada-curiosidad",
+    ),
 ]
