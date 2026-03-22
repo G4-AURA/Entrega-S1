@@ -18,6 +18,7 @@ from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Prefetch
 from google import genai
+import requests
 
 from .models import Parada, Ruta
 from tours.models import SESION_TOUR
@@ -402,6 +403,11 @@ class ServicioCuriosidadesIA:
     Servicio encargado de generar curiosidades turísticas usando la API nueva de Gemini.
     S2.2-36.
     """
+    WIKIMEDIA_API_URL = "https://commons.wikimedia.org/w/api.php"
+    WIKIMEDIA_HEADERS = {
+        "User-Agent": "AURA/1.0 (academic project image lookup)"
+    }
+
     def __init__(self):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
@@ -433,7 +439,7 @@ class ServicioCuriosidadesIA:
           "titulo": "Un titular gancho y atractivo (máximo 10 palabras)",
           "texto": "Un dato curioso, histórico o cultural sorprendente sobre el lugar. Debe ser fácil de leer en el móvil (máximo 60 palabras)",
           "tipo": "Clasifica la curiosidad eligiendo EXACTAMENTE uno de estos valores: [Historia, Arquitectura, Personaje, Evento, Dato Curioso]",
-          "busqueda_imagen": "3 o 4 palabras clave muy precisas EN INGLÉS para buscar una foto real de este detalle en una API de imágenes"
+          "busqueda_imagen": "3 o 4 palabras clave muy precisas EN INGLÉS para encontrar una foto real y específica del detalle en Wikimedia Commons u otra API de imágenes"
         }}
         """
 
@@ -451,9 +457,90 @@ class ServicioCuriosidadesIA:
                 texto_ia = texto_ia[3:-3].strip()
 
             datos_curiosidad = json.loads(texto_ia)
+            busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
+            datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
+                busqueda_imagen=busqueda_imagen,
+                parada=parada,
+                ciudad=ciudad,
+            )
             return datos_curiosidad
 
         except json.JSONDecodeError:
             raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
         except Exception as e:
             raise Exception(f"Error al comunicarse con la API de IA: {str(e)}")
+
+    def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
+        """
+        Busca una imagen relevante en Wikimedia Commons a partir de la sugerencia
+        generada por la IA. Si da error o no encuentra resultados, devuelve None.
+        """
+        if not busqueda_imagen:
+            return None
+
+        consultas = []
+        consulta_principal = f"{busqueda_imagen} {ciudad}".strip()
+        for consulta in (consulta_principal, busqueda_imagen.strip(), parada.nombre.strip()):
+            if consulta and consulta not in consultas:
+                consultas.append(consulta)
+
+        for consulta in consultas:
+            imagen_url = self._buscar_imagen_wikimedia(consulta)
+            if imagen_url:
+                return imagen_url
+
+        logger.info(
+            "Curiosidades IA: sin imagen para parada '%s' con consultas=%s",
+            parada.nombre,
+            consultas,
+        )
+        return None
+
+    def _buscar_imagen_wikimedia(self, consulta: str) -> str | None:
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": consulta,
+            "gsrnamespace": 6,
+            "gsrlimit": 5,
+            "prop": "imageinfo",
+            "iiprop": "url",
+            "iiurlwidth": 1200,
+        }
+
+        try:
+            response = requests.get(
+                self.WIKIMEDIA_API_URL,
+                params=params,
+                headers=self.WIKIMEDIA_HEADERS,
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            logger.warning(
+                "Curiosidades IA: error consultando Wikimedia para '%s': %s",
+                consulta,
+                exc,
+            )
+            return None
+        except ValueError:
+            logger.warning(
+                "Curiosidades IA: respuesta JSON inválida de Wikimedia para '%s'",
+                consulta,
+            )
+            return None
+
+        pages = payload.get("query", {}).get("pages", {})
+        for page in pages.values():
+            titulo = (page.get("title") or "").lower()
+            if titulo.endswith(".svg"):
+                continue
+
+            for image_info in page.get("imageinfo", []):
+                image_url = image_info.get("thumburl") or image_info.get("url")
+                if image_url:
+                    return image_url
+
+        return None
