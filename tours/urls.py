@@ -34,4 +34,9 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/ubicaciones_turistas/", views.obtener_ubicaciones_turistas, name="ubicaciones_turistas"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
     path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
+    path(
+        "sesiones/<int:sesion_id>/mensajes/<int:mensaje_id>/imagen/",
+        views.descargar_imagen_mensaje,
+        name="descargar_imagen_mensaje",
+    ),
 ]

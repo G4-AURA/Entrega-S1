@@ -397,11 +397,16 @@ function _initChat() {
     const chatMessages = document.getElementById('chat-messages');
     const chatInput    = document.getElementById('chat-input');
     const chatSendBtn  = document.getElementById('chat-send');
-    if (!chatMessages || !chatInput || !chatSendBtn) return;
+    const chatImageBtn = document.getElementById('chat-image-btn');
+    const chatImageInput = document.getElementById('chat-image-input');
+    const chatPreviewContainer = document.getElementById('chat-preview-container');
+    if (!chatMessages || !chatInput || !chatSendBtn || !chatImageBtn || !chatImageInput || !chatPreviewContainer) return;
 
     let lastMessageTime = null;
     let unread          = 0;
     let chatVisible     = false;
+    let selectedFile    = null;
+    let previewObjectUrl = null;
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
 
@@ -409,6 +414,37 @@ function _initChat() {
     const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName
         : (document.body.getAttribute('data-username') || '');
+
+    function clearPreview() {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+        selectedFile = null;
+        chatImageInput.value = '';
+        chatPreviewContainer.innerHTML = '';
+    }
+
+    function renderPreview(file) {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+        }
+        previewObjectUrl = URL.createObjectURL(file);
+        chatPreviewContainer.innerHTML = `
+            <div class="chat-preview-item">
+                <img src="${previewObjectUrl}" alt="Vista previa" class="chat-preview-img">
+                <button type="button" class="chat-preview-remove" title="Quitar imagen">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>`;
+
+        const removeBtn = chatPreviewContainer.querySelector('.chat-preview-remove');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                clearPreview();
+            });
+        }
+    }
 
     function _colorFromSender(senderKey, isGuide) {
         if (isGuide) {
@@ -461,12 +497,21 @@ function _initChat() {
             div.style.setProperty('--msg-text', senderColors.text);
 
             const t = new Date(msg.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const textoHtml = msg.texto ? escHtml(msg.texto) : '';
+            const imagenHtml = msg.imagen_url
+                ? `<a class="chat-image-link" href="/tours/sesiones/${sesionId}/mensajes/${msg.id}/imagen/" title="Descargar imagen">
+                        <img src="${escHtml(msg.imagen_url)}" class="chat-message-img" alt="Imagen adjunta del chat">
+                   </a>`
+                : '';
+            const bubbleHtml = textoHtml ? `<div class="chat-message-bubble">${textoHtml}</div>` : '';
+
             div.innerHTML = `
                 <div class="chat-message-header">
                     <span class="chat-message-sender">${escHtml(msg.nombre_remitente)}</span>
                     <span class="chat-message-time">${t}</span>
                 </div>
-                <div class="chat-message-bubble">${escHtml(msg.texto)}</div>`;
+                ${bubbleHtml}
+                ${imagenHtml}`;
             chatMessages.appendChild(div);
 
             if (msg.nombre_remitente !== me && !chatVisible) {
@@ -492,21 +537,54 @@ function _initChat() {
 
     function sendMessage() {
         const texto = chatInput.value.trim();
-        if (!texto) return;
-        chatSendBtn.disabled = chatInput.disabled = true;
+        if (!texto && !selectedFile) return;
+
+        chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = true;
+
+        const payload = new FormData();
+        payload.append('texto', texto);
+        if (selectedFile) {
+            payload.append('imagen', selectedFile);
+        }
+
         fetch(`/tours/sesiones/${sesionId}/mensajes/enviar/`, {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-            body:    JSON.stringify({ texto }),
+            headers: { 'X-CSRFToken': _getCsrf() },
+            body:    payload,
         })
         .then(r => r.json())
-        .then(() => { chatInput.value = ''; fetchMessages(); })
+        .then((data) => {
+            if (data.status !== 'ok') return;
+            chatInput.value = '';
+            clearPreview();
+            fetchMessages();
+        })
         .catch(() => {})
-        .finally(() => { chatSendBtn.disabled = chatInput.disabled = false; chatInput.focus(); });
+        .finally(() => {
+            chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = false;
+            chatInput.focus();
+        });
     }
 
     chatSendBtn.addEventListener('click', sendMessage);
     chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+    chatImageBtn.addEventListener('click', () => chatImageInput.click());
+    chatImageInput.addEventListener('change', () => {
+        if (!chatImageInput.files || !chatImageInput.files.length) {
+            clearPreview();
+            return;
+        }
+
+        const file = chatImageInput.files[0];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            clearPreview();
+            return;
+        }
+
+        selectedFile = file;
+        renderPreview(file);
+    });
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
