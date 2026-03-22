@@ -8,6 +8,7 @@ Roles:
   - Turista â†’ siempre anÃ³nimo, identificado por alias + cookie de sesiÃ³n Django
 """
 import json
+import math
 import os
 from datetime import timedelta
 
@@ -20,10 +21,69 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from rutas.models import Ruta
+from rutas.models import Curiosidad, Ruta
 
 from . import services
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
+
+
+def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    earth_radius_m = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return earth_radius_m * c
+
+
+def _resolver_curiosidad_cercana(sesion: SesionTour, latitud: float, longitud: float, radio_m: float = 75.0) -> dict | None:
+    parada_mas_cercana = None
+    distancia_minima = None
+
+    for parada in sesion.ruta.paradas.all():
+        if not parada.coordenadas:
+            continue
+
+        distancia_m = _distancia_haversine_m(
+            latitud,
+            longitud,
+            parada.coordenadas.y,
+            parada.coordenadas.x,
+        )
+
+        if distancia_m > radio_m:
+            continue
+
+        if distancia_minima is None or distancia_m < distancia_minima:
+            distancia_minima = distancia_m
+            parada_mas_cercana = parada
+
+    if not parada_mas_cercana:
+        return None
+
+    curiosidad = Curiosidad.objects.filter(parada=parada_mas_cercana).first()
+    if not curiosidad:
+        return None
+
+    return {
+        "parada": {
+            "id": parada_mas_cercana.id,
+            "nombre": parada_mas_cercana.nombre,
+            "orden": parada_mas_cercana.orden,
+            "distancia_m": round(distancia_minima or 0.0, 2),
+        },
+        "curiosidad": {
+            "id": curiosidad.id,
+            "titulo": curiosidad.titulo,
+            "texto": curiosidad.texto,
+            "tipo": curiosidad.tipo,
+            "ciudad": curiosidad.ciudad,
+            "imagen_url": curiosidad.imagen_url,
+        },
+    }
 
 
 def _render_ruta_no_autorizada(request):
@@ -536,6 +596,10 @@ def registrar_ubicacion_turista(request, sesion_id):
         turista=turista,
     )
 
+    curiosidad_cercana = None
+    if sesion.estado == SesionTour.EN_CURSO:
+        curiosidad_cercana = _resolver_curiosidad_cercana(sesion, latitud, longitud)
+
     return JsonResponse(
         {
             "ubicacion_id": ubicacion.id,
@@ -544,8 +608,48 @@ def registrar_ubicacion_turista(request, sesion_id):
             "latitud": latitud,
             "longitud": longitud,
             "timestamp": ubicacion.timestamp.isoformat(),
+            "curiosidad_cercana": curiosidad_cercana,
         },
         status=201,
+    )
+
+
+@require_GET
+def obtener_curiosidad_parada(request, sesion_id, parada_id):
+    """Devuelve la curiosidad asociada a una parada de la ruta en sesión."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "La sesión no está en curso."}, status=409)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
+
+    curiosidad = Curiosidad.objects.filter(parada=parada).first()
+    if not curiosidad:
+        return JsonResponse({"error": "No hay curiosidad asociada a esta parada."}, status=404)
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "parada": {
+                "id": parada.id,
+                "nombre": parada.nombre,
+                "orden": parada.orden,
+            },
+            "curiosidad": {
+                "id": curiosidad.id,
+                "titulo": curiosidad.titulo,
+                "texto": curiosidad.texto,
+                "tipo": curiosidad.tipo,
+                "ciudad": curiosidad.ciudad,
+                "imagen_url": curiosidad.imagen_url,
+            },
+        }
     )
 
 
