@@ -87,7 +87,6 @@
                 <div class="form-group form-group-no-margin">
                     <label class="input-label">Ubicación</label>
                     <div class="location-group">
-                        <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
                         <button class="btn-map" type="button">
                             <span class="material-icons-round">map</span>
                         </button>
@@ -149,15 +148,13 @@
             return checkbox.value;
         });
 
-        const paradas = Array.from(container.querySelectorAll('.stop-card')).map(function (card) {
+        const paradas = Array.from(container.querySelectorAll('.stop-card')).map(function (card, index) {
             const nombreInput = card.querySelector('.stop-nombre');
-            const ubicacionInput = card.querySelector('.stop-ubicacion');
-            const rawLat = ubicacionInput ? ubicacionInput.dataset.lat : undefined;
-            const rawLon = ubicacionInput ? ubicacionInput.dataset.lon : undefined;
+            const rawLat = card.dataset.lat;
+            const rawLon = card.dataset.lon;
 
             return {
-                nombre: nombreInput ? nombreInput.value : '',
-                direccion: ubicacionInput ? ubicacionInput.value : '',
+                nombre: nombreInput && nombreInput.value ? nombreInput.value : `Parada ${index + 1}`,
                 lat: rawLat === undefined ? null : parseFloat(rawLat),
                 lon: rawLon === undefined ? null : parseFloat(rawLon),
             };
@@ -236,7 +233,9 @@
         const data = await response.json();
 
         if (!response.ok || data.status !== 'OK') {
-            throw new Error(data.mensaje || 'Error desconocido al guardar la ruta');
+            const error = new Error(data.mensaje || 'Error desconocido al guardar la ruta');
+            error.errores = data.errores;
+            throw error;
         }
 
         return data;
@@ -250,6 +249,13 @@
     }
 
     function cerrarModalMapa() {
+        if (currentInputTarget && selectorUbicacion && typeof selectorUbicacion.getCoords === 'function') {
+            const coords = selectorUbicacion.getCoords();
+            if (coords) {
+                currentInputTarget.dataset.lat = coords.lat;
+                currentInputTarget.dataset.lon = coords.lng;
+            }
+        }
         mapModal.style.display = 'none';
         if (selectorUbicacion && typeof selectorUbicacion.close === 'function') {
             selectorUbicacion.close();
@@ -258,6 +264,39 @@
 
     function renderizarErrores(mensaje) {
         alert(`Ocurrió un error al intentar guardar la ruta: ${mensaje}`);
+    }
+
+    function renderizarErroresCampos(errores) {
+        // Limpiar errores previos
+        document.querySelectorAll('.error-message').forEach(el => el.remove());
+
+        for (const [campo, mensaje] of Object.entries(errores)) {
+            let input;
+            if (campo === 'duracion_horas') {
+                input = document.getElementById('ruta-duracion');
+            } else if (campo === 'num_personas') {
+                input = document.getElementById('ruta-personas');
+            } else if (campo === 'titulo') {
+                input = document.getElementById('ruta-titulo');
+            } else if (campo.startsWith('parada_')) {
+                const idx = campo.split('_')[1];
+                input = document.querySelector(`#stop-${idx} .stop-nombre`);
+            } else {
+                // Para general o otros, mostrar alert
+                alert(mensaje);
+                continue;
+            }
+
+            if (input) {
+                const errorSpan = document.createElement('span');
+                errorSpan.className = 'error-message';
+                errorSpan.style.color = 'red';
+                errorSpan.style.fontSize = '0.875rem';
+                errorSpan.style.marginTop = '0.25rem';
+                errorSpan.textContent = mensaje;
+                input.parentNode.appendChild(errorSpan);
+            }
+        }
     }
 
     function createLeafletFallbackSelector() {
@@ -330,7 +369,7 @@
         const mapBtn = event.target.closest('.btn-map');
         if (mapBtn) {
             event.preventDefault();
-            currentInputTarget = mapBtn.previousElementSibling;
+            currentInputTarget = mapBtn.closest('.stop-card');
             renderizarMapa();
         }
     });
@@ -393,7 +432,11 @@
             window.location.href = config.urls.catalogo;
         } catch (error) {
             console.error(error);
-            renderizarErrores(error.message);
+            if (error.errores) {
+                renderizarErroresCampos(error.errores);
+            } else {
+                renderizarErrores(error.message);
+            }
         } finally {
             btnGuardar.innerHTML = originalText;
             btnGuardar.disabled = false;

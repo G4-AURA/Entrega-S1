@@ -481,25 +481,10 @@
             try {
                 const confirmacion = await confirmarSeleccionRutaIA();
                 guardarSesionGeneracionEnStorage(confirmacion.ruta_id, confirmacion.sesion_generacion_id);
-                const estadoSesion = await obtenerEstadoSesionGeneracion(confirmacion.sesion_generacion_id);
-                const checkpoint = estadoSesion?.checkpoint_actual || confirmacion.checkpoint_actual || 'ruta_guardada';
-
-                accionesSeleccionRuta?.classList.add('d-none');
-                ayudaSeleccionParadas?.classList.add('d-none');
-                renderizarRuta(confirmacion.datos_ruta || {});
-
-                estado.className = 'alert alert-success mt-3';
-                estado.innerHTML = `
-                    ${confirmacion.mensaje}
-                    <span class="badge bg-success ms-2">Checkpoint IA: ${checkpoint}</span>
-                    <br>
-                    <a href="/catalogo/${confirmacion.ruta_id}/" class="alert-link">Para más opciones accede a la ruta desde el catálogo</a>.
-                `;
-                estado.classList.remove('d-none');
+                window.location.href = '/catalogo/?tipo=ia';
             } catch (error) {
                 console.error(error);
                 renderizarErrores(error.message);
-            } finally {
                 btnConfirmarSeleccion.disabled = false;
                 btnConfirmarSeleccion.textContent = 'Guardar ruta con selección';
             }

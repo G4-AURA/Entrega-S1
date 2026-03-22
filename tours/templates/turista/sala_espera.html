@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Sala de Espera - AURA{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/join_tour.css' %}">
+<link rel="stylesheet" href="{% static 'css/sala_espera.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="waiting-room-page">
+    <div class="waiting-room-card">
+
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <div class="waiting-illustration {% if sesion.estado == 'en_curso' %}ready{% endif %}"
+                 id="waiting-illustration">
+                <span class="material-icons-round" style="font-size:40px;" id="main-icon">
+                    {% if sesion.estado == 'en_curso' %}check_circle{% else %}hourglass_top{% endif %}
+                </span>
+            </div>
+
+            <h2 style="font-family:'Manrope',sans-serif;font-size:1.625rem;font-weight:800;letter-spacing:-.04em;margin-bottom:.35rem;">
+                Sala de Espera
+            </h2>
+
+            <div class="alias-chip mb-3">
+                <span class="material-icons-round" style="font-size:14px;">person</span>
+                {{ turista.alias }}
+            </div>
+        </div>
+
+        <!-- Tour info badge -->
+        <div class="tour-badge mb-4">
+            <div class="d-flex align-items-center gap-2 mb-2" style="position:relative;z-index:1;">
+                <span class="material-icons-round" style="font-size:18px;opacity:.9;">explore</span>
+                <span style="font-family:'Manrope',sans-serif;font-weight:700;font-size:1rem;letter-spacing:-.02em;">
+                    {{ sesion.ruta.titulo }}
+                </span>
+            </div>
+
+            <div class="d-flex align-items-center gap-3 flex-wrap" style="position:relative;z-index:1;">
+                <div class="tour-info-row">
+                    <span class="material-icons-round">place</span>
+                    {{ sesion.ruta.paradas.count }} parada{{ sesion.ruta.paradas.count|pluralize:"s" }}
+                </div>
+                {% if sesion.ruta.duracion_horas %}
+                <div class="tour-info-row">
+                    <span class="material-icons-round">schedule</span>
+                    {{ sesion.ruta.duracion_horas }}h aprox.
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="mt-3" style="position:relative;z-index:1;">
+                <span class="tour-status-badge {% if sesion.estado == 'en_curso' %}active{% else %}pending{% endif %}"
+                      id="status-badge">
+                    <span class="status-dot-sm {% if sesion.estado == 'en_curso' %}active{% else %}pending{% endif %}"
+                          id="status-dot"></span>
+                    <span id="status-label">{{ sesion.get_estado_display|upper }}</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- Mensaje de estado -->
+        <p class="waiting-message {% if sesion.estado == 'en_curso' %}ready{% endif %}"
+           id="waiting-message">
+            {% if sesion.estado == 'en_curso' %}
+                <span class="material-icons-round" style="vertical-align:middle;font-size:18px;">check_circle</span>
+                ¡Todo listo! Entra cuando quieras.
+            {% else %}
+                Espera a que el guía dé comienzo al tour
+                <span class="loading-dots ms-1">
+                    <span>·</span><span>·</span><span>·</span>
+                </span>
+            {% endif %}
+        </p>
+
+        <!-- Botón de entrar -->
+        <a href="{% url 'tours:mapa_turista_anonimo' sesion.token %}"
+           class="btn-enter btn-brand"
+           id="enter-btn"
+           {% if sesion.estado != 'en_curso' %}aria-disabled="true" tabindex="-1"{% endif %}>
+            <span class="material-icons-round" style="font-size:20px;" id="enter-icon">
+                {% if sesion.estado == 'en_curso' %}map{% else %}lock{% endif %}
+            </span>
+            <span id="enter-label">
+                {% if sesion.estado == 'en_curso' %}Entrar al tour{% else %}Tour no iniciado{% endif %}
+            </span>
+        </a>
+
+    </div>
+</div>
+
+{# URL del endpoint de estado, inyectada como meta para el JS #}
+<meta name="cronometro-url"
+      content="{% url 'tours:estado_cronometro' sesion.id %}">
+<meta name="mapa-url"
+      content="{% url 'tours:mapa_turista_anonimo' sesion.token %}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sala_espera.js' %}"></script>
+{% endblock %}
