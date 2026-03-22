@@ -1,4 +1,12 @@
 (function () {
+    const LIMITES_MANUAL = {
+        duracionMin: 0.5,
+        duracionMax: 24,
+        personasMin: 1,
+        personasMax: 50,
+        paradasMin: 2,
+    };
+
     const configElement = document.getElementById('creacion-manual-config');
     const config = configElement
         ? JSON.parse(configElement.textContent)
@@ -142,11 +150,13 @@
 
         const paradas = Array.from(container.querySelectorAll('.stop-card')).map(function (card, index) {
             const nombreInput = card.querySelector('.stop-nombre');
+            const rawLat = card.dataset.lat;
+            const rawLon = card.dataset.lon;
 
             return {
                 nombre: nombreInput && nombreInput.value ? nombreInput.value : `Parada ${index + 1}`,
-                lat: card.dataset.lat ? parseFloat(card.dataset.lat) : 37.38,
-                lon: card.dataset.lon ? parseFloat(card.dataset.lon) : -5.99,
+                lat: rawLat === undefined ? null : parseFloat(rawLat),
+                lon: rawLon === undefined ? null : parseFloat(rawLon),
             };
         });
 
@@ -159,6 +169,55 @@
             mood: moodsSeleccionados,
             paradas,
         };
+    }
+
+    function validarFormulario(payload) {
+        const titulo = String(payload.titulo || '').trim();
+        const descripcion = String(payload.descripcion || '').trim();
+        const duracion = Number(payload.duracion_horas);
+        const personas = Number(payload.num_personas);
+        const paradas = Array.isArray(payload.paradas) ? payload.paradas : [];
+
+        if (!titulo) {
+            return 'El título de la ruta es obligatorio.';
+        }
+        if (!descripcion) {
+            return 'La descripción de la ruta es obligatoria.';
+        }
+        if (!Number.isFinite(duracion)) {
+            return 'La duración debe ser un número válido.';
+        }
+        if (duracion < LIMITES_MANUAL.duracionMin || duracion > LIMITES_MANUAL.duracionMax) {
+            return 'La duración debe estar entre 0.5 y 24 horas.';
+        }
+        if (!Number.isInteger(personas)) {
+            return 'El número de personas debe ser un entero válido.';
+        }
+        if (personas < LIMITES_MANUAL.personasMin || personas > LIMITES_MANUAL.personasMax) {
+            return 'El número de personas debe estar entre 1 y 50.';
+        }
+        if (paradas.length < LIMITES_MANUAL.paradasMin) {
+            return 'Debes añadir al menos 2 paradas.';
+        }
+
+        for (let i = 0; i < paradas.length; i += 1) {
+            const parada = paradas[i] || {};
+            const nombre = String(parada.nombre || '').trim();
+            if (!nombre) {
+                return `El nombre de la parada ${i + 1} es obligatorio.`;
+            }
+
+            const lat = Number(parada.lat);
+            const lon = Number(parada.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                return `Selecciona la ubicación de la parada ${i + 1} en el mapa.`;
+            }
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                return `La parada ${i + 1} tiene coordenadas fuera de rango.`;
+            }
+        }
+
+        return null;
     }
 
     async function enviarPeticion(payload) {
@@ -364,6 +423,10 @@
 
         try {
             const payload = leerFormulario();
+            const errorValidacion = validarFormulario(payload);
+            if (errorValidacion) {
+                throw new Error(errorValidacion);
+            }
             await enviarPeticion(payload);
             alert('¡Ruta guardada con éxito!');
             window.location.href = config.urls.catalogo;

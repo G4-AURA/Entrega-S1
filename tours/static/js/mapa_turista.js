@@ -24,6 +24,11 @@ let countdownPollId   = null;
 const paradasMarkers  = new Map();
 const paradasDataById = new Map();
 let paradaSeleccionadaId = null;
+const curiosidadesMostradas = new Set();
+let paradaEnRadioActual = null;
+let solicitudCuriosidadEnCurso = false;
+let sesionEstadoActual = (typeof sesionEstado !== 'undefined' && sesionEstado) ? sesionEstado : '';
+const RADIO_PARADA_METROS = 75;
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -198,7 +203,23 @@ function _iniciarRastreoLocal() {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
                     body:    JSON.stringify({ latitud: lat, longitud: lng }),
-                }).catch(() => {});
+                })
+                    .then(r => r.ok ? r.json() : Promise.reject())
+                    .then(data => {
+                        const curiosidadCercana = data?.curiosidad_cercana;
+                        const parada = curiosidadCercana?.parada;
+                        const curiosidad = curiosidadCercana?.curiosidad;
+                        if (!parada?.id || !curiosidad) return;
+
+                        const paradaId = String(parada.id);
+                        if (curiosidadesMostradas.has(paradaId)) return;
+
+                        curiosidadesMostradas.add(paradaId);
+                        _mostrarCuriosidadAutomatica(parada, curiosidad);
+                    })
+                    .catch(() => {});
+
+                _detectarParadaYSolicitarCuriosidad(lat, lng);
             }
         },
         () => {},
@@ -251,6 +272,147 @@ function _obtenerUbicacionGuia() {
 function _getCsrf() {
     const c = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('csrftoken='));
     return c ? c.slice('csrftoken='.length) : '';
+}
+
+function _detectarParadaYSolicitarCuriosidad(lat, lng) {
+    if (esGuia || !_sesionEnCurso() || !Array.isArray(paradasData) || !paradasData.length) return;
+
+    const paradaMasCercana = _buscarParadaMasCercanaEnRadio(lat, lng, RADIO_PARADA_METROS);
+
+    if (!paradaMasCercana) {
+        paradaEnRadioActual = null;
+        return;
+    }
+
+    const paradaId = String(paradaMasCercana.id);
+    if (!paradaId) return;
+
+    if (paradaEnRadioActual === paradaId) return;
+    paradaEnRadioActual = paradaId;
+
+    if (curiosidadesMostradas.has(paradaId) || solicitudCuriosidadEnCurso) return;
+
+    _solicitarCuriosidadParada(paradaId);
+}
+
+function _buscarParadaMasCercanaEnRadio(lat, lng, radioMetros) {
+    let paradaCandidata = null;
+    let menorDistancia = Number.POSITIVE_INFINITY;
+
+    paradasData.forEach(parada => {
+        if (parada?.lat == null || parada?.lng == null || parada?.id == null) return;
+
+        const distancia = _distanciaMetros(lat, lng, parada.lat, parada.lng);
+        if (distancia <= radioMetros && distancia < menorDistancia) {
+            menorDistancia = distancia;
+            paradaCandidata = parada;
+        }
+    });
+
+    return paradaCandidata;
+}
+
+function _distanciaMetros(lat1, lng1, lat2, lng2) {
+    const toRad = value => (value * Math.PI) / 180;
+    const earthRadiusM = 6371000;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const lat1Rad = toRad(lat1);
+    const lat2Rad = toRad(lat2);
+
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return earthRadiusM * c;
+}
+
+async function _solicitarCuriosidadParada(paradaId) {
+    solicitudCuriosidadEnCurso = true;
+
+    try {
+        const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${paradaId}/curiosidad/`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
+
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        if (!payload?.curiosidad) return;
+
+        curiosidadesMostradas.add(String(paradaId));
+        _mostrarCuriosidadAutomatica(payload.parada, payload.curiosidad);
+    } catch {
+        return;
+    } finally {
+        solicitudCuriosidadEnCurso = false;
+    }
+}
+
+function _mostrarCuriosidadAutomatica(parada, curiosidad) {
+    if (!curiosidad) return;
+
+    const existing = document.getElementById('curiosidad-auto-card');
+    if (existing) existing.remove();
+
+    const card = document.createElement('div');
+    card.id = 'curiosidad-auto-card';
+    card.setAttribute('role', 'status');
+    card.style.position = 'fixed';
+    card.style.left = '50%';
+    card.style.transform = 'translateX(-50%)';
+    card.style.top = '16px';
+    card.style.zIndex = '9999';
+    card.style.maxWidth = 'min(92vw, 560px)';
+    card.style.background = '#ffffff';
+    card.style.border = '1px solid #e5e7eb';
+    card.style.borderLeft = '6px solid #4f46e5';
+    card.style.borderRadius = '12px';
+    card.style.padding = '12px 14px';
+    card.style.boxShadow = '0 8px 28px rgba(15, 23, 42, 0.18)';
+
+    const paradaTexto = parada?.nombre ? `Parada: ${parada.nombre}` : 'Parada actual';
+    const tipoTexto = curiosidad.tipo ? `<span style="font-size:.72rem;color:#4338ca;font-weight:700;text-transform:uppercase;">${_escapeHtml(curiosidad.tipo)}</span>` : '';
+    const tituloTexto = curiosidad.titulo ? _escapeHtml(curiosidad.titulo) : 'Curiosidad de esta parada';
+    const cuerpoTexto = curiosidad.texto ? _escapeHtml(curiosidad.texto) : '';
+
+    card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+            <div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <strong style="font-size:.8rem;color:#111827;">${_escapeHtml(paradaTexto)}</strong>
+                    ${tipoTexto}
+                </div>
+                <h4 style="margin:6px 0 4px 0;font-size:1rem;color:#111827;">${tituloTexto}</h4>
+                <p style="margin:0;font-size:.9rem;color:#374151;line-height:1.35;">${cuerpoTexto}</p>
+            </div>
+            <button type="button" id="curiosidad-auto-close" aria-label="Cerrar curiosidad"
+                style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;">×</button>
+        </div>`;
+
+    document.body.appendChild(card);
+
+    const closeBtn = document.getElementById('curiosidad-auto-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => card.remove());
+    }
+
+    setTimeout(() => {
+        const mounted = document.getElementById('curiosidad-auto-card');
+        if (mounted) mounted.remove();
+    }, 12000);
+}
+
+function _escapeHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = String(value ?? '');
+    return node.innerHTML;
+}
+
+function _sesionEnCurso() {
+    return sesionEstadoActual === 'en_curso';
 }
 
 
@@ -314,6 +476,7 @@ function _initSessionCountdown() {
 
     const applyRemoteState = (data) => {
         if (!data || !data.estado) return;
+        sesionEstadoActual = data.estado;
         const remoteStarted = data.estado === 'en_curso';
 
         if (data.parada_actual_id != null) {
@@ -397,11 +560,16 @@ function _initChat() {
     const chatMessages = document.getElementById('chat-messages');
     const chatInput    = document.getElementById('chat-input');
     const chatSendBtn  = document.getElementById('chat-send');
-    if (!chatMessages || !chatInput || !chatSendBtn) return;
+    const chatImageBtn = document.getElementById('chat-image-btn');
+    const chatImageInput = document.getElementById('chat-image-input');
+    const chatPreviewContainer = document.getElementById('chat-preview-container');
+    if (!chatMessages || !chatInput || !chatSendBtn || !chatImageBtn || !chatImageInput || !chatPreviewContainer) return;
 
     let lastMessageTime = null;
     let unread          = 0;
     let chatVisible     = false;
+    let selectedFile    = null;
+    let previewObjectUrl = null;
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
 
@@ -409,6 +577,37 @@ function _initChat() {
     const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName
         : (document.body.getAttribute('data-username') || '');
+
+    function clearPreview() {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+        selectedFile = null;
+        chatImageInput.value = '';
+        chatPreviewContainer.innerHTML = '';
+    }
+
+    function renderPreview(file) {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+        }
+        previewObjectUrl = URL.createObjectURL(file);
+        chatPreviewContainer.innerHTML = `
+            <div class="chat-preview-item">
+                <img src="${previewObjectUrl}" alt="Vista previa" class="chat-preview-img">
+                <button type="button" class="chat-preview-remove" title="Quitar imagen">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>`;
+
+        const removeBtn = chatPreviewContainer.querySelector('.chat-preview-remove');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                clearPreview();
+            });
+        }
+    }
 
     function _colorFromSender(senderKey, isGuide) {
         if (isGuide) {
@@ -461,12 +660,21 @@ function _initChat() {
             div.style.setProperty('--msg-text', senderColors.text);
 
             const t = new Date(msg.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const textoHtml = msg.texto ? escHtml(msg.texto) : '';
+            const imagenHtml = msg.imagen_url
+                ? `<a class="chat-image-link" href="/tours/sesiones/${sesionId}/mensajes/${msg.id}/imagen/" title="Descargar imagen">
+                        <img src="${escHtml(msg.imagen_url)}" class="chat-message-img" alt="Imagen adjunta del chat">
+                   </a>`
+                : '';
+            const bubbleHtml = textoHtml ? `<div class="chat-message-bubble">${textoHtml}</div>` : '';
+
             div.innerHTML = `
                 <div class="chat-message-header">
                     <span class="chat-message-sender">${escHtml(msg.nombre_remitente)}</span>
                     <span class="chat-message-time">${t}</span>
                 </div>
-                <div class="chat-message-bubble">${escHtml(msg.texto)}</div>`;
+                ${bubbleHtml}
+                ${imagenHtml}`;
             chatMessages.appendChild(div);
 
             if (msg.nombre_remitente !== me && !chatVisible) {
@@ -492,21 +700,54 @@ function _initChat() {
 
     function sendMessage() {
         const texto = chatInput.value.trim();
-        if (!texto) return;
-        chatSendBtn.disabled = chatInput.disabled = true;
+        if (!texto && !selectedFile) return;
+
+        chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = true;
+
+        const payload = new FormData();
+        payload.append('texto', texto);
+        if (selectedFile) {
+            payload.append('imagen', selectedFile);
+        }
+
         fetch(`/tours/sesiones/${sesionId}/mensajes/enviar/`, {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-            body:    JSON.stringify({ texto }),
+            headers: { 'X-CSRFToken': _getCsrf() },
+            body:    payload,
         })
         .then(r => r.json())
-        .then(() => { chatInput.value = ''; fetchMessages(); })
+        .then((data) => {
+            if (data.status !== 'ok') return;
+            chatInput.value = '';
+            clearPreview();
+            fetchMessages();
+        })
         .catch(() => {})
-        .finally(() => { chatSendBtn.disabled = chatInput.disabled = false; chatInput.focus(); });
+        .finally(() => {
+            chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = false;
+            chatInput.focus();
+        });
     }
 
     chatSendBtn.addEventListener('click', sendMessage);
     chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+    chatImageBtn.addEventListener('click', () => chatImageInput.click());
+    chatImageInput.addEventListener('change', () => {
+        if (!chatImageInput.files || !chatImageInput.files.length) {
+            clearPreview();
+            return;
+        }
+
+        const file = chatImageInput.files[0];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            clearPreview();
+            return;
+        }
+
+        selectedFile = file;
+        renderPreview(file);
+    });
 
     fetchMessages();
     setInterval(fetchMessages, 5000);

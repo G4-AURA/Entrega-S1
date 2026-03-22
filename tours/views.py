@@ -8,21 +8,82 @@ Roles:
   - Turista â†’ siempre anÃ³nimo, identificado por alias + cookie de sesiÃ³n Django
 """
 import json
+import math
+import os
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from rutas.models import Ruta
+from rutas.models import Curiosidad, Ruta
 
 from . import services
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
+
+
+def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    earth_radius_m = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return earth_radius_m * c
+
+
+def _resolver_curiosidad_cercana(sesion: SesionTour, latitud: float, longitud: float, radio_m: float = 75.0) -> dict | None:
+    parada_mas_cercana = None
+    distancia_minima = None
+
+    for parada in sesion.ruta.paradas.all():
+        if not parada.coordenadas:
+            continue
+
+        distancia_m = _distancia_haversine_m(
+            latitud,
+            longitud,
+            parada.coordenadas.y,
+            parada.coordenadas.x,
+        )
+
+        if distancia_m > radio_m:
+            continue
+
+        if distancia_minima is None or distancia_m < distancia_minima:
+            distancia_minima = distancia_m
+            parada_mas_cercana = parada
+
+    if not parada_mas_cercana:
+        return None
+
+    curiosidad = Curiosidad.objects.filter(parada=parada_mas_cercana).first()
+    if not curiosidad:
+        return None
+
+    return {
+        "parada": {
+            "id": parada_mas_cercana.id,
+            "nombre": parada_mas_cercana.nombre,
+            "orden": parada_mas_cercana.orden,
+            "distancia_m": round(distancia_minima or 0.0, 2),
+        },
+        "curiosidad": {
+            "id": curiosidad.id,
+            "titulo": curiosidad.titulo,
+            "texto": curiosidad.texto,
+            "tipo": curiosidad.tipo,
+            "ciudad": curiosidad.ciudad,
+            "imagen_url": curiosidad.imagen_url,
+        },
+    }
 
 
 def _render_ruta_no_autorizada(request):
@@ -535,6 +596,10 @@ def registrar_ubicacion_turista(request, sesion_id):
         turista=turista,
     )
 
+    curiosidad_cercana = None
+    if sesion.estado == SesionTour.EN_CURSO:
+        curiosidad_cercana = _resolver_curiosidad_cercana(sesion, latitud, longitud)
+
     return JsonResponse(
         {
             "ubicacion_id": ubicacion.id,
@@ -543,8 +608,48 @@ def registrar_ubicacion_turista(request, sesion_id):
             "latitud": latitud,
             "longitud": longitud,
             "timestamp": ubicacion.timestamp.isoformat(),
+            "curiosidad_cercana": curiosidad_cercana,
         },
         status=201,
+    )
+
+
+@require_GET
+def obtener_curiosidad_parada(request, sesion_id, parada_id):
+    """Devuelve la curiosidad asociada a una parada de la ruta en sesión."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "La sesión no está en curso."}, status=409)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
+
+    curiosidad = Curiosidad.objects.filter(parada=parada).first()
+    if not curiosidad:
+        return JsonResponse({"error": "No hay curiosidad asociada a esta parada."}, status=404)
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "parada": {
+                "id": parada.id,
+                "nombre": parada.nombre,
+                "orden": parada.orden,
+            },
+            "curiosidad": {
+                "id": curiosidad.id,
+                "titulo": curiosidad.titulo,
+                "texto": curiosidad.texto,
+                "tipo": curiosidad.tipo,
+                "ciudad": curiosidad.ciudad,
+                "imagen_url": curiosidad.imagen_url,
+            },
+        }
     )
 
 
@@ -603,17 +708,38 @@ def obtener_ubicaciones_turistas(request, sesion_id):
 @require_POST
 def enviar_mensaje(request, sesion_id):
     """EnvÃ­a un mensaje. Acepta turistas anÃ³nimos (cookie) y el guÃ­a (auth)."""
-    try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON invÃ¡lido."}, status=400)
+    imagen = None
+    if request.content_type and request.content_type.startswith("multipart/form-data"):
+        texto = request.POST.get("texto", "").strip()
+        imagen = request.FILES.get("imagen")
+    else:
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON invÃ¡lido."}, status=400)
+        texto = body.get("texto", "").strip()
 
-    texto = body.get("texto", "").strip()
-    if not texto:
-        return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
+    if not texto and not imagen:
+        return JsonResponse(
+            {"error": "El mensaje no puede estar vacío. Debes enviar texto o una imagen."},
+            status=400,
+        )
 
     if len(texto) > 5000:
         return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
+
+    if imagen:
+        allowed_types = {"image/jpeg", "image/png", "image/webp"}
+        if imagen.content_type not in allowed_types:
+            return JsonResponse(
+                {"error": "Formato de imagen no permitido. Usa JPEG, PNG o WebP."},
+                status=400,
+            )
+        if imagen.size > 5 * 1024 * 1024:
+            return JsonResponse(
+                {"error": "La imagen supera el tamaño máximo de 5MB."},
+                status=400,
+            )
 
     try:
         sesion = SesionTour.objects.get(id=sesion_id)
@@ -642,6 +768,7 @@ def enviar_mensaje(request, sesion_id):
         remitente_turista=remitente_turista,
         nombre_remitente=nombre_remitente,
         texto=texto,
+        imagen=imagen,
     )
 
     return JsonResponse(
@@ -652,10 +779,37 @@ def enviar_mensaje(request, sesion_id):
 
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
+            "imagen_url": mensaje.imagen.url if mensaje.imagen else None,
             "momento": mensaje.momento.isoformat(),
         },
         status=201,
     )
+
+
+@require_GET
+def descargar_imagen_mensaje(request, sesion_id, mensaje_id):
+    """Descarga la imagen adjunta de un mensaje, si el usuario pertenece a la sesión."""
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        mensaje = MensajeChat.objects.get(id=mensaje_id, sesion_tour=sesion)
+    except MensajeChat.DoesNotExist:
+        return JsonResponse({"error": "Mensaje no encontrado en la sesión."}, status=404)
+
+    if not mensaje.imagen:
+        return JsonResponse({"error": "El mensaje no tiene imagen adjunta."}, status=404)
+
+    ext = os.path.splitext(mensaje.imagen.name)[1] or ".bin"
+    filename = f"mensaje_{mensaje.id}{ext}"
+
+    response = FileResponse(mensaje.imagen.open("rb"), as_attachment=True, filename=filename)
+    return response
 
 
 @require_GET
@@ -747,6 +901,7 @@ def obtener_mensajes(request, sesion_id):
                 "remitente_key":    _build_sender_key(m),
                 "es_guia":          bool(guia_user_id and m.remitente_id == guia_user_id),
                 "texto":            m.texto,
+                "imagen_url":       m.imagen.url if m.imagen else None,
                 "momento":          momento_serializado.isoformat(),
             }
         )

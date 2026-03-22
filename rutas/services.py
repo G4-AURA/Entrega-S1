@@ -12,18 +12,24 @@ S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 """
 import logging
 import json
+import math
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.db import IntegrityError
 from django.db.models import Prefetch
 from google import genai
 import requests
 
-from .models import Parada, Ruta
+from .models import Curiosidad, Parada, Ruta
 from tours.models import SESION_TOUR
 
 logger = logging.getLogger(__name__)
+MIN_DURACION_HORAS = 0.5
+MAX_DURACION_HORAS = 24.0
+MIN_NUM_PERSONAS = 1
+MAX_NUM_PERSONAS = 50
 
 
 # ================================================
@@ -154,7 +160,9 @@ def actualizar_duracion_ruta(ruta, raw_duracion):
     except (TypeError, ValueError):
         raise ValueError("Valores numéricos inválidos (duración)")
 
-    if duracion_horas <= 0 or duracion_horas > 24:
+    if not math.isfinite(duracion_horas):
+        raise ValueError("Valores numéricos inválidos (duración)")
+    if duracion_horas < MIN_DURACION_HORAS or duracion_horas > MAX_DURACION_HORAS:
         raise ValueError("Valores numéricos inválidos (duración)")
 
     ruta.duracion_horas = duracion_horas
@@ -167,7 +175,7 @@ def actualizar_personas_ruta(ruta, raw_personas):
     except (TypeError, ValueError):
         raise ValueError("Valores numéricos inválidos (número de personas)")
 
-    if num_personas <= 0 or num_personas > 50:
+    if num_personas < MIN_NUM_PERSONAS or num_personas > MAX_NUM_PERSONAS:
         raise ValueError("Valores numéricos inválidos (número de personas)")
 
     ruta.num_personas = num_personas
@@ -201,6 +209,8 @@ def _validar_coordenadas(raw_lat, raw_lon):
     try:
         lat = float((raw_lat or "").strip())
         lon = float((raw_lon or "").strip())
+        if not math.isfinite(lat) or not math.isfinite(lon):
+            raise ValueError("Coordenadas fuera de rango")
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise ValueError("Coordenadas fuera de rango")
         return lat, lon
@@ -413,9 +423,110 @@ class ServicioCuriosidadesIA:
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
         """
-        Genera el prompt, llama a la IA y devuelve un diccionario con los datos estructurados.
+        Devuelve una curiosidad para una parada reutilizando caché en BD cuando exista.
         """
-       # Extraemos los temas reales de la ruta. Si no tiene, usamos uno por defecto.
+        curiosidad_cacheada = self._obtener_curiosidad_cache(parada)
+        if curiosidad_cacheada:
+            logger.info(
+                "Curiosidad cacheada reutilizada para Parada(id=%d).",
+                parada.id,
+            )
+            return self._serializar_curiosidad(curiosidad_cacheada)
+
+        datos_curiosidad = self._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+        curiosidad_guardada = self._guardar_curiosidad_en_cache(
+            parada=parada,
+            ciudad=ciudad,
+            datos_curiosidad=datos_curiosidad,
+        )
+        return self._serializar_curiosidad(curiosidad_guardada)
+
+    def _obtener_curiosidad_cache(self, parada: Parada) -> Curiosidad | None:
+        return Curiosidad.objects.filter(parada=parada).first()
+
+    def _serializar_curiosidad(self, curiosidad: Curiosidad) -> dict:
+        return {
+            "parada_id": curiosidad.parada_id,
+            "ciudad": curiosidad.ciudad,
+            "titulo": curiosidad.titulo,
+            "texto": curiosidad.texto,
+            "tipo": curiosidad.tipo,
+            "imagen_url": curiosidad.imagen_url,
+            "busqueda_imagen": curiosidad.imagen_url,
+        }
+
+    def _normalizar_payload_curiosidad(self, parada: Parada, datos_curiosidad: dict) -> dict:
+        titulo = str(datos_curiosidad.get("titulo") or "").strip()
+        if not titulo:
+            titulo = f"Curiosidad sobre {parada.nombre}"
+        titulo = titulo[:255]
+
+        texto = str(datos_curiosidad.get("texto") or "").strip()
+        if not texto:
+            raise ValueError("Error de formato: La IA devolvió una curiosidad sin texto.")
+
+        tipo_recibido = str(datos_curiosidad.get("tipo") or "").strip()
+        tipos_validos = {valor for valor, _ in Curiosidad.TipoCuriosidad.choices}
+        tipo = (
+            tipo_recibido
+            if tipo_recibido in tipos_validos
+            else Curiosidad.TipoCuriosidad.DATO_CURIOSO
+        )
+
+        imagen_url = str(datos_curiosidad.get("imagen_url") or "").strip()
+        if not imagen_url:
+            imagen_url = str(datos_curiosidad.get("busqueda_imagen") or "").strip()
+        imagen_url = imagen_url or None
+
+        return {
+            "titulo": titulo,
+            "texto": texto,
+            "tipo": tipo,
+            "imagen_url": imagen_url,
+        }
+
+    def _guardar_curiosidad_en_cache(
+        self,
+        parada: Parada,
+        ciudad: str,
+        datos_curiosidad: dict,
+    ) -> Curiosidad:
+        payload = self._normalizar_payload_curiosidad(parada=parada, datos_curiosidad=datos_curiosidad)
+        ciudad_limpia = (str(ciudad or "").strip() or "Sevilla")[:100]
+
+        try:
+            curiosidad, creada = Curiosidad.objects.get_or_create(
+                parada=parada,
+                defaults={
+                    "ciudad": ciudad_limpia,
+                    "titulo": payload["titulo"],
+                    "texto": payload["texto"],
+                    "tipo": payload["tipo"],
+                    "imagen_url": payload["imagen_url"],
+                },
+            )
+        except IntegrityError:
+            curiosidad = Curiosidad.objects.get(parada=parada)
+            creada = False
+
+        if creada:
+            logger.info(
+                "Curiosidad generada y almacenada para Parada(id=%d).",
+                parada.id,
+            )
+        else:
+            logger.info(
+                "Curiosidad ya existente detectada durante el guardado para Parada(id=%d).",
+                parada.id,
+            )
+
+        return curiosidad
+
+    def _generar_curiosidad_ia(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
+        """
+        Genera el prompt, llama a la IA y devuelve los datos estructurados.
+        """
+        # Extraemos los temas reales de la ruta. Si no tiene, usamos uno por defecto.
         if getattr(parada, 'ruta', None) and getattr(parada.ruta, 'mood', None):
             temas_ruta = ", ".join(parada.ruta.mood)
         else:
@@ -485,7 +596,7 @@ class ServicioCuriosidadesIA:
                 consultas.append(consulta)
 
         for consulta in consultas:
-            imagen_url = self._buscar_imagen_wikimedia(consulta)
+            imagen_url = self._buscar_wikimedia(consulta)
             if imagen_url:
                 return imagen_url
 
@@ -496,7 +607,7 @@ class ServicioCuriosidadesIA:
         )
         return None
 
-    def _buscar_imagen_wikimedia(self, consulta: str) -> str | None:
+    def _buscar_wikimedia(self, consulta: str) -> str | None:
         params = {
             "action": "query",
             "format": "json",
@@ -544,3 +655,38 @@ class ServicioCuriosidadesIA:
                     return image_url
 
         return None
+
+
+def _normalizar_tipo_curiosidad(tipo_ia: str) -> str:
+    tipos_validos = {valor for valor, _ in Curiosidad.TipoCuriosidad.choices}
+    tipo_limpio = (tipo_ia or "").strip()
+    if tipo_limpio in tipos_validos:
+        return tipo_limpio
+    return Curiosidad.TipoCuriosidad.DATO_CURIOSO
+
+
+def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla") -> tuple[Curiosidad, bool]:
+    """
+    Devuelve la curiosidad asociada a una parada.
+
+    Flujo:
+      1) Si ya existe en BD, se reutiliza.
+      2) Si no existe, se genera con IA, se persiste y se devuelve.
+
+    Returns:
+        (curiosidad, fue_generada)
+    """
+    curiosidad_existente = Curiosidad.objects.filter(parada=parada).first()
+    if curiosidad_existente:
+        return curiosidad_existente, False
+
+    servicio_ia = ServicioCuriosidadesIA()
+    datos_ia = servicio_ia._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+    curiosidad = servicio_ia._guardar_curiosidad_en_cache(
+        parada=parada,
+        ciudad=ciudad,
+        datos_curiosidad=datos_ia,
+    )
+
+    return curiosidad, True
+

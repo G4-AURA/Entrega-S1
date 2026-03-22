@@ -121,6 +121,11 @@ SESION_GENERACION_STORE_KEY = 'creacion_ruta_ia_sesiones'
 SESION_GENERACION_TTL_SECONDS = 60 * 60 * 6
 MIN_PARADAS_IA = 5
 MAX_PARADAS_IA = 8
+MIN_DURACION_HORAS_MANUAL = 0.5
+MAX_DURACION_HORAS_MANUAL = 24.0
+MIN_PERSONAS_MANUAL = 1
+MAX_PERSONAS_MANUAL = 50
+MIN_PARADAS_MANUAL = 2
 MAX_REINTENTOS_PARADA_INVALIDA = 3
 MAX_ALTERNATIVAS_RUTA = 5
 UMBRAL_DISTANCIA_MAXIMA_PARADA_KM = 35.0
@@ -470,7 +475,126 @@ def _construir_pois_fallback_allowlist(
     return candidatos
 
 
+def guardar_ruta_manual(guia, payload):
+    if not isinstance(payload, dict):
+        raise ErrorValidacionRuta('El cuerpo de la petición debe ser un JSON válido.')
 
+    titulo = str(payload.get('titulo') or '').strip()
+    descripcion = str(payload.get('descripcion') or '').strip()
+    paradas_data = payload.get('paradas', [])
+
+    if not titulo:
+        raise ErrorValidacionRuta('El título de la ruta es obligatorio.')
+    if not descripcion:
+        raise ErrorValidacionRuta('La descripción de la ruta es obligatoria.')
+    if not isinstance(paradas_data, list):
+        raise ErrorValidacionRuta('El formato de paradas no es válido.')
+    if len(paradas_data) < MIN_PARADAS_MANUAL:
+        raise ErrorValidacionRuta('Debes indicar al menos 2 paradas para guardar la ruta.')
+
+    try:
+        duracion_horas = float(payload.get('duracion_horas'))
+        num_personas = int(payload.get('num_personas'))
+    except (TypeError, ValueError) as exc:
+        raise ErrorValidacionRuta('Duración y número de personas deben tener un formato válido.') from exc
+
+    if not math.isfinite(duracion_horas):
+        raise ErrorValidacionRuta('La duración debe ser un número finito válido.')
+    if duracion_horas < MIN_DURACION_HORAS_MANUAL or duracion_horas > MAX_DURACION_HORAS_MANUAL:
+        raise ErrorValidacionRuta('La duración debe estar entre 0.5 y 24 horas.')
+    if num_personas < MIN_PERSONAS_MANUAL or num_personas > MAX_PERSONAS_MANUAL:
+        raise ErrorValidacionRuta('El número de personas debe estar entre 1 y 50.')
+
+    exigencia_raw = str(payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA)).strip().lower()
+    nivel_exigencia = MAPA_EXIGENCIA_RUTA.get(exigencia_raw, payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA))
+    exigencias_validas = {value for value, _ in Ruta.Exigencia.choices}
+    if nivel_exigencia not in exigencias_validas:
+        raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
+
+    moods = normalizar_moods(payload.get('mood', []))
+
+    try:
+        with transaction.atomic():
+            ruta = Ruta.objects.create(
+                titulo=titulo,
+                descripcion=descripcion,
+                duracion_horas=duracion_horas,
+                num_personas=num_personas,
+                nivel_exigencia=nivel_exigencia,
+                mood=moods,
+                es_generada_ia=False,
+                guia=guia,
+            )
+
+            for idx, parada_data in enumerate(paradas_data, start=1):
+                if not isinstance(parada_data, dict):
+                    raise ErrorValidacionRuta('Cada parada debe ser un objeto válido.')
+
+                nombre_parada = str(parada_data.get('nombre') or '').strip()
+                if not nombre_parada:
+                    raise ErrorValidacionRuta(f'El nombre de la parada {idx} es obligatorio.')
+
+                lat_raw = parada_data.get('lat')
+                lon_raw = parada_data.get('lon')
+                if lat_raw is None or lon_raw is None:
+                    raise ErrorValidacionRuta(
+                        f'Debes indicar la ubicación de la parada {idx} desde el mapa.'
+                    )
+
+                try:
+                    lat = float(lat_raw)
+                    lon = float(lon_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ErrorValidacionRuta(
+                        f'La ubicación de la parada {idx} tiene coordenadas inválidas.'
+                    ) from exc
+
+                if not math.isfinite(lat) or not math.isfinite(lon):
+                    raise ErrorValidacionRuta(
+                        f'La ubicación de la parada {idx} contiene valores fuera de rango.'
+                    )
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    raise ErrorValidacionRuta(
+                        f'La ubicación de la parada {idx} está fuera de rango válido.'
+                    )
+
+                Parada.objects.create(
+                    ruta=ruta,
+                    orden=idx,
+                    nombre=nombre_parada,
+                    coordenadas=Point(float(lon), float(lat), srid=4326),
+                )
+    except ErrorValidacionRuta:
+        raise
+    except (DatabaseError, IntegrityError, TypeError, ValueError) as exc:
+        raise ErrorPersistenciaRuta('No se pudo guardar la ruta manual en la base de datos.') from exc
+
+    return ruta
+
+
+def _normalizar_candidato_parada(candidato, idx):
+    if not isinstance(candidato, dict):
+        return None
+    nombre = str(candidato.get('nombre') or '').strip()
+    if not nombre:
+        return None
+    coordenadas = _normalizar_coordenadas(
+        candidato.get('coordenadas') or candidato.get('coords'),
+        lat=candidato.get('lat'),
+        lon=candidato.get('lon'),
+    )
+    if not coordenadas:
+        return None
+    descripcion = str(candidato.get('desc') or candidato.get('descripcion') or '').strip()
+    return {
+        'id_sugerencia': idx,
+        'nombre': nombre,
+        'coordenadas': coordenadas,
+        'categoria': str(candidato.get('categoria') or 'general').strip()[:60],
+        'nivel_confianza': 1.0,
+        'justificacion': descripcion[:500],
+        'descripcion': descripcion[:500],
+    } 
 # ─────────────────────────────────────────────────────────────────────────────
 # Normalización de POIs
 # ─────────────────────────────────────────────────────────────────────────────

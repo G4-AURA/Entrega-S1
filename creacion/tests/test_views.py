@@ -157,6 +157,45 @@ class GuardarRutaManualViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['status'], 'ERROR')
 
+    def test_guardar_manual_rechaza_formulario_vacio(self):
+        user = User.objects.create_user(username='guia_manual_empty', password='1234')
+        self.client.force_login(user)
+
+        empty_payload = {
+            'titulo': '',
+            'descripcion': '',
+            'duracion_horas': '',
+            'num_personas': '',
+            'nivel_exigencia': '',
+            'mood': [],
+            'paradas': [],
+        }
+        response = self.client.post(self.url, data=json.dumps(empty_payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'ERROR')
+
+    def test_guardar_manual_rechaza_valores_numericos_muy_grandes(self):
+        user = User.objects.create_user(username='guia_manual_grande', password='1234')
+        self.client.force_login(user)
+
+        huge_payload = {
+            'titulo': 'Ruta extrema',
+            'descripcion': 'Prueba de límites',
+            'duracion_horas': '1e309',
+            'num_personas': '9999999999999999999999999999',
+            'nivel_exigencia': 'Media',
+            'mood': ['Historia'],
+            'paradas': [
+                {'nombre': 'Parada 1', 'lat': 37.38, 'lon': -5.99},
+                {'nombre': 'Parada 2', 'lat': 37.39, 'lon': -6.00},
+            ],
+        }
+        response = self.client.post(self.url, data=json.dumps(huge_payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'ERROR')
+
 
 class GenerarParadasIAViewTests(TestCase):
     def setUp(self):
