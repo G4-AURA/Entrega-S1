@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
 
+from rutas import services as rutas_services
 from .models import AuthUser, Guia, Ruta, Parada
 
 
@@ -492,3 +493,116 @@ class CatalogoViewTest(TestCase):
         response = self.client.post(self.catalogo_url)
         # POST no es permitido
         self.assertEqual(response.status_code, 405)
+
+
+class RutaDetalleMetaValidationViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='meta_view_user',
+            email='meta_view@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Meta',
+            descripcion='Ruta para validar edición meta',
+            duracion_horas=2.0,
+            num_personas=10,
+            nivel_exigencia=Ruta.Exigencia.MEDIA,
+            guia=self.guia,
+        )
+        self.url = reverse('ruta-detalle', kwargs={'ruta_id': self.ruta.id})
+        self.client.force_login(self.user)
+
+    def test_rechaza_duracion_extremadamente_grande_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '1e309',
+                'num_personas': '10',
+                'nivel_exigencia': Ruta.Exigencia.MEDIA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_error=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 2.0)
+        self.assertEqual(self.ruta.num_personas, 10)
+
+    def test_rechaza_asistentes_extremadamente_grandes_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '2',
+                'num_personas': '99999999999999999999999999999999999999999999',
+                'nivel_exigencia': Ruta.Exigencia.MEDIA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_error=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 2.0)
+        self.assertEqual(self.ruta.num_personas, 10)
+
+    def test_acepta_valores_validos_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '3.5',
+                'num_personas': '25',
+                'nivel_exigencia': Ruta.Exigencia.ALTA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_updated=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 3.5)
+        self.assertEqual(self.ruta.num_personas, 25)
+        self.assertEqual(self.ruta.nivel_exigencia, Ruta.Exigencia.ALTA)
+
+
+class RutaEdicionValidacionesServiceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='edicion_user',
+            email='edicion@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta edición',
+            descripcion='Ruta para validar edición',
+            duracion_horas=2.0,
+            num_personas=10,
+            guia=self.guia,
+        )
+
+    def test_actualizar_duracion_rechaza_nan_infinity_y_muy_grande(self):
+        for raw in ['nan', 'inf', '1e309', '9999999999999999999999999999999']:
+            with self.assertRaises(ValueError):
+                rutas_services.actualizar_duracion_ruta(self.ruta, raw)
+
+    def test_actualizar_personas_rechaza_muy_grande_y_fuera_rango(self):
+        for raw in ['9999999999999999999999999999999', '0', '-1']:
+            with self.assertRaises(ValueError):
+                rutas_services.actualizar_personas_ruta(self.ruta, raw)
+
+    def test_actualizar_duracion_y_personas_acepta_valores_validos(self):
+        rutas_services.actualizar_duracion_ruta(self.ruta, '3.5')
+        rutas_services.actualizar_personas_ruta(self.ruta, '25')
+        self.ruta.refresh_from_db()
+
+        self.assertEqual(self.ruta.duracion_horas, 3.5)
+        self.assertEqual(self.ruta.num_personas, 25)

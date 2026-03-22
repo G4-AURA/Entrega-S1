@@ -12,6 +12,7 @@ S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 """
 import logging
 import json
+import math
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -23,6 +24,10 @@ from .models import Parada, Ruta
 from tours.models import SESION_TOUR
 
 logger = logging.getLogger(__name__)
+MIN_DURACION_HORAS = 0.5
+MAX_DURACION_HORAS = 24.0
+MIN_NUM_PERSONAS = 1
+MAX_NUM_PERSONAS = 50
 
 
 # ================================================
@@ -153,7 +158,9 @@ def actualizar_duracion_ruta(ruta, raw_duracion):
     except (TypeError, ValueError):
         raise ValueError("Valores numéricos inválidos (duración)")
 
-    if duracion_horas <= 0 or duracion_horas > 24:
+    if not math.isfinite(duracion_horas):
+        raise ValueError("Valores numéricos inválidos (duración)")
+    if duracion_horas < MIN_DURACION_HORAS or duracion_horas > MAX_DURACION_HORAS:
         raise ValueError("Valores numéricos inválidos (duración)")
 
     ruta.duracion_horas = duracion_horas
@@ -166,7 +173,7 @@ def actualizar_personas_ruta(ruta, raw_personas):
     except (TypeError, ValueError):
         raise ValueError("Valores numéricos inválidos (número de personas)")
 
-    if num_personas <= 0 or num_personas > 50:
+    if num_personas < MIN_NUM_PERSONAS or num_personas > MAX_NUM_PERSONAS:
         raise ValueError("Valores numéricos inválidos (número de personas)")
 
     ruta.num_personas = num_personas
@@ -200,6 +207,8 @@ def _validar_coordenadas(raw_lat, raw_lon):
     try:
         lat = float((raw_lat or "").strip())
         lon = float((raw_lon or "").strip())
+        if not math.isfinite(lat) or not math.isfinite(lon):
+            raise ValueError("Coordenadas fuera de rango")
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise ValueError("Coordenadas fuera de rango")
         return lat, lon
