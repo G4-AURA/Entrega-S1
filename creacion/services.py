@@ -671,6 +671,7 @@ def _normalizar_candidato_parada(candidato, idx):
         'categoria': str(candidato.get('categoria') or 'general').strip()[:60],
         'nivel_confianza': round(nivel_confianza, 2),
         'justificacion': str(candidato.get('justificacion') or '').strip()[:500],
+        'justificacion': str(candidato.get('justificacion') or '').strip()[:500],
     }
 
 
@@ -837,6 +838,7 @@ def _construir_prompt_candidatos_paradas(
             "categoria": "Categoría turística",
             "nivel_confianza": 0.0,
             "justificacion": "Motivo breve de por qué encaja en la ruta"
+            "descripcion": "Breve descripción del lugar para el turista (máximo 60 palabras)"
           }}
         ]
     """
@@ -976,6 +978,7 @@ def _normalizar_parada_checkpoint(parada):
         'coordenadas': coordenadas,
         'categoria': str(parada.get('categoria') or '').strip()[:80],
         'justificacion': str(parada.get('justificacion') or '').strip()[:500],
+        'descripcion': str(parada.get('descripcion') or parada.get('desc') or '').strip()[:500],
     }
 
 
@@ -1261,15 +1264,22 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
                     raise ErrorValidacionRuta('La ruta generada contiene paradas sin coordenadas válidas.')
                 if lat is None or lon is None:
                     raise ErrorValidacionRuta('La ruta generada contiene paradas sin coordenadas válidas.')
+                
+                descripcion_parada = str(
+                    parada.get('descripcion') or parada.get('desc') or ''
+                ).strip()[:500]
+
                 Parada.objects.create(
                     ruta=ruta,
                     orden=parada.get('orden') or idx,
                     nombre=parada.get('nombre') or f'Parada {idx}',
+                    descripcion=descripcion_parada,
                     coordenadas=Point(float(lon), float(lat), srid=4326),
                 )
                 parada_payload = {
                     'orden': parada.get('orden') or idx,
                     'nombre': parada.get('nombre') or f'Parada {idx}',
+                    'descripcion': descripcion_parada,
                     'coordenadas': [float(lat), float(lon)],
                 }
                 for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):
@@ -1525,6 +1535,7 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
             "categoria": "Categoría turística",
             "nivel_confianza": 0.0,
             "justificacion": "Motivo breve"
+            "descripcion": "Breve descripción del lugar para el turista (máximo 60 palabras)"
           }}
         ]
     """

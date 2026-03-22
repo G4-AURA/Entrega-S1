@@ -136,7 +136,12 @@ def normalizar_poi_para_optimizacion(poi_validado: dict) -> dict:
     return {
         'nombre': poi_validado['nombre'],
         'coords': poi_validado['coordenadas'],
-        'desc': poi_validado.get('descripcion') or poi_validado.get('justificacion') or '',
+        'desc': (
+            poi_validado.get('descripcion')
+            or poi_validado.get('justificacion')
+            or poi_validado.get('desc')
+            or ''
+        ),
         'fuente_validacion': poi_validado.get('fuente_validacion'),
         'tipo_geometria': poi_validado.get('tipo_geometria'),
         'error_m': poi_validado.get('error_m'),
@@ -145,10 +150,13 @@ def normalizar_poi_para_optimizacion(poi_validado: dict) -> dict:
 
 
 def serializar_parada_ruta_final(poi: dict, orden: int) -> dict:
+    descripcion = str(poi.get('desc') or poi.get('descripcion') or '').strip()
     payload = {
         'nombre': poi.get('nombre'),
         'coordenadas': poi.get('coords'),
         'orden': orden,
+        'descripcion': descripcion,
+        # Mantener 'desc' por compatibilidad con código existente
         'descripcion': poi.get('desc', ''),
     }
     for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):

@@ -129,6 +129,11 @@ class Ruta(models.Model):
 class Parada(models.Model):
     orden       = models.PositiveIntegerField()
     nombre      = models.CharField(max_length=255)
+    descripcion = models.TextField(
+        blank=True,
+        default='',
+        help_text='Descripción breve de la parada...',
+    )
     coordenadas = gis_models.PointField()
     ruta        = models.ForeignKey(Ruta, on_delete=models.CASCADE, related_name='paradas')
 
