@@ -8,10 +8,13 @@ Roles:
   - Turista → siempre anónimo, identificado por alias + cookie de sesión Django
 """
 import json
+import os
+from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
-from django.http import JsonResponse
+from django.db.models import Q
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -20,7 +23,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from rutas.models import Ruta
 
 from . import services
-from .models import SesionTour, TuristaSesion, UbicacionVivo
+from .models import MensajeChat, SesionTour, TuristaSesion, UbicacionVivo
 
 def _json_error(message: str, status: int) -> JsonResponse:
     return JsonResponse({"error": message}, status=status)
