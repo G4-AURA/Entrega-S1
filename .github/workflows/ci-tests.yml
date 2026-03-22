@@ -76,3 +76,10 @@ jobs:
       run: |
         # Django creará una base de datos temporal llamada "test_mi_db_espacial"
         python manage.py test
+
+    - name: Notificar a Discord (Solo PR)
+      if: success() && github.event_name == 'pull_request'
+      run: |
+        curl -H "Content-Type: application/json" \
+        -d '{"content": "🟢 **¡Nueva PR lista para revisar!**\nEl código de la rama `'"${GITHUB_HEAD_REF}"'` ha pasado con éxito Bandit, Flake8 y los Tests de Django.\nLa rama está estable y lista para que la apruebes en GitHub."}' \
+        ${{ secrets.DISCORD_WEBHOOK }}
