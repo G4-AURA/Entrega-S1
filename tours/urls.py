@@ -30,6 +30,7 @@ urlpatterns = [
     # ------------------------------------------------------------------
     path("ubicacion/", views.registrar_ubicacion, name="registrar_ubicacion"),
     path("sesiones/<int:sesion_id>/ubicacion_turista/", views.registrar_ubicacion_turista, name="registrar_ubicacion_turista"),
+    path("sesiones/<int:sesion_id>/paradas/<int:parada_id>/curiosidad/", views.obtener_curiosidad_parada, name="obtener_curiosidad_parada"),
     path("sesiones/<int:sesion_id>/ubicacion_guia/", views.obtener_ubicacion_guia, name="ubicacion_guia"),
     path("sesiones/<int:sesion_id>/ubicaciones_turistas/", views.obtener_ubicaciones_turistas, name="ubicaciones_turistas"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
