@@ -705,31 +705,54 @@ def obtener_ubicaciones_turistas(request, sesion_id):
 @require_POST
 def enviar_mensaje(request, sesion_id):
     """Envía un mensaje. Acepta turistas anónimos (cookie) y el guía (auth)."""
+    imagen = None
+    if request.content_type and request.content_type.startswith("multipart/form-data"):
+        texto = request.POST.get("texto", "").strip()
+        imagen = request.FILES.get("imagen")
+    else:
+        try:
+            body = json.loads(request.body or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+        texto_raw = body.get("texto", "")
+        if not isinstance(texto_raw, str):
+            texto_raw = str(texto_raw)
+        texto = texto_raw.strip()
+
+    if not texto and not imagen:
+        return JsonResponse(
+            {"error": "El mensaje no puede estar vacío. Debes enviar texto o una imagen."},
+            status=400,
+        )
+
+    if len(texto) > 5000:
+        return _json_error("El mensaje es demasiado largo (máximo 5000 caracteres).", 400)
+
+    if imagen and not str(getattr(imagen, "content_type", "")).startswith("image/"):
+        return _json_error("El archivo adjunto debe ser una imagen válida.", 400)
+
     try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON inválido."}, status=400)
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
 
-    texto_raw = body.get("texto", "")
-    if not isinstance(texto_raw, str):
-        texto_raw = str(texto_raw)
-    texto = texto_raw.strip()
+    if sesion.esta_finalizada:
+        return JsonResponse(
+            {
+                "error": "No se pueden enviar mensajes a una sesión finalizada.",
+                "estado_sesion": sesion.estado,
+            },
+            status=403,
+        )
 
-    if not texto:
-        return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
-
-    if len(texto) > 2000:
-        return _json_error("El mensaje no puede exceder 2000 caracteres.", 400)
-
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
-
-    if not services.tiene_acceso_a_sesion(request, sesion):
-        return _json_error("Acceso denegado.", 403)
-
-    try:
-        services.validar_sesion_en_curso(sesion, "enviar mensajes")
-    except services.TourServiceError as exc:
-        return _service_error_response(exc)
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse(
+            {
+                "error": "La sesión debe estar en curso para enviar mensajes.",
+                "estado_sesion": sesion.estado,
+            },
+            status=400,
+        )
 
     remitente_user, remitente_turista, nombre_remitente, error = (
         services.determinar_remitente(request, sesion)
@@ -743,11 +766,13 @@ def enviar_mensaje(request, sesion_id):
         remitente_turista,
         nombre_remitente,
         texto,
+        imagen=imagen,
     )
 
     return JsonResponse(
         {
             "status": "ok",
+            "mensaje_id": mensaje.id,
             "id": mensaje.id,
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
@@ -787,24 +812,33 @@ def descargar_imagen_mensaje(request, sesion_id, mensaje_id):
 @require_GET
 def obtener_mensajes(request, sesion_id):
     """Devuelve los mensajes de la sesión, con filtro opcional por `desde`."""
-    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
 
     if not services.tiene_acceso_a_sesion(request, sesion):
         return _json_error("Acceso denegado.", 403)
 
-    try:
-        services.validar_sesion_en_curso(sesion, "consultar mensajes")
-    except services.TourServiceError as exc:
-        return _service_error_response(exc)
-
     desde_str = request.GET.get("desde")
-    qs = sesion.mensajes.all().order_by("momento")
+    limite_str = request.GET.get("limite", "50")
 
+    try:
+        limite = int(limite_str)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "El parámetro limite debe ser un entero."}, status=400)
+
+    if limite < 1 or limite > 200:
+        return JsonResponse({"error": "El parámetro limite debe estar entre 1 y 200."}, status=400)
+
+    qs = MensajeChat.objects.filter(sesion_tour=sesion)
+
+    desde_dt = None
     if desde_str:
         desde_dt = parse_datetime(desde_str)
         if not desde_dt:
             return _json_error(
-                "Parámetro 'desde' inválido. Usa formato ISO 8601.",
+                "El parámetro desde debe ser una fecha ISO-8601 válida.",
                 400,
             )
         if timezone.is_naive(desde_dt):
@@ -812,16 +846,57 @@ def obtener_mensajes(request, sesion_id):
                 desde_dt,
                 timezone.get_current_timezone(),
             )
-        qs = qs.filter(momento__gt=desde_dt)
 
-    mensajes = [
+        primer_id_mismo_momento = (
+            qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
+        )
+        if primer_id_mismo_momento is None:
+            qs = qs.filter(momento__gt=desde_dt)
+        else:
+            qs = qs.filter(
+                Q(momento__gt=desde_dt)
+                | (Q(momento=desde_dt) & Q(id__gt=primer_id_mismo_momento))
+            )
+
+    mensajes_qs = qs.order_by("-momento", "-id")[:limite]
+    mensajes_ordenados = list(reversed(list(mensajes_qs)))
+
+    mensajes = []
+    ultimo_momento_serializado = None
+    for m in mensajes_ordenados:
+        momento_serializado = m.momento
+
+        if desde_dt is not None:
+            desde_cmp = desde_dt
+            if timezone.is_naive(momento_serializado) and timezone.is_aware(desde_cmp):
+                desde_cmp = timezone.make_naive(desde_cmp, timezone.get_current_timezone())
+            elif timezone.is_aware(momento_serializado) and timezone.is_naive(desde_cmp):
+                desde_cmp = timezone.make_aware(desde_cmp, timezone.get_current_timezone())
+
+            if momento_serializado <= desde_cmp:
+                momento_serializado = desde_cmp + timedelta(microseconds=1)
+
+        if (
+            ultimo_momento_serializado is not None
+            and momento_serializado <= ultimo_momento_serializado
+        ):
+            momento_serializado = ultimo_momento_serializado + timedelta(microseconds=1)
+
+        mensajes.append(
+            {
+                "id":               m.id,
+                "nombre_remitente": m.nombre_remitente,
+                "texto":            m.texto,
+                "momento":          momento_serializado.isoformat(),
+                "imagen_url":       m.imagen.url if m.imagen else None,
+            }
+        )
+        ultimo_momento_serializado = momento_serializado
+
+    return JsonResponse(
         {
-            "id":               m.id,
-            "nombre_remitente": m.nombre_remitente,
-            "texto":            m.texto,
-            "momento":          m.momento.isoformat(),
+            "mensajes": mensajes,
+            "total": len(mensajes),
+            "estado_sesion": sesion.estado,
         }
-        for m in qs
-    ]
-
-    return JsonResponse({"mensajes": mensajes})
+    )
