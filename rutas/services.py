@@ -417,9 +417,110 @@ class ServicioCuriosidadesIA:
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
         """
-        Genera el prompt, llama a la IA y devuelve un diccionario con los datos estructurados.
+        Devuelve una curiosidad para una parada reutilizando caché en BD cuando exista.
         """
-       # Extraemos los temas reales de la ruta. Si no tiene, usamos uno por defecto.
+        curiosidad_cacheada = self._obtener_curiosidad_cache(parada)
+        if curiosidad_cacheada:
+            logger.info(
+                "Curiosidad cacheada reutilizada para Parada(id=%d).",
+                parada.id,
+            )
+            return self._serializar_curiosidad(curiosidad_cacheada)
+
+        datos_curiosidad = self._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+        curiosidad_guardada = self._guardar_curiosidad_en_cache(
+            parada=parada,
+            ciudad=ciudad,
+            datos_curiosidad=datos_curiosidad,
+        )
+        return self._serializar_curiosidad(curiosidad_guardada)
+
+    def _obtener_curiosidad_cache(self, parada: Parada) -> Curiosidad | None:
+        return Curiosidad.objects.filter(parada=parada).first()
+
+    def _serializar_curiosidad(self, curiosidad: Curiosidad) -> dict:
+        return {
+            "parada_id": curiosidad.parada_id,
+            "ciudad": curiosidad.ciudad,
+            "titulo": curiosidad.titulo,
+            "texto": curiosidad.texto,
+            "tipo": curiosidad.tipo,
+            "imagen_url": curiosidad.imagen_url,
+            "busqueda_imagen": curiosidad.imagen_url,
+        }
+
+    def _normalizar_payload_curiosidad(self, parada: Parada, datos_curiosidad: dict) -> dict:
+        titulo = str(datos_curiosidad.get("titulo") or "").strip()
+        if not titulo:
+            titulo = f"Curiosidad sobre {parada.nombre}"
+        titulo = titulo[:255]
+
+        texto = str(datos_curiosidad.get("texto") or "").strip()
+        if not texto:
+            raise ValueError("Error de formato: La IA devolvió una curiosidad sin texto.")
+
+        tipo_recibido = str(datos_curiosidad.get("tipo") or "").strip()
+        tipos_validos = {valor for valor, _ in Curiosidad.TipoCuriosidad.choices}
+        tipo = (
+            tipo_recibido
+            if tipo_recibido in tipos_validos
+            else Curiosidad.TipoCuriosidad.DATO_CURIOSO
+        )
+
+        imagen_url = str(datos_curiosidad.get("imagen_url") or "").strip()
+        if not imagen_url:
+            imagen_url = str(datos_curiosidad.get("busqueda_imagen") or "").strip()
+        imagen_url = imagen_url or None
+
+        return {
+            "titulo": titulo,
+            "texto": texto,
+            "tipo": tipo,
+            "imagen_url": imagen_url,
+        }
+
+    def _guardar_curiosidad_en_cache(
+        self,
+        parada: Parada,
+        ciudad: str,
+        datos_curiosidad: dict,
+    ) -> Curiosidad:
+        payload = self._normalizar_payload_curiosidad(parada=parada, datos_curiosidad=datos_curiosidad)
+        ciudad_limpia = (str(ciudad or "").strip() or "Sevilla")[:100]
+
+        try:
+            curiosidad, creada = Curiosidad.objects.get_or_create(
+                parada=parada,
+                defaults={
+                    "ciudad": ciudad_limpia,
+                    "titulo": payload["titulo"],
+                    "texto": payload["texto"],
+                    "tipo": payload["tipo"],
+                    "imagen_url": payload["imagen_url"],
+                },
+            )
+        except IntegrityError:
+            curiosidad = Curiosidad.objects.get(parada=parada)
+            creada = False
+
+        if creada:
+            logger.info(
+                "Curiosidad generada y almacenada para Parada(id=%d).",
+                parada.id,
+            )
+        else:
+            logger.info(
+                "Curiosidad ya existente detectada durante el guardado para Parada(id=%d).",
+                parada.id,
+            )
+
+        return curiosidad
+
+    def _generar_curiosidad_ia(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
+        """
+        Genera el prompt, llama a la IA y devuelve los datos estructurados.
+        """
+        # Extraemos los temas reales de la ruta. Si no tiene, usamos uno por defecto.
         if getattr(parada, 'ruta', None) and getattr(parada.ruta, 'mood', None):
             temas_ruta = ", ".join(parada.ruta.mood)
         else:
