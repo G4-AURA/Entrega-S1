@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', function () {
     _dibujarRutaYParadas();
     _initParadaFocusButtons();
 
+
     // ── Posición propia ───────────────────────────────────────────────────
     _iniciarRastreoLocal();
 
@@ -396,11 +397,16 @@ function _initChat() {
     const chatMessages = document.getElementById('chat-messages');
     const chatInput    = document.getElementById('chat-input');
     const chatSendBtn  = document.getElementById('chat-send');
-    if (!chatMessages || !chatInput || !chatSendBtn) return;
+    const chatImageBtn = document.getElementById('chat-image-btn');
+    const chatImageInput = document.getElementById('chat-image-input');
+    const chatPreviewContainer = document.getElementById('chat-preview-container');
+    if (!chatMessages || !chatInput || !chatSendBtn || !chatImageBtn || !chatImageInput || !chatPreviewContainer) return;
 
     let lastMessageTime = null;
     let unread          = 0;
     let chatVisible     = false;
+    let selectedFile    = null;
+    let previewObjectUrl = null;
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
 
@@ -408,6 +414,67 @@ function _initChat() {
     const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName
         : (document.body.getAttribute('data-username') || '');
+
+    function clearPreview() {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+        selectedFile = null;
+        chatImageInput.value = '';
+        chatPreviewContainer.innerHTML = '';
+    }
+
+    function renderPreview(file) {
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+        }
+        previewObjectUrl = URL.createObjectURL(file);
+        chatPreviewContainer.innerHTML = `
+            <div class="chat-preview-item">
+                <img src="${previewObjectUrl}" alt="Vista previa" class="chat-preview-img">
+                <button type="button" class="chat-preview-remove" title="Quitar imagen">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>`;
+
+        const removeBtn = chatPreviewContainer.querySelector('.chat-preview-remove');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                clearPreview();
+            });
+        }
+    }
+
+    function _colorFromSender(senderKey, isGuide) {
+        if (isGuide) {
+            return {
+                bg: '#fef3c7',
+                border: '#fcd34d',
+                sender: '#92400e',
+                text: '#111827',
+            };
+        }
+
+        const key = String(senderKey || 'Participante');
+        let hash = 0;
+        for (let i = 0; i < key.length; i += 1) {
+            hash = ((hash * 33) ^ key.charCodeAt(i)) >>> 0;
+        }
+
+        const palette = [
+            { bg: '#fee2e2', border: '#fca5a5', sender: '#b91c1c', text: '#111827' },
+            { bg: '#ffedd5', border: '#fdba74', sender: '#c2410c', text: '#111827' },
+            { bg: '#ecfccb', border: '#bef264', sender: '#3f6212', text: '#111827' },
+            { bg: '#cffafe', border: '#67e8f9', sender: '#155e75', text: '#111827' },
+            { bg: '#e0f2fe', border: '#7dd3fc', sender: '#075985', text: '#111827' },
+            { bg: '#ede9fe', border: '#a78bfa', sender: '#5b21b6', text: '#111827' },
+            { bg: '#fce7f3', border: '#f9a8d4', sender: '#9d174d', text: '#111827' },
+            { bg: '#e2e8f0', border: '#94a3b8', sender: '#334155', text: '#111827' },
+        ];
+
+        return palette[hash % palette.length];
+    }
 
     function renderMessages(msgs) {
         if (!msgs || !msgs.length) return;
@@ -422,13 +489,29 @@ function _initChat() {
             div.className = `chat-message ${msg.nombre_remitente === me ? 'sent' : 'received'}`;
             div.setAttribute('data-message-id', msg.id);
 
+            const senderKey = msg.remitente_key || msg.nombre_remitente;
+            const senderColors = _colorFromSender(senderKey, Boolean(msg.es_guia));
+            div.style.setProperty('--msg-bg', senderColors.bg);
+            div.style.setProperty('--msg-border', senderColors.border);
+            div.style.setProperty('--msg-sender', senderColors.sender);
+            div.style.setProperty('--msg-text', senderColors.text);
+
             const t = new Date(msg.momento).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const textoHtml = msg.texto ? escHtml(msg.texto) : '';
+            const imagenHtml = msg.imagen_url
+                ? `<a class="chat-image-link" href="/tours/sesiones/${sesionId}/mensajes/${msg.id}/imagen/" title="Descargar imagen">
+                        <img src="${escHtml(msg.imagen_url)}" class="chat-message-img" alt="Imagen adjunta del chat">
+                   </a>`
+                : '';
+            const bubbleHtml = textoHtml ? `<div class="chat-message-bubble">${textoHtml}</div>` : '';
+
             div.innerHTML = `
                 <div class="chat-message-header">
                     <span class="chat-message-sender">${escHtml(msg.nombre_remitente)}</span>
                     <span class="chat-message-time">${t}</span>
                 </div>
-                <div class="chat-message-bubble">${escHtml(msg.texto)}</div>`;
+                ${bubbleHtml}
+                ${imagenHtml}`;
             chatMessages.appendChild(div);
 
             if (msg.nombre_remitente !== me && !chatVisible) {
@@ -454,21 +537,54 @@ function _initChat() {
 
     function sendMessage() {
         const texto = chatInput.value.trim();
-        if (!texto) return;
-        chatSendBtn.disabled = chatInput.disabled = true;
+        if (!texto && !selectedFile) return;
+
+        chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = true;
+
+        const payload = new FormData();
+        payload.append('texto', texto);
+        if (selectedFile) {
+            payload.append('imagen', selectedFile);
+        }
+
         fetch(`/tours/sesiones/${sesionId}/mensajes/enviar/`, {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-            body:    JSON.stringify({ texto }),
+            headers: { 'X-CSRFToken': _getCsrf() },
+            body:    payload,
         })
         .then(r => r.json())
-        .then(() => { chatInput.value = ''; fetchMessages(); })
+        .then((data) => {
+            if (data.status !== 'ok') return;
+            chatInput.value = '';
+            clearPreview();
+            fetchMessages();
+        })
         .catch(() => {})
-        .finally(() => { chatSendBtn.disabled = chatInput.disabled = false; chatInput.focus(); });
+        .finally(() => {
+            chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = false;
+            chatInput.focus();
+        });
     }
 
     chatSendBtn.addEventListener('click', sendMessage);
     chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+    chatImageBtn.addEventListener('click', () => chatImageInput.click());
+    chatImageInput.addEventListener('change', () => {
+        if (!chatImageInput.files || !chatImageInput.files.length) {
+            clearPreview();
+            return;
+        }
+
+        const file = chatImageInput.files[0];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            clearPreview();
+            return;
+        }
+
+        selectedFile = file;
+        renderPreview(file);
+    });
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
@@ -526,6 +642,9 @@ function _renderizarTuristasEnMapa(turistas) {
             map.removeLayer(marker);
             turistasMarkers.delete(key);
         }
+    });
+}
+
 function _initParadaFocusButtons() {
     const focusButtons = document.querySelectorAll('.parada-focus-btn');
     if (!focusButtons.length) return;
@@ -587,6 +706,13 @@ function _resaltarParadaSeleccionada(paradaId) {
         }
     }
 
+    // Sincroniza el estado visual del itinerario para todos los usuarios.
+    document.querySelectorAll('.timeline-item').forEach(item => {
+        item.classList.remove('active', 'selected-stop');
+        const stopName = item.querySelector('.timeline-stop-name');
+        if (stopName) stopName.classList.add('text-muted');
+    });
+
     document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
         item.classList.remove('selected-stop');
     });
@@ -600,7 +726,10 @@ function _resaltarParadaSeleccionada(paradaId) {
 
     const timelineItem = document.querySelector(`.timeline-item[data-parada-id="${paradaId}"]`);
     if (timelineItem) {
+        timelineItem.classList.add('active');
         timelineItem.classList.add('selected-stop');
+        const stopName = timelineItem.querySelector('.timeline-stop-name');
+        if (stopName) stopName.classList.remove('text-muted');
     }
 
     document.querySelectorAll('.parada-focus-btn').forEach(btn => {

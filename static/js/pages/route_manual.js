@@ -1,4 +1,12 @@
 (function () {
+    const LIMITES_MANUAL = {
+        duracionMin: 0.5,
+        duracionMax: 24,
+        personasMin: 1,
+        personasMax: 50,
+        paradasMin: 2,
+    };
+
     const configElement = document.getElementById('creacion-manual-config');
     const config = configElement
         ? JSON.parse(configElement.textContent)
@@ -96,7 +104,6 @@
                 <div class="form-group form-group-no-margin">
                     <label class="input-label">Ubicación</label>
                     <div class="location-group">
-                        <input type="text" class="input-field stop-ubicacion" placeholder="Dirección...">
                         <button class="btn-map" type="button">
                             <span class="material-icons-round">map</span>
                         </button>
@@ -152,15 +159,21 @@
     }
 
     function leerFormulario() {
+        const moodsSeleccionados = Array.from(
+            document.querySelectorAll('#ruta-etiquetas input[name="mood"]:checked')
+        ).map(function (checkbox) {
+            return checkbox.value;
+        });
+
         const paradas = Array.from(container.querySelectorAll('.stop-card')).map(function (card, index) {
             const nombreInput = card.querySelector('.stop-nombre');
-            const ubicacionInput = card.querySelector('.stop-ubicacion');
+            const rawLat = card.dataset.lat;
+            const rawLon = card.dataset.lon;
 
             return {
                 nombre: nombreInput && nombreInput.value ? nombreInput.value : `Parada ${index + 1}`,
-                direccion: ubicacionInput ? ubicacionInput.value : '',
-                lat: ubicacionInput && ubicacionInput.dataset.lat ? parseFloat(ubicacionInput.dataset.lat) : 37.38,
-                lon: ubicacionInput && ubicacionInput.dataset.lon ? parseFloat(ubicacionInput.dataset.lon) : -5.99,
+                lat: rawLat === undefined ? null : parseFloat(rawLat),
+                lon: rawLon === undefined ? null : parseFloat(rawLon),
             };
         });
 
@@ -170,9 +183,58 @@
             duracion_horas: document.getElementById('ruta-duracion')?.value || '',
             num_personas: document.getElementById('ruta-personas')?.value || '',
             nivel_exigencia: document.getElementById('ruta-exigencia')?.value || '',
-            mood: [],
+            mood: moodsSeleccionados,
             paradas,
         };
+    }
+
+    function validarFormulario(payload) {
+        const titulo = String(payload.titulo || '').trim();
+        const descripcion = String(payload.descripcion || '').trim();
+        const duracion = Number(payload.duracion_horas);
+        const personas = Number(payload.num_personas);
+        const paradas = Array.isArray(payload.paradas) ? payload.paradas : [];
+
+        if (!titulo) {
+            return 'El título de la ruta es obligatorio.';
+        }
+        if (!descripcion) {
+            return 'La descripción de la ruta es obligatoria.';
+        }
+        if (!Number.isFinite(duracion)) {
+            return 'La duración debe ser un número válido.';
+        }
+        if (duracion < LIMITES_MANUAL.duracionMin || duracion > LIMITES_MANUAL.duracionMax) {
+            return 'La duración debe estar entre 0.5 y 24 horas.';
+        }
+        if (!Number.isInteger(personas)) {
+            return 'El número de personas debe ser un entero válido.';
+        }
+        if (personas < LIMITES_MANUAL.personasMin || personas > LIMITES_MANUAL.personasMax) {
+            return 'El número de personas debe estar entre 1 y 50.';
+        }
+        if (paradas.length < LIMITES_MANUAL.paradasMin) {
+            return 'Debes añadir al menos 2 paradas.';
+        }
+
+        for (let i = 0; i < paradas.length; i += 1) {
+            const parada = paradas[i] || {};
+            const nombre = String(parada.nombre || '').trim();
+            if (!nombre) {
+                return `El nombre de la parada ${i + 1} es obligatorio.`;
+            }
+
+            const lat = Number(parada.lat);
+            const lon = Number(parada.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                return `Selecciona la ubicación de la parada ${i + 1} en el mapa.`;
+            }
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                return `La parada ${i + 1} tiene coordenadas fuera de rango.`;
+            }
+        }
+
+        return null;
     }
 
     async function enviarPeticion(payload) {
@@ -188,7 +250,9 @@
         const data = await response.json();
 
         if (!response.ok || data.status !== 'OK') {
-            throw new Error(data.mensaje || 'Error desconocido al guardar la ruta');
+            const error = new Error(data.mensaje || 'Error desconocido al guardar la ruta');
+            error.errores = data.errores;
+            throw error;
         }
 
         return data;
@@ -202,6 +266,13 @@
     }
 
     function cerrarModalMapa() {
+        if (currentInputTarget && selectorUbicacion && typeof selectorUbicacion.getCoords === 'function') {
+            const coords = selectorUbicacion.getCoords();
+            if (coords) {
+                currentInputTarget.dataset.lat = coords.lat;
+                currentInputTarget.dataset.lon = coords.lng;
+            }
+        }
         mapModal.style.display = 'none';
         if (selectorUbicacion && typeof selectorUbicacion.close === 'function') {
             selectorUbicacion.close();
@@ -210,6 +281,39 @@
 
     function renderizarErrores(mensaje) {
         alert(`Ocurrió un error al intentar guardar la ruta: ${mensaje}`);
+    }
+
+    function renderizarErroresCampos(errores) {
+        // Limpiar errores previos
+        document.querySelectorAll('.error-message').forEach(el => el.remove());
+
+        for (const [campo, mensaje] of Object.entries(errores)) {
+            let input;
+            if (campo === 'duracion_horas') {
+                input = document.getElementById('ruta-duracion');
+            } else if (campo === 'num_personas') {
+                input = document.getElementById('ruta-personas');
+            } else if (campo === 'titulo') {
+                input = document.getElementById('ruta-titulo');
+            } else if (campo.startsWith('parada_')) {
+                const idx = campo.split('_')[1];
+                input = document.querySelector(`#stop-${idx} .stop-nombre`);
+            } else {
+                // Para general o otros, mostrar alert
+                alert(mensaje);
+                continue;
+            }
+
+            if (input) {
+                const errorSpan = document.createElement('span');
+                errorSpan.className = 'error-message';
+                errorSpan.style.color = 'red';
+                errorSpan.style.fontSize = '0.875rem';
+                errorSpan.style.marginTop = '0.25rem';
+                errorSpan.textContent = mensaje;
+                input.parentNode.appendChild(errorSpan);
+            }
+        }
     }
 
     function createLeafletFallbackSelector() {
@@ -282,7 +386,7 @@
         const mapBtn = event.target.closest('.btn-map');
         if (mapBtn) {
             event.preventDefault();
-            currentInputTarget = mapBtn.previousElementSibling;
+            currentInputTarget = mapBtn.closest('.stop-card');
             renderizarMapa();
         }
     });
@@ -325,6 +429,15 @@
         actualizarAyudaExigencia();
     }
 
+    document.querySelectorAll('#ruta-etiquetas .manual-tag-pill input[type="checkbox"]').forEach(function (checkbox) {
+        checkbox.addEventListener('change', function () {
+            const tag = this.closest('.manual-tag-pill');
+            if (tag) {
+                tag.classList.toggle('active', this.checked);
+            }
+        });
+    });
+
     btnGuardar.addEventListener('click', async function () {
         const originalText = btnGuardar.innerHTML;
         btnGuardar.innerHTML = '<span class="material-icons-round">hourglass_empty</span> Guardando...';
@@ -332,12 +445,20 @@
 
         try {
             const payload = leerFormulario();
+            const errorValidacion = validarFormulario(payload);
+            if (errorValidacion) {
+                throw new Error(errorValidacion);
+            }
             await enviarPeticion(payload);
             alert('¡Ruta guardada con éxito!');
             window.location.href = config.urls.catalogo;
         } catch (error) {
             console.error(error);
-            renderizarErrores(error.message);
+            if (error.errores) {
+                renderizarErroresCampos(error.errores);
+            } else {
+                renderizarErrores(error.message);
+            }
         } finally {
             btnGuardar.innerHTML = originalText;
             btnGuardar.disabled = false;

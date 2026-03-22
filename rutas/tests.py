@@ -4,8 +4,10 @@ from django.contrib.gis.geos import Point
 from django.urls import reverse
 from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
+from unittest.mock import patch
 
-from .models import AuthUser, Guia, Ruta, Parada
+from rutas import services as rutas_services
+from .models import AuthUser, Curiosidad, Guia, Ruta, Parada
 
 
 class AuthUserModelTest(TestCase):
@@ -492,3 +494,186 @@ class CatalogoViewTest(TestCase):
         response = self.client.post(self.catalogo_url)
         # POST no es permitido
         self.assertEqual(response.status_code, 405)
+
+
+class CuriosidadParadaApiTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='curiosidaduser',
+            email='curiosidad@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Curiosidad',
+            duracion_horas=2.0,
+            num_personas=10,
+            guia=self.guia,
+        )
+        self.parada = Parada.objects.create(
+            orden=1,
+            nombre='Catedral',
+            coordenadas=Point(-5.992, 37.388),
+            ruta=self.ruta,
+        )
+        self.url = reverse('parada-curiosidad', args=[self.parada.id])
+
+    def test_devuelve_curiosidad_existente_sin_invocar_ia(self):
+        Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Título existente',
+            texto='Texto existente',
+            tipo=Curiosidad.TipoCuriosidad.HISTORIA,
+        )
+        self.client.force_login(self.user)
+
+        with patch('rutas.services.ServicioCuriosidadesIA.generar_curiosidad') as mock_ia:
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertFalse(data['generada'])
+        self.assertEqual(data['curiosidad']['titulo'], 'Título existente')
+        mock_ia.assert_not_called()
+
+    def test_genera_y_persiste_curiosidad_si_no_existe(self):
+        self.client.force_login(self.user)
+
+        with patch(
+            'rutas.services.ServicioCuriosidadesIA.generar_curiosidad',
+            return_value={
+                'titulo': 'Sevilla bajo tus pies',
+                'texto': 'Un dato histórico breve para turistas.',
+                'tipo': Curiosidad.TipoCuriosidad.EVENTO,
+            },
+        ) as mock_ia:
+            response = self.client.get(f'{self.url}?ciudad=Sevilla')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['generada'])
+        self.assertEqual(data['curiosidad']['titulo'], 'Sevilla bajo tus pies')
+
+        self.assertEqual(Curiosidad.objects.filter(parada=self.parada).count(), 1)
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertEqual(curiosidad.ciudad, 'Sevilla')
+        self.assertEqual(curiosidad.tipo, Curiosidad.TipoCuriosidad.EVENTO)
+        mock_ia.assert_called_once()
+
+
+class RutaDetalleMetaValidationViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='meta_view_user',
+            email='meta_view@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Meta',
+            descripcion='Ruta para validar edición meta',
+            duracion_horas=2.0,
+            num_personas=10,
+            nivel_exigencia=Ruta.Exigencia.MEDIA,
+            guia=self.guia,
+        )
+        self.url = reverse('ruta-detalle', kwargs={'ruta_id': self.ruta.id})
+        self.client.force_login(self.user)
+
+    def test_rechaza_duracion_extremadamente_grande_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '1e309',
+                'num_personas': '10',
+                'nivel_exigencia': Ruta.Exigencia.MEDIA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_error=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 2.0)
+        self.assertEqual(self.ruta.num_personas, 10)
+
+    def test_rechaza_asistentes_extremadamente_grandes_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '2',
+                'num_personas': '99999999999999999999999999999999999999999999',
+                'nivel_exigencia': Ruta.Exigencia.MEDIA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_error=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 2.0)
+        self.assertEqual(self.ruta.num_personas, 10)
+
+    def test_acepta_valores_validos_en_edicion_meta(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'form_type': 'meta',
+                'duracion_horas': '3.5',
+                'num_personas': '25',
+                'nivel_exigencia': Ruta.Exigencia.ALTA,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('meta_updated=1', response.url)
+
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.duracion_horas, 3.5)
+        self.assertEqual(self.ruta.num_personas, 25)
+        self.assertEqual(self.ruta.nivel_exigencia, Ruta.Exigencia.ALTA)
+
+
+class RutaEdicionValidacionesServiceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='edicion_user',
+            email='edicion@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta edición',
+            descripcion='Ruta para validar edición',
+            duracion_horas=2.0,
+            num_personas=10,
+            guia=self.guia,
+        )
+
+    def test_actualizar_duracion_rechaza_nan_infinity_y_muy_grande(self):
+        for raw in ['nan', 'inf', '1e309', '9999999999999999999999999999999']:
+            with self.assertRaises(ValueError):
+                rutas_services.actualizar_duracion_ruta(self.ruta, raw)
+
+    def test_actualizar_personas_rechaza_muy_grande_y_fuera_rango(self):
+        for raw in ['9999999999999999999999999999999', '0', '-1']:
+            with self.assertRaises(ValueError):
+                rutas_services.actualizar_personas_ruta(self.ruta, raw)
+
+    def test_actualizar_duracion_y_personas_acepta_valores_validos(self):
+        rutas_services.actualizar_duracion_ruta(self.ruta, '3.5')
+        rutas_services.actualizar_personas_ruta(self.ruta, '25')
+        self.ruta.refresh_from_db()
+
+        self.assertEqual(self.ruta.duracion_horas, 3.5)
+        self.assertEqual(self.ruta.num_personas, 25)

@@ -167,6 +167,11 @@ class MensajeChat(models.Model):
     )
     nombre_remitente = models.CharField(max_length=255, default="Anónimo")
     texto = models.TextField()
+    imagen = models.FileField(
+        upload_to="chat_mensajes/%Y/%m/%d/",
+        null=True,
+        blank=True,
+    )
     momento = models.DateTimeField(auto_now_add=True)
 
     class Meta:
