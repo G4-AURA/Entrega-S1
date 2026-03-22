@@ -751,10 +751,37 @@ def enviar_mensaje(request, sesion_id):
             "id": mensaje.id,
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
+            "imagen_url": mensaje.imagen.url if mensaje.imagen else None,
             "momento": mensaje.momento.isoformat(),
         },
         status=201,
     )
+
+
+@require_GET
+def descargar_imagen_mensaje(request, sesion_id, mensaje_id):
+    """Descarga la imagen adjunta de un mensaje, si el usuario pertenece a la sesión."""
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        mensaje = MensajeChat.objects.get(id=mensaje_id, sesion_tour=sesion)
+    except MensajeChat.DoesNotExist:
+        return JsonResponse({"error": "Mensaje no encontrado en la sesión."}, status=404)
+
+    if not mensaje.imagen:
+        return JsonResponse({"error": "El mensaje no tiene imagen adjunta."}, status=404)
+
+    ext = os.path.splitext(mensaje.imagen.name)[1] or ".bin"
+    filename = f"mensaje_{mensaje.id}{ext}"
+
+    response = FileResponse(mensaje.imagen.open("rb"), as_attachment=True, filename=filename)
+    return response
 
 
 @require_GET

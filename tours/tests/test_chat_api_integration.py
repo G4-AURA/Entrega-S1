@@ -14,15 +14,21 @@ Verifica:
 - Validaciones de entrada (JSON inválido, texto vacío, límites)
 """
 import json
+import shutil
+import tempfile
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.test.utils import override_settings
 
 from rutas.models import AuthUser, Guia, Ruta
 from tours.models import MensajeChat, SesionTour, Turista, TuristaSesion
+
+TEMP_MEDIA_ROOT = tempfile.mkdtemp(prefix='chat_media_test_')
 
 
 class EnviarMensajeAPITest(TestCase):
@@ -386,7 +392,7 @@ class EnviarMensajeAPITest(TestCase):
 
         campos_requeridos = [
             'status', 'mensaje_id', 'id', 'nombre_remitente',
-            'texto', 'momento'
+            'texto', 'imagen_url', 'momento'
         ]
         for campo in campos_requeridos:
             self.assertIn(campo, data)
@@ -395,6 +401,130 @@ class EnviarMensajeAPITest(TestCase):
         self.assertIsInstance(data['mensaje_id'], int)
         self.assertEqual(data['mensaje_id'], data['id'])
         self.assertIsInstance(data['momento'], str)
+
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
+class ImagenChatAPITest(TestCase):
+    """Tests de subida y descarga de imágenes del chat."""
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+
+    def setUp(self):
+        self.user_guia = User.objects.create_user(username='guia_img_test', password='test123')
+        auth_user = AuthUser.objects.create(user=self.user_guia)
+        self.guia = Guia.objects.create(user=auth_user)
+
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Imagen Chat',
+            descripcion='Test imagen chat',
+            duracion_horas=2,
+            num_personas=12,
+            nivel_exigencia='Media',
+            mood=['Aventura'],
+            guia=self.guia,
+        )
+
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='IMG001',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+
+        self.turista = Turista.objects.create(alias='TuristaImg')
+        TuristaSesion.objects.create(turista=self.turista, sesion_tour=self.sesion, activo=True)
+
+        self.client_guia = Client()
+        self.client_guia.force_login(self.user_guia)
+
+        self.client_turista = Client()
+        session = self.client_turista.session
+        session['turista_id'] = self.turista.id
+        session['turista_alias'] = self.turista.alias
+        session.save()
+
+    def _build_png(self, name='chat.png'):
+        # PNG 1x1 válido para tests de subida de imagen.
+        binary = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0bIDATx\x9cc`\x00\x02\x00\x00\x05\x00\x01\r\n*\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        return SimpleUploadedFile(name, binary, content_type='image/png')
+
+    def test_enviar_imagen_con_texto(self):
+        response = self.client_guia.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion.id]),
+            data={'texto': 'Foto de parada', 'imagen': self._build_png()},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertIsNotNone(data['imagen_url'])
+
+        msg = MensajeChat.objects.get(id=data['id'])
+        self.assertTrue(bool(msg.imagen))
+
+    def test_enviar_solo_imagen_sin_texto(self):
+        response = self.client_turista.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion.id]),
+            data={'texto': '', 'imagen': self._build_png('solo.png')},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['texto'], '')
+        self.assertIsNotNone(data['imagen_url'])
+
+    def test_rechaza_archivo_no_imagen(self):
+        bad_file = SimpleUploadedFile('bad.txt', b'no-image', content_type='text/plain')
+        response = self.client_guia.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion.id]),
+            data={'texto': 'archivo', 'imagen': bad_file},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', response.json())
+
+    def test_descargar_imagen_participante(self):
+        msg = MensajeChat.objects.create(
+            sesion_tour=self.sesion,
+            remitente=self.user_guia,
+            nombre_remitente='guia_img_test',
+            texto='Adjunto',
+            imagen=self._build_png('descarga.png'),
+        )
+
+        response = self.client_turista.get(
+            reverse('tours:descargar_imagen_mensaje', args=[self.sesion.id, msg.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment', response['Content-Disposition'])
+
+    def test_descargar_imagen_sin_acceso(self):
+        turista_otro = Turista.objects.create(alias='NoAcceso')
+        client_no_access = Client()
+        session = client_no_access.session
+        session['turista_id'] = turista_otro.id
+        session.save()
+
+        msg = MensajeChat.objects.create(
+            sesion_tour=self.sesion,
+            remitente=self.user_guia,
+            nombre_remitente='guia_img_test',
+            texto='Adjunto',
+            imagen=self._build_png('privada.png'),
+        )
+
+        response = client_no_access.get(
+            reverse('tours:descargar_imagen_mensaje', args=[self.sesion.id, msg.id])
+        )
+
+        self.assertEqual(response.status_code, 403)
 
 
 class ObtenerMensajesAPITest(TestCase):
