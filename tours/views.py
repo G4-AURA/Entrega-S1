@@ -8,12 +8,13 @@ Roles:
   - Turista â†’ siempre anÃ³nimo, identificado por alias + cookie de sesiÃ³n Django
 """
 import json
+import os
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -603,17 +604,38 @@ def obtener_ubicaciones_turistas(request, sesion_id):
 @require_POST
 def enviar_mensaje(request, sesion_id):
     """EnvÃ­a un mensaje. Acepta turistas anÃ³nimos (cookie) y el guÃ­a (auth)."""
-    try:
-        body = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON invÃ¡lido."}, status=400)
+    imagen = None
+    if request.content_type and request.content_type.startswith("multipart/form-data"):
+        texto = request.POST.get("texto", "").strip()
+        imagen = request.FILES.get("imagen")
+    else:
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON invÃ¡lido."}, status=400)
+        texto = body.get("texto", "").strip()
 
-    texto = body.get("texto", "").strip()
-    if not texto:
-        return JsonResponse({"error": "El campo texto no puede estar vacío."}, status=400)
+    if not texto and not imagen:
+        return JsonResponse(
+            {"error": "El mensaje no puede estar vacío. Debes enviar texto o una imagen."},
+            status=400,
+        )
 
     if len(texto) > 5000:
         return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
+
+    if imagen:
+        allowed_types = {"image/jpeg", "image/png", "image/webp"}
+        if imagen.content_type not in allowed_types:
+            return JsonResponse(
+                {"error": "Formato de imagen no permitido. Usa JPEG, PNG o WebP."},
+                status=400,
+            )
+        if imagen.size > 5 * 1024 * 1024:
+            return JsonResponse(
+                {"error": "La imagen supera el tamaño máximo de 5MB."},
+                status=400,
+            )
 
     try:
         sesion = SesionTour.objects.get(id=sesion_id)
@@ -642,6 +664,7 @@ def enviar_mensaje(request, sesion_id):
         remitente_turista=remitente_turista,
         nombre_remitente=nombre_remitente,
         texto=texto,
+        imagen=imagen,
     )
 
     return JsonResponse(
@@ -652,10 +675,37 @@ def enviar_mensaje(request, sesion_id):
 
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
+            "imagen_url": mensaje.imagen.url if mensaje.imagen else None,
             "momento": mensaje.momento.isoformat(),
         },
         status=201,
     )
+
+
+@require_GET
+def descargar_imagen_mensaje(request, sesion_id, mensaje_id):
+    """Descarga la imagen adjunta de un mensaje, si el usuario pertenece a la sesión."""
+    try:
+        sesion = SesionTour.objects.get(id=sesion_id)
+    except SesionTour.DoesNotExist:
+        return JsonResponse({"error": f"La sesión con ID {sesion_id} no existe."}, status=404)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        mensaje = MensajeChat.objects.get(id=mensaje_id, sesion_tour=sesion)
+    except MensajeChat.DoesNotExist:
+        return JsonResponse({"error": "Mensaje no encontrado en la sesión."}, status=404)
+
+    if not mensaje.imagen:
+        return JsonResponse({"error": "El mensaje no tiene imagen adjunta."}, status=404)
+
+    ext = os.path.splitext(mensaje.imagen.name)[1] or ".bin"
+    filename = f"mensaje_{mensaje.id}{ext}"
+
+    response = FileResponse(mensaje.imagen.open("rb"), as_attachment=True, filename=filename)
+    return response
 
 
 @require_GET
@@ -747,6 +797,7 @@ def obtener_mensajes(request, sesion_id):
                 "remitente_key":    _build_sender_key(m),
                 "es_guia":          bool(guia_user_id and m.remitente_id == guia_user_id),
                 "texto":            m.texto,
+                "imagen_url":       m.imagen.url if m.imagen else None,
                 "momento":          momento_serializado.isoformat(),
             }
         )
