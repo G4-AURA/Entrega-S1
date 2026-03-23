@@ -21,9 +21,17 @@ let miUbicacionMarker = null;
 const turistasMarkers = new Map();
 let countdownTimerId  = null;
 let countdownPollId   = null;
-const paradasMarkers  = new Map();
-const paradasDataById = new Map();
-let paradaSeleccionadaId = null;
+let followMeMode = false;
+let routeBounds = null;
+        const origin = lastKnownPosition
+            ? `${lastKnownPosition.lat},${lastKnownPosition.lng}`
+            : null;
+        const mapsUrl = _buildExternalMapUrl(destination, origin);
+        timerContainer.classList.remove('waiting');
+        countdownTimerId = null;
+let lastKnownPosition = null;
+let latestSessionSummary = null;
+let isIOSDevice = false;
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -40,6 +48,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Inicializar mapa ───────────────────────────────────────────────────
     map = L.map('mapa-tour', { zoomControl: false }).setView([37.3891, -5.9845], 15);
 
+    isIOSDevice = _detectIOSDevice();
+
     // Tiles minimalistas: fondo neutro claro donde la polilínea y los marcadores
     // destacan sin competir con texturas de satélite.
     const token = typeof mapboxToken !== 'undefined' ? mapboxToken : '';
@@ -47,18 +57,40 @@ document.addEventListener('DOMContentLoaded', function () {
         ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`
         : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
-    L.tileLayer(tileUrl, {
+    const baseLayer = L.tileLayer(tileUrl, {
         maxZoom:     19,
         attribution: token
             ? '© <a href="https://mapbox.com">Mapbox</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
             : '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
     }).addTo(map);
 
+    let hasTileFallback = false;
+    baseLayer.on('tileerror', () => {
+        if (hasTileFallback || !map || !token) return;
+        hasTileFallback = true;
+        map.removeLayer(baseLayer);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+        }).addTo(map);
+    });
+
     L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // iOS Safari puede calcular mal el tamaño inicial del mapa con barras dinámicas.
+    const refreshMapSize = () => {
+        if (!map) return;
+        map.invalidateSize({ pan: false, animate: false });
+    };
+    window.setTimeout(refreshMapSize, 120);
+    window.addEventListener('resize', refreshMapSize);
+    window.addEventListener('orientationchange', () => window.setTimeout(refreshMapSize, 180));
 
     // ── Dibujar recorrido y paradas ───────────────────────────────────────
     _dibujarRutaYParadas();
     _initParadaFocusButtons();
+    _initMapActionControls();
+    _initSessionSummaryPanel();
 
 
     // ── Posición propia ───────────────────────────────────────────────────
@@ -77,7 +109,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const panelHeader = document.querySelector('.panel-header');
     const tourPanel   = document.querySelector('.tour-panel');
     if (panelHeader && tourPanel) {
-        panelHeader.addEventListener('click', () => tourPanel.classList.toggle('expanded'));
+        _initDraggableTourPanel(tourPanel, panelHeader);
     }
 
     // ── Tabs Itinerario / Chat ─────────────────────────────────────────────
@@ -87,7 +119,8 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             this.classList.add('active');
-            document.getElementById('tab-' + target)?.classList.add('active');
+            const targetContent = document.getElementById('tab-' + target);
+            if (targetContent) targetContent.classList.add('active');
             if (target === 'chat') {
                 const badge = document.getElementById('chat-badge');
                 if (badge) badge.style.display = 'none';
@@ -109,17 +142,17 @@ function _dibujarRutaYParadas() {
     // 1. Polilínea del recorrido real (geometría calculada por GraphHopper, guardada en BD)
     //    `geometriaRuta` se inyecta desde el template como [[lat,lon],...] o null.
     if (typeof geometriaRuta !== 'undefined' && geometriaRuta && geometriaRuta.length >= 2) {
-        L.polyline(geometriaRuta, {
+        const routeLine = L.polyline(geometriaRuta, {
             color:        '#4f46e5',   // índigo — color primario de AURA
             weight:       4,
             opacity:      0.75,
             smoothFactor: 1,
         }).addTo(map);
 
-        map.fitBounds(L.latLngBounds(geometriaRuta), { padding: [48, 48] });
+        routeBounds = routeLine.getBounds();
+        map.fitBounds(routeBounds, { padding: [48, 48] });
     }
 
-    // 2. Marcadores de paradas
     if (typeof paradasData === 'undefined' || !Array.isArray(paradasData)) return;
 
     const bounds = [];
@@ -150,7 +183,133 @@ function _dibujarRutaYParadas() {
         bounds.length === 1
             ? map.setView(bounds[0], 16)
             : map.fitBounds(L.latLngBounds(bounds), { padding: [48, 48] });
+
+        routeBounds = bounds.length === 1
+            ? L.latLngBounds([bounds[0], bounds[0]])
+            : L.latLngBounds(bounds);
     }
+}
+
+
+function _detectIOSDevice() {
+    const ua = navigator.userAgent || '';
+    const isClassicIOS = /iPad|iPhone|iPod/i.test(ua);
+    const isIPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    return isClassicIOS || isIPadOS;
+}
+
+
+function _initDraggableTourPanel(tourPanel, panelHeader) {
+    if (!tourPanel || !panelHeader) return;
+
+    const getLimits = () => {
+        const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+        const collapsed = Math.round(Math.max(240, Math.min(vh * 0.36, 360)));
+        const expanded = Math.round(Math.max(420, Math.min(vh * 0.88, vh - 14)));
+        return {
+            collapsed,
+            expanded: Math.max(expanded, collapsed + 120),
+        };
+    };
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+
+    let limits = getLimits();
+    let currentHeight = limits.collapsed;
+    let dragging = false;
+    let moved = false;
+    let startY = 0;
+    let startHeight = limits.collapsed;
+
+    const applyHeight = (height, withTransition) => {
+        currentHeight = clamp(height, limits.collapsed, limits.expanded);
+        tourPanel.style.transition = withTransition ? 'height 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+        tourPanel.style.height = `${Math.round(currentHeight)}px`;
+        tourPanel.classList.toggle('expanded', currentHeight > (limits.collapsed + limits.expanded) / 2);
+    };
+
+    const expand = () => applyHeight(limits.expanded, true);
+    const collapse = () => applyHeight(limits.collapsed, true);
+
+    applyHeight(currentHeight, false);
+
+    panelHeader.addEventListener('pointerdown', event => {
+        dragging = true;
+        moved = false;
+        startY = event.clientY;
+        startHeight = currentHeight;
+        tourPanel.style.willChange = 'height';
+        panelHeader.setPointerCapture(event.pointerId);
+    });
+
+    panelHeader.addEventListener('pointermove', event => {
+        if (!dragging) return;
+        const delta = startY - event.clientY;
+        if (Math.abs(delta) > 3) moved = true;
+        const nextHeight = clamp(startHeight + delta, limits.collapsed, limits.expanded);
+        applyHeight(nextHeight, false);
+    });
+
+    const endDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        tourPanel.style.willChange = '';
+
+        if (!moved) {
+            if (tourPanel.classList.contains('expanded')) collapse();
+            else expand();
+            return;
+        }
+
+        const threshold = (limits.collapsed + limits.expanded) / 2;
+        if (currentHeight >= threshold) expand();
+        else collapse();
+    };
+
+    panelHeader.addEventListener('pointerup', endDrag);
+    panelHeader.addEventListener('pointercancel', endDrag);
+
+        // Fallback para Safari iOS que puede no disparar Pointer Events de forma fiable.
+        panelHeader.addEventListener('touchstart', event => {
+            const touch = event.touches && event.touches[0];
+            if (!touch) return;
+            dragging = true;
+            moved = false;
+            startY = touch.clientY;
+            startHeight = currentHeight;
+            tourPanel.style.willChange = 'height';
+        }, { passive: true });
+
+        panelHeader.addEventListener('touchmove', event => {
+            if (!dragging) return;
+            const touch = event.touches && event.touches[0];
+            if (!touch) return;
+            const delta = startY - touch.clientY;
+            if (Math.abs(delta) > 3) moved = true;
+            const nextHeight = clamp(startHeight + delta, limits.collapsed, limits.expanded);
+            applyHeight(nextHeight, false);
+        }, { passive: true });
+
+        panelHeader.addEventListener('touchend', endDrag, { passive: true });
+        panelHeader.addEventListener('touchcancel', endDrag, { passive: true });
+
+    window.addEventListener('resize', () => {
+        limits = getLimits();
+        applyHeight(currentHeight, false);
+    });
+}
+
+
+function _buildExternalMapUrl(destination, origin) {
+    const destinationParam = encodeURIComponent(destination);
+
+    if (isIOSDevice) {
+        const originParam = origin ? `&saddr=${encodeURIComponent(origin)}` : '';
+        return `https://maps.apple.com/?daddr=${destinationParam}${originParam}&dirflg=w`;
+    }
+
+    const originParam = origin ? `&origin=${encodeURIComponent(origin)}` : '';
+    return `https://www.google.com/maps/dir/?api=1&destination=${destinationParam}${originParam}&travelmode=walking`;
 }
 
 
@@ -184,6 +343,13 @@ function _iniciarRastreoLocal() {
                 }).addTo(map).bindPopup(esGuia ? 'Guía (tú)' : 'Tú');
             } else {
                 miUbicacionMarker.setLatLng(pos);
+            }
+
+            lastKnownPosition = { lat, lng };
+            _renderNavigationMetrics();
+
+            if (followMeMode && map) {
+                map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.5 });
             }
 
             // El guía envía su posición al servidor para que los turistas la vean
@@ -442,7 +608,8 @@ function _initChat() {
 
     function renderMessages(msgs) {
         if (!msgs || !msgs.length) return;
-        chatMessages.querySelector('.chat-empty')?.remove();
+        const emptyState = chatMessages.querySelector('.chat-empty');
+        if (emptyState) emptyState.remove();
         const me = myName();
 
         msgs.forEach(msg => {
@@ -691,4 +858,287 @@ function _buildParadaIcon(parada, highlighted = false) {
         iconAnchor: [size / 2, size / 2],
         popupAnchor: [0, -(size / 2) - 4],
     });
+}
+
+
+function _initMapActionControls() {
+    const btnCenterRoute = document.getElementById('btn-center-route');
+    const btnCenterMe = document.getElementById('btn-center-me');
+    const btnFollowMe = document.getElementById('btn-follow-me');
+
+    if (btnCenterRoute) {
+        btnCenterRoute.addEventListener('click', () => {
+            if (!map || !routeBounds || !routeBounds.isValid()) return;
+            map.fitBounds(routeBounds, { padding: [42, 42] });
+        });
+    }
+
+    if (btnCenterMe) {
+        btnCenterMe.addEventListener('click', () => {
+            if (!map || !miUbicacionMarker) return;
+            const pos = miUbicacionMarker.getLatLng();
+            map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.45 });
+        });
+    }
+
+    if (btnFollowMe) {
+        btnFollowMe.addEventListener('click', () => {
+            followMeMode = !followMeMode;
+            btnFollowMe.classList.toggle('is-active', followMeMode);
+        });
+    }
+}
+
+
+function _initSessionSummaryPanel() {
+    if (typeof mapSummaryUrl === 'undefined' || !mapSummaryUrl) return;
+
+    const fetchSummary = () => {
+        fetch(`${mapSummaryUrl}?_=${Date.now()}`, { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(_renderSessionSummary)
+            .catch(() => {});
+    };
+
+    fetchSummary();
+    sessionSummaryPollId = setInterval(fetchSummary, 5000);
+}
+
+
+function _renderSessionSummary(summary) {
+    if (!summary) return;
+    latestSessionSummary = summary;
+
+    const rutaData = summary.ruta || {};
+    const paradaActual = summary.parada_actual || null;
+    const guiaUbicacion = summary.guia_ubicacion || null;
+
+    const hudRuta = document.getElementById('hud-ruta');
+    const hudParticipantes = document.getElementById('hud-participantes');
+    const hudParada = document.getElementById('hud-parada-actual');
+
+    const routeTitle = rutaData.titulo || 'Ruta en sesión';
+    const participantCount = Number.isFinite(summary.participantes_activos)
+        ? summary.participantes_activos
+        : 0;
+    const currentStopName = paradaActual && paradaActual.nombre ? paradaActual.nombre : 'Sin parada activa';
+
+    if (hudRuta) hudRuta.textContent = routeTitle;
+    if (hudParticipantes) hudParticipantes.textContent = `${participantCount} participantes`;
+    if (hudParada) hudParada.textContent = `Parada actual: ${currentStopName}`;
+
+    const codeLive = document.getElementById('session-code-live');
+    const stateLive = document.getElementById('session-state-live');
+    const durationLive = document.getElementById('session-duration-live');
+    const stopsLive = document.getElementById('session-stops-live');
+    const currentStopLive = document.getElementById('session-current-stop-name');
+    const durationHours = rutaData.duracion_horas != null ? rutaData.duracion_horas : '-';
+    const totalStops = rutaData.paradas_total != null ? rutaData.paradas_total : 0;
+
+    if (codeLive) codeLive.textContent = summary.codigo_acceso || '-';
+    if (stateLive) stateLive.textContent = String(summary.estado || '-').replace('_', ' ').toUpperCase();
+    if (durationLive) durationLive.textContent = `${durationHours} h`;
+    if (stopsLive) stopsLive.textContent = `${totalStops}`;
+    if (currentStopLive) {
+        currentStopLive.textContent = paradaActual
+            ? `${paradaActual.nombre} · Parada ${paradaActual.orden}`
+            : 'Sin parada activa';
+    }
+
+}
+
+        const startTicker = () => {
+            if (countdownTimerId) {
+                clearInterval(countdownTimerId);
+                countdownTimerId = null;
+            }
+
+            timerContainer.classList.remove('waiting');
+            let endTimestamp = startTimestamp + countdownMs;
+            let remainingSeconds = Math.max(0, Math.floor((endTimestamp - Date.now()) / 1000));
+            let lastTickAt = Date.now();
+
+            const render = () => {
+                timerValue.textContent = _formatRemainingTime(remainingSeconds * 1000);
+                if (remainingSeconds === 0) {
+                    timerContainer.classList.add('finished');
+                    if (countdownTimerId) {
+                        clearInterval(countdownTimerId);
+                        countdownTimerId = null;
+                    }
+                } else {
+                    timerContainer.classList.remove('finished');
+                }
+            };
+
+            render();
+            countdownTimerId = setInterval(() => {
+                const tickNow = Date.now();
+                const elapsedSeconds = Math.max(1, Math.floor((tickNow - lastTickAt) / 1000));
+                remainingSeconds = Math.max(0, remainingSeconds - elapsedSeconds);
+                lastTickAt = tickNow;
+                if (remainingSeconds > 0) endTimestamp = tickNow + (remainingSeconds * 1000);
+                render();
+            }, 1000);
+        };
+
+        if (sesionIniciada) startTicker();
+        else setWaitingUi();
+
+        fetchCountdownState();
+        countdownPollId = setInterval(fetchCountdownState, 1200);
+
+        if (startBtn) {
+            startBtn.addEventListener('click', () => {
+                if (sesionIniciada) return;
+                if (typeof startCountdownUrl === 'undefined' || !startCountdownUrl) return;
+
+                startBtn.disabled = true;
+                fetch(startCountdownUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': _getCsrf(), 'Accept': 'application/json' },
+                })
+                    .then(r => r.ok ? r.json() : Promise.reject())
+                    .then(data => {
+                        if (data && data.estado === 'en_curso' && data.fecha_inicio) {
+                            const parsed = Date.parse(data.fecha_inicio);
+                            if (Number.isFinite(parsed)) startTimestamp = parsed;
+                            sesionIniciada = true;
+                            startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+                            startTicker();
+                        } else {
+                            startBtn.disabled = false;
+                        }
+                    })
+                    .catch(() => { startBtn.disabled = false; });
+            });
+        }
+
+
+function _escapeHtml(value) {
+    const container = document.createElement('div');
+    container.textContent = String(value == null ? '' : value);
+    return container.innerHTML;
+}
+
+
+function _renderNavigationMetrics() {
+    const targetEl = document.getElementById('session-nav-target');
+    const distanceEl = document.getElementById('session-nav-distance');
+    const etaEl = document.getElementById('session-nav-eta');
+    const nextStopEl = document.getElementById('session-nav-next-stop');
+    const navigateBtn = document.getElementById('session-open-navigation');
+
+    if (!targetEl || !distanceEl || !etaEl || !nextStopEl || !navigateBtn) return;
+
+    if (isIOSDevice) {
+        navigateBtn.innerHTML = '<span class="material-icons-round">map</span>Abrir en Mapas';
+        navigateBtn.setAttribute('aria-label', 'Abrir en Mapas');
+        navigateBtn.setAttribute('title', 'Abrir en Mapas');
+    } else {
+        navigateBtn.innerHTML = '<span class="material-icons-round">navigation</span>Abrir navegación externa';
+        navigateBtn.setAttribute('aria-label', 'Abrir navegación externa');
+        navigateBtn.setAttribute('title', 'Abrir navegación externa');
+    }
+
+    const currentStop = latestSessionSummary && latestSessionSummary.parada_actual
+        ? latestSessionSummary.parada_actual
+        : null;
+    const nextStop = _resolveNextStop(currentStop);
+    const navTarget = currentStop || nextStop;
+
+    targetEl.textContent = navTarget ? `${navTarget.nombre} · Parada ${navTarget.orden}` : 'Sin objetivo';
+    nextStopEl.textContent = nextStop ? `${nextStop.nombre} · Parada ${nextStop.orden}` : 'Fin de ruta';
+
+    if (!navTarget || navTarget.lat == null || navTarget.lng == null) {
+        distanceEl.textContent = '--';
+        etaEl.textContent = '--';
+        navigateBtn.disabled = true;
+        navigateBtn.dataset.destination = '';
+        return;
+    }
+
+    navigateBtn.disabled = false;
+    navigateBtn.dataset.destination = `${navTarget.lat},${navTarget.lng}`;
+
+    if (!lastKnownPosition) {
+        distanceEl.textContent = 'Activa ubicación';
+        etaEl.textContent = '--';
+    } else {
+        const meters = _haversineMeters(
+            lastKnownPosition.lat,
+            lastKnownPosition.lng,
+            Number(navTarget.lat),
+            Number(navTarget.lng),
+        );
+        distanceEl.textContent = _formatDistance(meters);
+        etaEl.textContent = _formatEta(meters, 1.35);
+    }
+
+    if (!navigateBtn.dataset.bound) {
+        navigateBtn.addEventListener('click', () => {
+            const destination = navigateBtn.dataset.destination;
+            if (!destination) return;
+
+            const origin = lastKnownPosition
+                ? `${lastKnownPosition.lat},${lastKnownPosition.lng}`
+                : null;
+            const mapsUrl = _buildExternalMapUrl(destination, origin);
+            window.open(mapsUrl, '_blank');
+        });
+        navigateBtn.dataset.bound = '1';
+    }
+}
+
+
+function _resolveNextStop(currentStop) {
+    if (!Array.isArray(paradasData) || !paradasData.length) return null;
+
+    const sorted = [...paradasData]
+        .filter(stop => stop && Number.isFinite(Number(stop.orden)))
+        .sort((a, b) => Number(a.orden) - Number(b.orden));
+
+    if (!sorted.length) return null;
+
+    if (!currentStop) {
+        return sorted[0] || null;
+    }
+
+    const currentOrder = Number(currentStop.orden);
+    return sorted.find(stop => Number(stop.orden) > currentOrder) || null;
+}
+
+
+function _haversineMeters(lat1, lon1, lat2, lon2) {
+    const toRadians = degrees => (degrees * Math.PI) / 180;
+    const earthRadius = 6371000;
+
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const radLat1 = toRadians(lat1);
+    const radLat2 = toRadians(lat2);
+
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return earthRadius * c;
+}
+
+
+function _formatDistance(meters) {
+    if (!Number.isFinite(meters) || meters < 0) return '--';
+    if (meters < 1000) return `${Math.round(meters)} m`;
+    return `${(meters / 1000).toFixed(2)} km`;
+}
+
+
+function _formatEta(meters, speedMps) {
+    if (!Number.isFinite(meters) || !Number.isFinite(speedMps) || speedMps <= 0) return '--';
+    const totalMinutes = Math.max(1, Math.round((meters / speedMps) / 60));
+    if (totalMinutes < 60) return `${totalMinutes} min`;
+
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
 }

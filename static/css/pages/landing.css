@@ -1,37 +1,76 @@
-/* static/css/pages/landing.css */
-
 .landing-wrapper {
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        background-color: var(--bg-app);
-        padding: 2rem 1rem;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2rem 0.7rem;
+}
+
+.landing-wrapper .container {
+    max-width: 980px;
+}
+
+.role-card {
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(216, 226, 223, 0.85);
+    background: rgba(255, 253, 250, 0.88);
+    backdrop-filter: blur(10px);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    cursor: pointer;
+    animation: card-in 0.55s ease both;
+}
+
+.role-card:nth-child(2) {
+    animation-delay: 0.08s;
+}
+
+.role-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-lg) !important;
+    border-color: rgba(15, 118, 110, 0.35);
+}
+
+a.role-card {
+    text-decoration: none;
+    color: inherit;
+}
+
+.icon-box {
+    width: 78px;
+    height: 78px;
+    background: linear-gradient(140deg, var(--brand-light), #fef3e8);
+    color: var(--brand-color);
+    border-radius: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+@keyframes card-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
     }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 767.98px) {
+    .landing-wrapper {
+        padding: 1.2rem 0.3rem 2rem;
+    }
+
     .role-card {
-        border-radius: var(--radius-xl, 16px);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        cursor: pointer;
-        border: 2px solid transparent;
-        background: white;
+        border-radius: 22px;
+        padding: 1.25rem !important;
     }
-    .role-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08)!important;
-        border-color: var(--brand-color);
-    }
-    a.role-card {
-        text-decoration: none;
-        color: inherit;
-    }
+
     .icon-box {
-        width: 72px;
-        height: 72px;
-        background-color: var(--brand-light, #e9ecef);
-        color: var(--brand-color, #0d6efd);
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 1.5rem;
+        width: 70px;
+        height: 70px;
+        border-radius: 18px;
     }
+}

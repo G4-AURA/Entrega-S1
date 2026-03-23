@@ -282,6 +282,75 @@ def estado_cronometro(request, sesion_id):
     )
 
 
+@require_GET
+def resumen_mapa_sesion(request, sesion_id):
+    """Resumen de sesión en vivo para el mapa de guía y turistas."""
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    snapshot = services.get_route_snapshot(sesion)
+    parada_actual = next((p for p in snapshot.get("paradas", []) if p.get("es_actual")), None)
+
+    participantes_activos_qs = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        activo=True,
+    ).select_related("turista")
+    participantes_activos = participantes_activos_qs.count()
+
+    es_guia = bool(
+        request.user.is_authenticated and services.es_guia_de_sesion(request.user, sesion)
+    )
+
+    guia_ultima = None
+    try:
+        guia_user = sesion.ruta.guia.user.user
+        guia_ultima = (
+            UbicacionVivo.objects.filter(sesion_tour=sesion, usuario=guia_user)
+            .order_by("-timestamp")
+            .first()
+        )
+    except AttributeError:
+        guia_ultima = None
+
+    guia_ubicacion = None
+    if guia_ultima and guia_ultima.coordenadas:
+        guia_ubicacion = {
+            "lat": guia_ultima.coordenadas.y,
+            "lng": guia_ultima.coordenadas.x,
+            "timestamp": guia_ultima.timestamp.isoformat(),
+        }
+
+    payload = {
+        "sesion_id": sesion.id,
+        "estado": sesion.estado,
+        "codigo_acceso": sesion.codigo_acceso,
+        "ruta": {
+            "id": sesion.ruta_id,
+            "titulo": sesion.ruta.titulo,
+            "duracion_horas": sesion.ruta.duracion_horas,
+            "paradas_total": len(snapshot.get("paradas", [])),
+        },
+        "parada_actual": parada_actual,
+        "participantes_activos": participantes_activos,
+        "es_guia": es_guia,
+        "guia_ubicacion": guia_ubicacion,
+    }
+
+    if es_guia:
+        payload["participantes"] = [
+            {
+                "id": item.turista_id,
+                "alias": item.turista.alias,
+                "fecha_union": item.fecha_union.isoformat(),
+            }
+            for item in participantes_activos_qs.order_by("-fecha_union")[:20]
+        ]
+
+    return JsonResponse(payload)
+
+
 @login_required
 @require_POST
 def seleccionar_parada_actual(request, sesion_id):

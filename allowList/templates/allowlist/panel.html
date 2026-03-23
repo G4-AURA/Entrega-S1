@@ -6,17 +6,45 @@
 {% block extra_css %}
 <style>
 :root {
-    --al-accent:    #0f766e;
-    --al-accent-lt: #ccfbf1;
-    --al-accent-dk: #134e4a;
+    --al-accent:    var(--brand-color);
+    --al-accent-lt: var(--brand-light);
+    --al-accent-dk: var(--brand-hover);
     --al-warn:      #b45309;
     --al-warn-lt:   #fef3c7;
-    --al-danger:    #dc2626;
-    --al-danger-lt: #fee2e2;
+    --al-danger:    var(--danger);
+    --al-danger-lt: var(--danger-light);
     --al-osm:       #3d6e29;
     --al-osm-lt:    #dcfce7;
     --al-manual:    #4338ca;
     --al-manual-lt: #e0e7ff;
+}
+
+.al-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    animation: rise-in 0.35s ease both;
+}
+
+.al-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.al-page-title {
+    font-size: 1.65rem;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: -0.03em;
+}
+
+.al-page-subtitle {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    margin: 0.3rem 0 0;
 }
 
 /* ── Stats bar ── */
@@ -27,18 +55,19 @@
     margin-bottom: 2rem;
 }
 .al-stat-card {
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.74);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     padding: 1.25rem 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(5px);
 }
 .al-stat-value {
     font-size: 2rem;
     font-weight: 800;
-    font-family: 'Manrope', sans-serif;
     line-height: 1;
 }
 .al-stat-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
@@ -46,10 +75,10 @@
 /* ── Action buttons ── */
 .al-actions { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .al-btn-osm {
-    background: var(--al-osm);
+    background: linear-gradient(140deg, var(--al-osm), #2f5b21);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 0.65rem 1.25rem;
     font-weight: 700;
     font-size: 0.9rem;
@@ -57,14 +86,15 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    transition: background 0.15s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: var(--shadow-xs);
 }
-.al-btn-osm:hover { background: var(--al-accent-dk); color: white; }
+.al-btn-osm:hover { color: white; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .al-btn-manual {
-    background: var(--al-manual);
+    background: linear-gradient(145deg, var(--al-manual), #342aa0);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 0.65rem 1.25rem;
     font-weight: 700;
     font-size: 0.9rem;
@@ -72,27 +102,29 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    transition: background 0.15s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: var(--shadow-xs);
 }
-.al-btn-manual:hover { background: #3730a3; color: white; }
+.al-btn-manual:hover { color: white; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 
 /* ── Filters ── */
 .al-filters {
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.82);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     padding: 1rem 1.25rem;
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
     align-items: flex-end;
     margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-xs);
 }
 .al-filter-group { display: flex; flex-direction: column; gap: 0.25rem; min-width: 140px; }
 .al-filter-label { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 .al-filter-input {
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-sm);
     padding: 0.45rem 0.75rem;
     font-size: 0.875rem;
     background: var(--bg-white);
@@ -100,22 +132,23 @@
 }
 .al-filter-input:focus { outline: none; border-color: var(--al-accent); box-shadow: 0 0 0 2px var(--al-accent-lt); }
 .al-btn-filter {
-    background: var(--al-accent);
+    background: linear-gradient(140deg, var(--al-accent), #0e9387);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 0.45rem 1rem;
     font-size: 0.875rem;
     font-weight: 700;
     cursor: pointer;
     align-self: flex-end;
+    box-shadow: var(--shadow-primary);
 }
 
 /* ── Table ── */
-.al-table-wrap { background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
+.al-table-wrap { background: var(--bg-white); border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
 .al-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 .al-table th {
-    background: var(--bg-surface);
+    background: #f6f9f7;
     padding: 0.65rem 1rem;
     text-align: left;
     font-size: 0.75rem;
@@ -125,9 +158,9 @@
     letter-spacing: .05em;
     border-bottom: 1px solid var(--border-color);
 }
-.al-table td { padding: 0.7rem 1rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.al-table td { padding: 0.7rem 1rem; border-bottom: 1px solid #edf2f0; vertical-align: middle; }
 .al-table tr:last-child td { border-bottom: none; }
-.al-table tr:hover td { background: var(--bg-surface); }
+.al-table tr:hover td { background: #f8fbfa; }
 
 .badge-osm    { background: var(--al-osm-lt);    color: var(--al-osm);    border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.72rem; font-weight: 700; }
 .badge-manual { background: var(--al-manual-lt); color: var(--al-manual); border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.72rem; font-weight: 700; }
@@ -152,13 +185,14 @@
 .al-page-btn {
     border: 1px solid var(--border-color);
     background: var(--bg-white);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 0.4rem 0.8rem;
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
 }
 .al-page-btn:disabled { opacity: 0.4; cursor: default; }
+.al-page-btn:not(:disabled):hover { border-color: var(--al-accent); color: var(--al-accent); }
 .al-page-info { font-size: 0.8rem; color: var(--text-muted); }
 
 /* ── Loading / empty ── */
@@ -189,6 +223,7 @@
 .al-toast.err { border-left: 4px solid #ef4444; }
 
 @media (max-width: 768px) {
+    .al-page-title { font-size: 1.35rem; }
     .al-stats { grid-template-columns: 1fr 1fr; }
     .al-table th:nth-child(4),
     .al-table td:nth-child(4),
@@ -199,17 +234,17 @@
 {% endblock %}
 
 {% block content %}
-<div style="max-width:1200px;margin:0 auto;">
+<div class="al-page">
 
     <br>
 
     <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+    <div class="al-page-header">
         <div>
-            <h1 style="font-family:'Manrope',sans-serif;font-size:1.6rem;font-weight:800;margin:0;letter-spacing:-.03em;">
+            <h1 class="al-page-title">
                 🗂️ Allowlist de POIs
             </h1>
-            <p style="color:var(--text-muted);font-size:0.875rem;margin:.25rem 0 0;">
+            <p class="al-page-subtitle">
                 Base de datos de lugares autorizados para el motor de generación de rutas.
             </p>
         </div>

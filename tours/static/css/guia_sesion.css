@@ -1,40 +1,33 @@
-/* ── Panel de sesión ────────────────────────────────────────────────── */
 .session-dashboard {
     min-height: 100vh;
-    background: var(--bg-app);
 }
 
 .session-title {
-    font-family: 'Manrope', sans-serif;
-    font-size: 1.75rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
+    font-size: clamp(1.4rem, 4vw, 2rem);
     margin: 0;
-    color: var(--text-primary);
 }
 
 .session-card {
-    background: var(--bg-white);
-    border-radius: 12px;
+    background: rgba(255, 253, 250, 0.92);
+    border-radius: 18px;
     border: 1px solid var(--border-color);
-    padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    padding: 1rem;
+    box-shadow: var(--shadow-sm);
 }
 
-/* ── Estado ─────────────────────────────────────────────────────────── */
 .session-status-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    gap: 0.65rem;
+    margin-bottom: 1rem;
 }
 
 .status-dot {
-    width: 12px;
-    height: 12px;
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
     box-shadow: 0 0 0 3px;
-    animation: pulse 2s infinite;
+    animation: status-pulse 1.2s infinite;
 }
 
 .status-dot--active {
@@ -53,10 +46,9 @@
 }
 
 .sesion-estado-label {
-    font-family: 'Manrope', sans-serif;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-size: 0.73rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
 }
 
@@ -72,46 +64,42 @@
     color: var(--danger);
 }
 
-/* ── Código de acceso ──────────────────────────────────────────────– */
 .session-code-display {
-    font-family: 'Monaco', 'Courier New', monospace;
-    font-size: 2rem;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 1.7rem;
     font-weight: 700;
     text-align: center;
-    letter-spacing: 4px;
-    padding: 1.25rem;
+    letter-spacing: 3px;
+    padding: 1rem;
     background: var(--brand-light);
-    border-radius: 10px;
-    color: var(--brand-color);
-    margin-bottom: 1.5rem;
+    border-radius: 12px;
+    color: var(--brand-hover);
+    margin-bottom: 1rem;
 }
 
-/* ── QR Code ────────────────────────────────────────────────────────── */
 .qr-center {
     text-align: center;
 }
 
-/* ── Botones de acción ────────────────────────────────────────────────── */
 .action-btn-row {
     display: flex;
-    gap: 0.75rem;
+    gap: 0.55rem;
     flex-wrap: wrap;
-    margin-bottom: 1rem;
+    margin-bottom: 0.8rem;
 }
 
 .action-btn-row button {
     flex: 1;
-    min-width: 150px;
+    min-width: 135px;
 }
 
-/* ── Lista de participantes ─────────────────────────────────────────── */
 .participant-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 0.9rem;
+    padding: 0.68rem 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.86rem;
 }
 
 .participant-item:last-child {
@@ -121,18 +109,18 @@
 .participant-name {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.6rem;
     flex: 1;
 }
 
 .participant-avatar {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     background: var(--brand-light);
-    color: var(--brand-color);
+    color: var(--brand-hover);
     font-weight: 700;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -140,12 +128,11 @@
 }
 
 .participant-time {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 
-/* Animación de pulso */
-@keyframes pulse {
+@keyframes status-pulse {
     0% {
         opacity: 1;
     }

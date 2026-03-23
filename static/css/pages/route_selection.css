@@ -1,211 +1,100 @@
-*,
-*::before,
-*::after {
-    box-sizing: border-box;
+.creation-hero {
+    margin: 0.65rem 0 1.8rem;
+    padding: 1.6rem;
+    border-radius: 24px;
+    background: linear-gradient(145deg, rgba(15, 118, 110, 0.12), rgba(249, 115, 22, 0.1));
+    border: 1px solid rgba(216, 226, 223, 0.9);
 }
 
-:root {
-    --primary: #4f46e5;
-    --primary-light: #eef2ff;
-    --ai-color: #7c3aed;
-    --ai-light: #f5f3ff;
-    --bg-app: #f9fafb;
-    --text-main: #111827;
-    --text-sec: #6b7280;
-    --surface: #ffffff;
+.creation-hero-title {
+    font-size: clamp(1.8rem, 5vw, 2.5rem);
+    margin-bottom: 0.45rem;
 }
 
-.route-selection-wrapper {
-    width: 100%;
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 12px 0 28px;
-    overflow-x: clip;
+.creation-hero-sub {
+    margin: 0;
+    color: var(--text-secondary);
+    max-width: 56ch;
 }
 
-.content {
-    text-align: center;
-}
-
-.instruction {
-    font-size: 20px;
-    color: var(--text-sec);
-    margin-bottom: 40px;
-}
-
-.section-title {
-    color: var(--text-main);
-    font-size: clamp(1.8rem, 3vw, 2.3rem);
-    font-weight: 700;
-    margin-bottom: 12px;
-}
-
-.section-subtitle {
-    font-size: 1rem;
-    color: var(--text-sec);
-    margin-bottom: 36px;
-}
-
-.options-container {
+.creation-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px;
-    max-width: 900px;
-    margin: 0 auto;
-    width: 100%;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 
-.option-card {
-    background-color: var(--surface);
-    border-radius: 20px;
-    padding: 40px 28px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 3px solid transparent;
-    box-shadow: 0 4px 12px rgb(0 0 0 / 8%);
+.creation-card {
     position: relative;
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
     text-decoration: none;
     color: inherit;
-    min-height: 290px;
-    width: 100%;
-}
-
-.option-card:hover,
-.option-card:focus-visible {
-    transform: translateY(-8px);
-    box-shadow: 0 12px 24px rgb(0 0 0 / 15%);
-}
-
-.option-card:focus-visible {
-    outline: 3px solid rgb(79 70 229 / 35%);
-    outline-offset: 4px;
-}
-
-.option-manual:hover,
-.option-manual:focus-visible {
-    border-color: var(--primary);
-    background-color: var(--primary-light);
-}
-
-.option-manual .icon-container {
-    background-color: var(--primary-light);
-    color: var(--primary);
-}
-
-.option-ai {
-    border-color: rgb(124 58 237 / 20%);
-}
-
-.option-ai:hover,
-.option-ai:focus-visible {
-    border-color: var(--ai-color);
-    background-color: var(--ai-light);
-}
-
-.option-ai .icon-container {
-    background-color: var(--ai-light);
-    color: var(--ai-color);
-}
-
-.icon-container {
-    width: 80px;
-    height: 80px;
+    background: rgba(255, 253, 250, 0.9);
+    border: 1px solid rgba(216, 226, 223, 0.9);
     border-radius: 24px;
-    display: flex;
+    padding: 1.4rem;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.creation-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-md);
+}
+
+.card-ai {
+    background: linear-gradient(160deg, rgba(21, 94, 117, 0.08), rgba(255, 237, 213, 0.7));
+}
+
+.creation-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    background: var(--brand-light);
+    color: var(--brand-color);
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 24px;
-    transition: all 0.3s ease;
 }
 
-.material-icons-round {
-    font-size: 40px;
+.creation-card-title {
+    font-family: 'Fraunces', serif;
+    font-size: 1.45rem;
+    line-height: 1.1;
 }
 
-.card-title {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 12px;
-    display: block;
-}
-
-.card-desc {
-    font-size: 16px;
-    color: var(--text-sec);
-    line-height: 1.6;
-    display: block;
+.creation-card-desc {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
 }
 
 .badge-recommended {
     position: absolute;
-    top: 16px;
-    right: 16px;
-    background: linear-gradient(135deg, #7c3aed, #4f46e5);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 6px 14px;
-    border-radius: 16px;
+    top: 0.95rem;
+    right: 0.95rem;
+    border-radius: var(--radius-pill);
+    background: var(--ai-color);
+    color: #ffffff;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    padding: 0.3rem 0.65rem;
 }
 
-@media (max-width: 992px) {
-    .options-container {
+@media (max-width: 767.98px) {
+    .creation-hero {
+        padding: 1.2rem;
+        margin-top: 0.4rem;
+    }
+
+    .creation-options {
         grid-template-columns: 1fr;
-        max-width: 600px;
-    }
-}
-
-@media (max-width: 768px) {
-    .route-selection-wrapper {
-        padding-top: 4px;
     }
 
-    .section-subtitle {
-        margin-bottom: 24px;
-        padding: 0 4px;
-    }
-
-    .instruction {
-        font-size: 18px;
-        margin-bottom: 28px;
-    }
-
-    .option-card {
-        min-height: auto;
-        padding: 28px 20px;
-        border-radius: 16px;
-    }
-
-    .icon-container {
-        width: 68px;
-        height: 68px;
+    .creation-card {
         border-radius: 20px;
-        margin-bottom: 18px;
-    }
-
-    .material-icons-round {
-        font-size: 34px;
-    }
-
-    .card-title {
-        font-size: 21px;
-    }
-
-    .card-desc {
-        font-size: 15px;
-    }
-}
-
-@media (max-width: 420px) {
-    .badge-recommended {
-        top: 10px;
-        right: 10px;
-        font-size: 10px;
-        padding: 5px 10px;
     }
 }

@@ -4,7 +4,7 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026031802">
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026032102">
 {% endblock %}
 
 {% block content %}
@@ -22,6 +22,33 @@
 
 <div id="mapa-tour"></div>
 
+<div class="map-hud" aria-live="polite">
+    <div class="map-hud-pill">
+        <span class="material-icons-round">route</span>
+        <span id="hud-ruta">{{ sesion.ruta.titulo }}</span>
+    </div>
+    <div class="map-hud-pill">
+        <span class="material-icons-round">groups</span>
+        <span id="hud-participantes">-- participantes</span>
+    </div>
+    <div class="map-hud-pill">
+        <span class="material-icons-round">flag</span>
+        <span id="hud-parada-actual">Parada actual: --</span>
+    </div>
+</div>
+
+<div class="map-actions" aria-label="Controles de mapa">
+    <button type="button" class="map-action-btn" id="btn-center-route" title="Centrar ruta">
+        <span class="material-icons-round">route</span>
+    </button>
+    <button type="button" class="map-action-btn" id="btn-center-me" title="Mi ubicación">
+        <span class="material-icons-round">my_location</span>
+    </button>
+    <button type="button" class="map-action-btn" id="btn-follow-me" title="Seguir mi ubicación">
+        <span class="material-icons-round">gps_fixed</span>
+    </button>
+</div>
+
 <div class="tour-panel">
 
     <div class="panel-header">
@@ -37,6 +64,10 @@
             <span class="material-icons-round">chat</span>
             Chat
             <span class="chat-badge" id="chat-badge" style="display:none;"></span>
+        </button>
+        <button class="tab-btn" data-tab="sesion">
+            <span class="material-icons-round">info</span>
+            Sesión
         </button>
     </div>
 
@@ -119,6 +150,70 @@
             </div>
         </div>
 
+        <div class="tab-content" id="tab-sesion">
+            <div class="session-insight-grid">
+                <div class="session-insight-card">
+                    <span class="session-insight-label">Código</span>
+                    <strong id="session-code-live">{{ sesion.codigo_acceso }}</strong>
+                </div>
+                <div class="session-insight-card">
+                    <span class="session-insight-label">Estado</span>
+                    <strong id="session-state-live">{{ sesion.get_estado_display }}</strong>
+                </div>
+                <div class="session-insight-card">
+                    <span class="session-insight-label">Duración prevista</span>
+                    <strong id="session-duration-live">{{ sesion.ruta.duracion_horas }} h</strong>
+                </div>
+                <div class="session-insight-card">
+                    <span class="session-insight-label">Paradas totales</span>
+                    <strong id="session-stops-live">{{ paradas|length }}</strong>
+                </div>
+            </div>
+
+            <div class="session-current-stop" id="session-current-stop">
+                <h6>Parada activa</h6>
+                <p id="session-current-stop-name">Sin parada activa</p>
+            </div>
+
+            <div class="session-nav-card" id="session-nav-card">
+                <h6>Navegación paso a paso</h6>
+                <div class="session-nav-grid">
+                    <div>
+                        <span class="session-nav-label">Objetivo</span>
+                        <p id="session-nav-target" class="session-nav-value">Sin objetivo</p>
+                    </div>
+                    <div>
+                        <span class="session-nav-label">Distancia</span>
+                        <p id="session-nav-distance" class="session-nav-value">--</p>
+                    </div>
+                    <div>
+                        <span class="session-nav-label">ETA aprox.</span>
+                        <p id="session-nav-eta" class="session-nav-value">--</p>
+                    </div>
+                    <div>
+                        <span class="session-nav-label">Siguiente parada</span>
+                        <p id="session-nav-next-stop" class="session-nav-value">--</p>
+                    </div>
+                </div>
+                <button type="button" class="session-nav-btn" id="session-open-navigation">
+                    <span class="material-icons-round">navigation</span>
+                    Abrir en mapas
+                </button>
+            </div>
+
+            {% if es_guia %}
+            <div class="session-participant-list" id="session-participant-list">
+                <h6>Participantes en tiempo real</h6>
+                <div id="session-participant-items"></div>
+            </div>
+            {% else %}
+            <div class="session-guide-status" id="session-guide-status">
+                <h6>Estado del guía</h6>
+                <p id="session-guide-status-text">Esperando posición del guía...</p>
+            </div>
+            {% endif %}
+        </div>
+
     </div>
 </div>
 {% endblock %}
@@ -141,6 +236,7 @@
     const startCountdownUrl = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
     const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
     const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
+    const mapSummaryUrl = '{% url "tours:resumen_mapa_sesion" sesion.id %}';
 </script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026031804"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026032106"></script>
 {% endblock %}

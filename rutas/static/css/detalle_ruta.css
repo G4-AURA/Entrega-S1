@@ -1,63 +1,59 @@
-/* ── Contenedor del mapa ──────────────────────────────────────────────── */
 .map-container-ruta {
-    height: 500px;
+    height: 440px;
     width: 100%;
-    border-radius: 1rem;
+    border-radius: 16px;
     border: 1px solid var(--border-color);
 }
 
 .list-paradas-container {
     max-height: 500px;
     overflow-y: auto;
+    padding-right: 0.1rem;
 }
 
-/* ── Etiquetas meta ───────────────────────────────────────────────────── */
 .meta-pill {
-    display: inline-block;
-    padding: 0.3rem 0.75rem;
-    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.32rem 0.72rem;
+    border-radius: var(--radius-pill);
     background-color: var(--brand-light);
-    color: var(--brand-color);
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin-right: 0.5rem;
-    margin-bottom: 0.5rem;
+    color: var(--brand-hover);
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-right: 0.35rem;
+    margin-bottom: 0.35rem;
 }
 
 .mood-edit-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.45rem;
 }
 
 .mood-edit-item {
     border: 1px solid var(--border-color);
-    border-radius: 999px;
-    padding: 0.35rem 0.7rem;
-    background: var(--bg-white);
+    border-radius: var(--radius-pill);
+    padding: 0.35rem 0.65rem;
+    background: #ffffff;
 }
 
-/* ── Título y edición ──────────────────────────────────────────────── */
-.titulo-edit-wrap {
+.titulo-edit-wrap,
+.meta-edit-wrap {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
     flex-wrap: wrap;
 }
 
 .btn-edit {
-    border: 1px solid #c7d2fe;
-    background: var(--bg-white);
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 600;
+    border: 1px solid rgba(15, 118, 110, 0.25);
+    background: #ffffff;
+    border-radius: var(--radius-pill);
+    font-size: 0.72rem;
+    font-weight: 700;
     line-height: 1;
-    padding: 0.35rem 0.75rem;
+    padding: 0.34rem 0.7rem;
     color: var(--brand-color);
-    cursor: pointer;
 }
 
 .btn-edit:hover {
@@ -65,39 +61,31 @@
     color: var(--brand-hover);
 }
 
-.meta-edit-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
 .parada-actions {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+    flex-wrap: wrap;
 }
 
 .parada-edit-form {
     margin-top: 0.75rem;
 }
 
-/* ── Formulario agregar parada ────────────────────────────────────── */
 .add-stop-form {
-    border: 1px dashed #cbd5e1;
-    border-radius: 10px;
-    padding: 0.75rem;
+    border: 1px dashed #b8d6d1;
+    border-radius: 12px;
+    padding: 0.7rem;
     margin-bottom: 0.75rem;
-    background: var(--bg-surface);
+    background: #f8fcfb;
 }
 
 .map-edit-hint {
-    font-size: 0.875rem;
+    font-size: 0.84rem;
 }
 
-/* ── Paradas ──────────────────────────────────────────────────────── */
 .parada-item {
-    border-radius: 8px;
+    border-radius: 10px;
     transition: background 0.15s;
 }
 
@@ -107,69 +95,60 @@
 
 .drag-handle {
     cursor: grab;
-    color: #9ca3af;
+    color: #7d9291;
     font-size: 0.85rem;
 }
 
 .parada-coords-preview {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
     margin-top: 0.25rem;
 }
 
-/* ── Panel métricas ────────────────────────────────────────────────── */
 .ruta-metrics-panel {
     display: flex;
-    gap: 1rem;
+    gap: 0.75rem;
     flex-wrap: wrap;
     align-items: center;
-    padding: 0.6rem 1rem;
-    background: var(--brand-light);
-    border: 1px solid #c7d2fe;
-    border-radius: 12px;
+    padding: 0.55rem 0.8rem;
+    background: linear-gradient(140deg, var(--brand-light), #eefaf8);
+    border: 1px solid rgba(15, 118, 110, 0.24);
+    border-radius: 14px;
     margin-bottom: 1rem;
-    font-size: 0.875rem;
+    font-size: 0.84rem;
 }
 
 .metric-item {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    font-weight: 600;
+    gap: 0.3rem;
+    font-weight: 700;
     color: var(--brand-hover);
 }
 
 .metric-value {
-    color: #1e1b4b;
+    color: #123f3b;
 }
 
 .metric-sep {
-    color: #c7d2fe;
-    font-weight: 300;
-    font-size: 1.1rem;
+    color: rgba(15, 118, 110, 0.3);
 }
 
 .metrics-empty {
     color: var(--text-muted);
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-style: italic;
 }
 
-/* ── Botón recalcular ──────────────────────────────────────────────── */
 .btn-recalcular {
     margin-left: auto;
     border: 1px solid var(--brand-color);
-    background: var(--bg-white);
+    background: #ffffff;
     color: var(--brand-color);
-    border-radius: 999px;
-    padding: 0.3rem 0.8rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    transition: background 0.15s;
+    border-radius: var(--radius-pill);
+    padding: 0.34rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 700;
 }
 
 .btn-recalcular:hover {
@@ -177,22 +156,21 @@
 }
 
 .btn-recalcular:disabled {
-    opacity: 0.6;
+    opacity: 0.65;
     cursor: wait;
 }
 
-/* ── Badge estado en el mapa ───────────────────────────────────────── */
 .map-route-status {
     position: absolute;
     top: 10px;
     right: 10px;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.95);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    padding: 0.35rem 0.7rem;
-    font-size: 0.78rem;
-    font-weight: 600;
+    padding: 0.33rem 0.62rem;
+    font-size: 0.76rem;
+    font-weight: 700;
     display: flex;
     align-items: center;
     gap: 0.3rem;
@@ -200,21 +178,21 @@
 }
 
 .map-route-status.ok {
-    color: #059669;
-    border-color: #a7f3d0;
-    background: rgba(240, 253, 250, 0.95);
+    color: #0f766e;
+    border-color: #99f6e4;
+    background: #f0fdfa;
 }
 
 .map-route-status.warn {
-    color: #d97706;
-    border-color: #fcd34d;
-    background: rgba(255, 251, 235, 0.95);
+    color: #b45309;
+    border-color: #fdba74;
+    background: #fff7ed;
 }
 
 .map-route-status.error {
-    color: #dc2626;
+    color: #b91c1c;
     border-color: #fca5a5;
-    background: rgba(254, 242, 242, 0.95);
+    background: #fef2f2;
 }
 
 .map-wrapper {
@@ -222,7 +200,7 @@
 }
 
 .segmento-badge {
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     color: var(--text-muted);
     margin-top: 0.2rem;
 }
@@ -233,38 +211,44 @@
 }
 
 .ia-suggestions-panel {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #f8fafc;
-    padding: 0.75rem;
-    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: #f8fbfa;
+    padding: 0.72rem;
+    margin-bottom: 0.72rem;
 }
 
 .ia-suggestion-item {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: var(--bg-white);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: #ffffff;
     padding: 0.6rem;
     margin-top: 0.5rem;
 }
 
 .ia-suggestion-meta {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
 }
 
 .ia-suggestions-inline {
-    margin-top: 0.75rem;
+    margin-top: 0.72rem;
 }
 
 .ia-suggestion-item__actions {
-    margin-top: 0.5rem;
+    margin-top: 0.48rem;
 }
 
 .checkpoint-context-box {
-    border: 1px solid #dbeafe;
+    border: 1px solid #cde8e3;
     border-radius: 12px;
-    background: #f8fbff;
-    padding: 0.75rem 1rem;
+    background: #f5fbf9;
+    padding: 0.72rem 0.92rem;
     margin-bottom: 1rem;
+}
+
+@media (max-width: 991.98px) {
+    .map-container-ruta {
+        height: 360px;
+    }
 }

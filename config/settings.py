@@ -38,6 +38,7 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '.run.app', # Permite tu-app.run.app y sprint-1---tu-app.run.app
+    'lisa-bushier-turbulently.ngrok-free.dev', # <--- Para pruebas con ngrok (opcional)
 ]
 # Si prefieres usar la variable de entorno, asegúrate de incluir el punto:
 env_hosts = os.getenv('ALLOWED_HOSTS')
@@ -49,10 +50,12 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'https://*.run.app', # <--- El asterisco permite CUALQUIER etiqueta de Cloud Run
+    'https://lisa-bushier-turbulently.ngrok-free.dev',
+    'https://*.ngrok-free.dev',
 ]
 env_csrf = os.getenv('CSRF_TRUSTED_ORIGINS')
 if env_csrf:
-    CSRF_TRUSTED_ORIGINS += env_csrf.split(',')
+    CSRF_TRUSTED_ORIGINS += [origin.strip() for origin in env_csrf.split(',') if origin.strip()]
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
