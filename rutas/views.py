@@ -60,13 +60,17 @@ def es_guia(user):
 def rutas_catalogo(request):
     try:
         limit = int(request.GET.get("limit", 3))
-        if limit > MAX_RUTAS_PAGE_SIZE:
+        if limit <= 0:
+            limit = 3
+        elif limit > MAX_RUTAS_PAGE_SIZE:
             limit = MAX_RUTAS_PAGE_SIZE
     except (TypeError, ValueError):
         limit = 3
 
     try:
         page_number = int(request.GET.get("page", 1))
+        if page_number < 1:
+            page_number = 1
     except (TypeError, ValueError):
         page_number = 1
 

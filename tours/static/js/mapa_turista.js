@@ -354,6 +354,13 @@ async function _solicitarCuriosidadParada(paradaId) {
 function _mostrarCuriosidadAutomatica(parada, curiosidad) {
     if (!curiosidad) return;
 
+    const urlSeguridad = (typeof fallbackCuriosidadImg !== 'undefined' && fallbackCuriosidadImg) 
+                         ? fallbackCuriosidadImg 
+                         : 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=600&auto=format&fit=crop';
+                         
+    const tieneImagen = curiosidad.imagen_url && curiosidad.imagen_url.trim() !== '';
+    const finalImgUrl = tieneImagen ? curiosidad.imagen_url : urlSeguridad;
+    
     const existing = document.getElementById('curiosidad-auto-card');
     if (existing) existing.remove();
 
@@ -365,7 +372,8 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
     card.style.transform = 'translateX(-50%)';
     card.style.top = '16px';
     card.style.zIndex = '9999';
-    card.style.maxWidth = 'min(92vw, 560px)';
+    card.style.maxWidth = 'min(92vw, 400px)'; 
+    card.style.width = '100%';
     card.style.background = '#ffffff';
     card.style.border = '1px solid #e5e7eb';
     card.style.borderLeft = '6px solid #4f46e5';
@@ -379,18 +387,32 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
     const cuerpoTexto = curiosidad.texto ? _escapeHtml(curiosidad.texto) : '';
 
     card.innerHTML = `
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
-            <div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <strong style="font-size:.8rem;color:#111827;">${_escapeHtml(paradaTexto)}</strong>
-                    ${tipoTexto}
-                </div>
-                <h4 style="margin:6px 0 4px 0;font-size:1rem;color:#111827;">${tituloTexto}</h4>
-                <p style="margin:0;font-size:.9rem;color:#374151;line-height:1.35;">${cuerpoTexto}</p>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <strong style="font-size:.8rem;color:#111827;">${_escapeHtml(paradaTexto)}</strong>
+                ${tipoTexto}
             </div>
             <button type="button" id="curiosidad-auto-close" aria-label="Cerrar curiosidad"
                 style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;">×</button>
+        </div>
+        <div id="curiosidad-auto-img-container"></div>
+        <div>
+            <h4 style="margin:0 0 4px 0;font-size:1rem;color:#111827;">${tituloTexto}</h4>
+            <p style="margin:0;font-size:.9rem;color:#374151;line-height:1.35;">${cuerpoTexto}</p>
         </div>`;
+
+    const imgContainer = card.querySelector('#curiosidad-auto-img-container');
+    if (imgContainer) {
+        const imgEl = document.createElement('img');
+        imgEl.src = finalImgUrl;
+        imgEl.style.cssText = "width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);";
+        imgEl.alt = "Imagen de la curiosidad";
+        imgEl.onerror = function() {
+            this.onerror = null;
+            this.src = urlSeguridad;
+        };
+        imgContainer.appendChild(imgEl);
+    }
 
     document.body.appendChild(card);
 
@@ -399,10 +421,45 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
         closeBtn.addEventListener('click', () => card.remove());
     }
 
+    if (parada && parada.id) {
+        const contenedorId = `curiosidad-timeline-${parada.id}`;
+        const contenedor = document.getElementById(contenedorId);
+        
+        if (contenedor) {
+            const tipoEl = document.getElementById(`curiosidad-timeline-tipo-${parada.id}`);
+            if (tipoEl && curiosidad.tipo) tipoEl.textContent = curiosidad.tipo;
+            
+            const tituloEl = document.getElementById(`curiosidad-timeline-titulo-${parada.id}`);
+            if (tituloEl && curiosidad.titulo) tituloEl.textContent = curiosidad.titulo;
+            
+            const textoEl = document.getElementById(`curiosidad-timeline-texto-${parada.id}`);
+            if (textoEl && curiosidad.texto) textoEl.textContent = curiosidad.texto;
+            
+            const imgEl = document.getElementById(`curiosidad-timeline-img-${parada.id}`);
+            if (imgEl) {
+                imgEl.src = finalImgUrl;
+                imgEl.onerror = function() {
+                    this.onerror = null;
+                    this.src = urlSeguridad;
+                };
+                imgEl.style.display = 'block';
+            }
+         
+            contenedor.style.display = 'block';
+           
+            const timelineItem = contenedor.closest('.timeline-item');
+            if (timelineItem) {
+                // Marcar que esta parada ha mostrado una curiosidad sin alterar
+                // el estado de selección (`active` / `text-muted`).
+                timelineItem.classList.add('has-curiosidad');
+            }
+        }
+    }
+  
     setTimeout(() => {
         const mounted = document.getElementById('curiosidad-auto-card');
         if (mounted) mounted.remove();
-    }, 12000);
+    }, 30000);
 }
 
 function _escapeHtml(value) {
