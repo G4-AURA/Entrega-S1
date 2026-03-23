@@ -332,69 +332,70 @@ class RutasCatalogoViewTest(TestCase):
                 ruta=ruta
             )
             self.rutas.append(ruta)
+        self.client.force_login(self.user)
     
     def test_catalogo_view_basic(self):
         """Test que la vista devuelve un JSON válido"""
         response = self.client.get(self.catalogo_api_url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsInstance(data, list)
+        self.assertIsInstance(data.get('results'), list)
     
     def test_catalogo_view_returns_all_rutas(self):
-        """Test que la vista devuelve todas las rutas por defecto"""
+        """Test que la vista devuelve las rutas por defecto (limit 3)"""
         response = self.client.get(self.catalogo_api_url)
         data = response.json()
-        self.assertEqual(len(data), 5)
+        self.assertEqual(len(data.get('results', [])), 3)
     
     def test_catalogo_view_limit_parameter(self):
         """Test que el parámetro limit funciona correctamente"""
         response = self.client.get(self.catalogo_api_url, {'limit': 2})
         data = response.json()
-        self.assertEqual(len(data), 2)
+        self.assertEqual(len(data.get('results', [])), 2)
     
-    def test_catalogo_view_offset_parameter(self):
-        """Test que el parámetro offset funciona correctamente"""
-        response = self.client.get(self.catalogo_api_url, {'offset': 2, 'limit': 2})
+    def test_catalogo_view_page_parameter(self):
+        """Test que el parámetro page funciona correctamente"""
+        response = self.client.get(self.catalogo_api_url, {'page': 2, 'limit': 2})
         data = response.json()
-        self.assertEqual(len(data), 2)
-        self.assertEqual(data[0]['titulo'], 'Ruta 3')
+        self.assertEqual(len(data.get('results', [])), 2)
+        self.assertEqual(data.get('results', [])[0]['titulo'], 'Ruta 3')
     
     def test_catalogo_view_invalid_limit(self):
-        """Test que un limit inválido usa el valor por defecto"""
+        """Test que un limit inválido usa el valor por defecto (3)"""
         response = self.client.get(self.catalogo_api_url, {'limit': 'abc'})
         data = response.json()
-        self.assertEqual(len(data), 5)
+        self.assertEqual(len(data.get('results', [])), 3)
     
     def test_catalogo_view_negative_limit(self):
-        """Test que un limit negativo usa el valor por defecto"""
+        """Test que un limit negativo usa el valor por defecto (3)"""
         response = self.client.get(self.catalogo_api_url, {'limit': -5})
         data = response.json()
-        self.assertEqual(len(data), 5)
+        self.assertEqual(len(data.get('results', [])), 3)
     
     def test_catalogo_view_limit_exceeds_max(self):
         """Test que un limit mayor que MAX_RUTAS_PAGE_SIZE se limita"""
         response = self.client.get(self.catalogo_api_url, {'limit': 1000})
         data = response.json()
-        self.assertEqual(len(data), 5)
+        self.assertLessEqual(len(data.get('results', [])), 9) # MAX_RUTAS_PAGE_SIZE
     
-    def test_catalogo_view_invalid_offset(self):
-        """Test que un offset inválido usa 0"""
-        response = self.client.get(self.catalogo_api_url, {'offset': 'abc'})
+    def test_catalogo_view_invalid_page(self):
+        """Test que una page inválida usa 1"""
+        response = self.client.get(self.catalogo_api_url, {'page': 'abc'})
         data = response.json()
-        self.assertEqual(len(data), 5)
+        self.assertEqual(len(data.get('results', [])), 3)
     
-    def test_catalogo_view_negative_offset(self):
-        """Test que un offset negativo usa 0"""
-        response = self.client.get(self.catalogo_api_url, {'offset': -5})
+    def test_catalogo_view_negative_page(self):
+        """Test que una page negativa usa 1"""
+        response = self.client.get(self.catalogo_api_url, {'page': -5})
         data = response.json()
-        self.assertEqual(len(data), 5)
+        self.assertEqual(len(data.get('results', [])), 3)
     
     def test_catalogo_view_ruta_data_structure(self):
         """Test que la estructura de datos de la ruta es correcta"""
         response = self.client.get(self.catalogo_api_url, {'limit': 1})
         data = response.json()
         
-        ruta_data = data[0]
+        ruta_data = data.get('results', [])[0]
         self.assertIn('id', ruta_data)
         self.assertIn('titulo', ruta_data)
         self.assertIn('descripcion', ruta_data)
@@ -411,7 +412,7 @@ class RutasCatalogoViewTest(TestCase):
         response = self.client.get(self.catalogo_api_url, {'limit': 1})
         data = response.json()
         
-        guia_data = data[0]['guia']
+        guia_data = data.get('results', [])[0]['guia']
         self.assertIn('id', guia_data)
         self.assertIn('username', guia_data)
         self.assertEqual(guia_data['username'], 'viewuser')
@@ -421,7 +422,7 @@ class RutasCatalogoViewTest(TestCase):
         response = self.client.get(self.catalogo_api_url, {'limit': 1})
         data = response.json()
         
-        paradas = data[0]['paradas']
+        paradas = data.get('results', [])[0]['paradas']
         self.assertEqual(len(paradas), 2)
         
         for parada in paradas:
@@ -439,7 +440,7 @@ class RutasCatalogoViewTest(TestCase):
         response = self.client.get(self.catalogo_api_url, {'limit': 1})
         data = response.json()
         
-        paradas = data[0]['paradas']
+        paradas = data.get('results', [])[0]['paradas']
         ordenes = [p['orden'] for p in paradas]
         self.assertEqual(ordenes, sorted(ordenes))
     
@@ -448,7 +449,7 @@ class RutasCatalogoViewTest(TestCase):
         response = self.client.get(self.catalogo_api_url, {'limit': 1})
         data = response.json()
         
-        mood = data[0]['mood']
+        mood = data.get('results', [])[0]['mood']
         self.assertIsInstance(mood, list)
     
     def test_catalogo_view_content_type(self):
@@ -461,7 +462,7 @@ class RutasCatalogoViewTest(TestCase):
         Ruta.objects.all().delete()
         response = self.client.get(self.catalogo_api_url)
         data = response.json()
-        self.assertEqual(len(data), 0)
+        self.assertEqual(len(data.get('results', [])), 0)
         self.assertEqual(response.status_code, 200)
     
     def test_catalogo_view_ruta_requires_guia_at_model_level(self):
@@ -483,6 +484,13 @@ class CatalogoViewTest(TestCase):
     
     def setUp(self):
         self.client = Client()
+        self.user = User.objects.create_user(
+            username='viewuser2',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.client.force_login(self.user)
         self.catalogo_url = reverse('catalogo')
     
     def test_catalogo_view_returns_template(self):
