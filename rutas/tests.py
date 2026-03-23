@@ -499,7 +499,7 @@ class CatalogoViewTest(TestCase):
 
 
 class ServicioCuriosidadesIACacheTest(TestCase):
-    """Tests de almacenamiento y cacheo de curiosidades IA por parada."""
+    """Tests de almacenamiento, cacheo y errores de curiosidades IA por parada."""
 
     def setUp(self):
         self.user = User.objects.create_user(
@@ -514,7 +514,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
             duracion_horas=2.0,
             num_personas=10,
             guia=self.guia,
-            mood=['Historia']
+            mood=['Historia', 'Arquitectura']
         )
         self.parada = Parada.objects.create(
             orden=1,
@@ -523,12 +523,28 @@ class ServicioCuriosidadesIACacheTest(TestCase):
             ruta=self.ruta,
         )
 
+    @patch('rutas.services.requests.get')
     @patch('rutas.services.genai.Client')
-    def test_primera_solicitud_genera_y_guarda_curiosidad(self, mock_client_class):
+    def test_primera_solicitud_genera_y_guarda_curiosidad(self, mock_client_class, mock_requests_get):
+        """Camino feliz completo: Gemini genera bien y Wikimedia devuelve imagen."""
         mock_client = mock_client_class.return_value
         mock_client.models.generate_content.return_value = Mock(
             text='{"titulo":"La Giralda y su secreto","texto":"La Giralda fue minarete antes de ser campanario cristiano.","tipo":"Historia","busqueda_imagen":"seville giralda tower"}'
         )
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "query": {
+                "pages": {
+                    "123": {
+                        "title": "Giralda.jpg",
+                        "imageinfo": [{"url": "http://ejemplo.com/giralda.jpg"}]
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests_get.return_value = mock_response
 
         with self.settings(GEMINI_API_KEY='test-key'):
             servicio = ServicioCuriosidadesIA()
@@ -539,15 +555,24 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         self.assertEqual(curiosidad.ciudad, 'Sevilla')
         self.assertEqual(curiosidad.titulo, 'La Giralda y su secreto')
         self.assertEqual(curiosidad.texto, 'La Giralda fue minarete antes de ser campanario cristiano.')
+        self.assertEqual(curiosidad.imagen_url, 'http://ejemplo.com/giralda.jpg')
         self.assertEqual(resultado['titulo'], 'La Giralda y su secreto')
+        
         mock_client.models.generate_content.assert_called_once()
+        mock_requests_get.assert_called_once()
 
+    @patch('rutas.services.requests.get')
     @patch('rutas.services.genai.Client')
-    def test_segunda_solicitud_reutiliza_cache_sin_ia(self, mock_client_class):
+    def test_segunda_solicitud_reutiliza_cache_sin_ia(self, mock_client_class, mock_requests_get):
+        """Camino feliz: la segunda solicitud tira de base de datos."""
         mock_client = mock_client_class.return_value
         mock_client.models.generate_content.return_value = Mock(
-            text='{"titulo":"Murallas y leyendas","texto":"La muralla medieval protegía la ciudad de riadas del Guadalquivir.","tipo":"Historia","busqueda_imagen":"seville medieval wall"}'
+            text='{"titulo":"Murallas y leyendas","texto":"La muralla medieval protegía la ciudad.","tipo":"Historia","busqueda_imagen":""}'
         )
+
+        mock_response = Mock()
+        mock_response.json.return_value = {}
+        mock_requests_get.return_value = mock_response
 
         with self.settings(GEMINI_API_KEY='test-key'):
             servicio = ServicioCuriosidadesIA()
@@ -558,6 +583,191 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         self.assertEqual(primera['titulo'], segunda['titulo'])
         self.assertEqual(primera['texto'], segunda['texto'])
         mock_client.models.generate_content.assert_called_once()
+
+    @patch('rutas.services.requests.get')
+    @patch('rutas.services.genai.Client')
+    def test_generacion_usa_temas_de_la_ruta_en_el_prompt(self, mock_client_class, mock_requests_get):
+        """Camino feliz: verifica que el prompt contiene los temas (moods) de la ruta."""
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo":"Test","texto":"Test text","tipo":"Historia","busqueda_imagen":""}'
+        )
+        mock_response = Mock()
+        mock_response.json.return_value = {}
+        mock_requests_get.return_value = mock_response
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        args, kwargs = mock_client.models.generate_content.call_args
+        prompt = kwargs.get('contents') or args[0]
+        self.assertIn('Historia', prompt)
+        self.assertIn('Arquitectura', prompt)
+
+    @patch('rutas.services.genai.Client')
+    def test_ia_devuelve_json_invalido(self, mock_client_class):
+        """Caso infeliz: IA devuelve JSON deformado."""
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo": "Falta cerrar comillas...'
+        )
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            with self.assertRaisesMessage(ValueError, "Error de formato: La IA no devolvió un JSON válido."):
+                servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+    @patch('rutas.services.genai.Client')
+    def test_ia_devuelve_json_sin_texto(self, mock_client_class):
+        """Caso infeliz: IA devuelve JSON pero olvida el atributo fundamental (texto)."""
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo": "Falta el texto", "tipo": "Historia"}'
+        )
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            with self.assertRaisesMessage(ValueError, "Error de formato: La IA devolvió una curiosidad sin texto."):
+                servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+    @patch('rutas.services.genai.Client')
+    def test_ia_lanza_excepcion_api(self, mock_client_class):
+        """Caso infeliz: Problema de red con Gemini o API key inválida."""
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.side_effect = Exception("API Caída")
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            with self.assertRaisesMessage(Exception, "Error al comunicarse con la API de IA: API Caída"):
+                servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+    @patch('rutas.services.requests.get')
+    @patch('rutas.services.genai.Client')
+    def test_ia_tipo_invalido_usa_default(self, mock_client_class, mock_requests_get):
+        """Caso borde: IA inventa un 'tipo'. El sistema hace fallback al por defecto."""
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo":"Test","texto":"Test","tipo":"Inventado_Loco","busqueda_imagen":""}'
+        )
+        mock_response = Mock()
+        mock_response.json.return_value = {}
+        mock_requests_get.return_value = mock_response
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            resultado = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        self.assertEqual(resultado['tipo'], Curiosidad.TipoCuriosidad.DATO_CURIOSO)
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertEqual(curiosidad.tipo, Curiosidad.TipoCuriosidad.DATO_CURIOSO)
+
+    @patch('rutas.services.requests.get')
+    @patch('rutas.services.genai.Client')
+    def test_busqueda_imagen_falla_no_rompe_generacion(self, mock_client_class, mock_requests_get):
+        """Caso borde: Falla Wikimedia pero la curiosidad text-only sobrevive."""
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text='{"titulo":"Test fail","texto":"Text fail","tipo":"Historia","busqueda_imagen":"tower"}'
+        )
+        import requests
+        mock_requests_get.side_effect = requests.RequestException("Timeout")
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            resultado = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        self.assertEqual(resultado['titulo'], 'Test fail')
+        self.assertIsNone(resultado.get('imagen_url'))
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertIsNone(curiosidad.imagen_url)
+
+    @patch('rutas.services.requests.get')
+    @patch('rutas.services.genai.Client')
+    def test_normalizacion_payload_trunca_titulos_largos(self, mock_client_class, mock_requests_get):
+        """Caso borde: título exageradamente largo es truncado para caber en BD."""
+        titulo_largo = "A" * 300
+        mock_client = mock_client_class.return_value
+        mock_client.models.generate_content.return_value = Mock(
+            text=f'{{"titulo":"{titulo_largo}","texto":"Texto válido","tipo":"Historia","busqueda_imagen":""}}'
+        )
+        mock_response = Mock()
+        mock_response.json.return_value = {}
+        mock_requests_get.return_value = mock_response
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            servicio = ServicioCuriosidadesIA()
+            resultado = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        self.assertEqual(len(resultado['titulo']), 255)
+        self.assertTrue(resultado['titulo'].startswith("A" * 200))
+
+
+class ObtenerOGenerarCuriosidadTest(TestCase):
+    """Tests para la orquestación superior (helper) de servicios."""
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='curiosidadesuser2',
+            email='curiosidades2@example.com',
+            password='testpass123'
+        )
+        self.auth_user = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_user)
+        self.ruta = Ruta.objects.create(
+            titulo='Ruta Func',
+            duracion_horas=2.0,
+            num_personas=10,
+            guia=self.guia,
+        )
+        self.parada = Parada.objects.create(
+            orden=1,
+            nombre='Giralda',
+            coordenadas=Point(-5.9927, 37.3861),
+            ruta=self.ruta,
+        )
+
+    @patch('rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia')
+    @patch('rutas.services.ServicioCuriosidadesIA._guardar_curiosidad_en_cache')
+    def test_obtener_o_generar_llama_servicio_cuando_no_existe(self, mock_guardar, mock_generar):
+        from rutas.services import obtener_o_generar_curiosidad_parada
+        
+        datos_simulados = {
+            'titulo': 'Generado', 
+            'texto': 'Texto', 
+            'tipo': Curiosidad.TipoCuriosidad.HISTORIA,
+            'imagen_url': 'url.jpg'
+        }
+        mock_generar.return_value = datos_simulados
+        
+        curiosidad_mock = Curiosidad(
+            parada=self.parada, ciudad='Sevilla', titulo='Generado', texto='Texto', tipo='Historia'
+        )
+        mock_guardar.return_value = curiosidad_mock
+
+        curiosidad, generada = obtener_o_generar_curiosidad_parada(self.parada, 'Sevilla')
+
+        self.assertTrue(generada)
+        self.assertEqual(curiosidad.titulo, 'Generado')
+        mock_generar.assert_called_once_with(parada=self.parada, ciudad='Sevilla')
+        mock_guardar.assert_called_once_with(parada=self.parada, ciudad='Sevilla', datos_curiosidad=datos_simulados)
+
+    def test_obtener_o_generar_devuelve_existente_sin_llamar_ia(self):
+        from rutas.services import obtener_o_generar_curiosidad_parada
+        Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Existente',
+            texto='Texto',
+            tipo=Curiosidad.TipoCuriosidad.HISTORIA
+        )
+
+        with patch('rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia') as mock_generar:
+            curiosidad, generada = obtener_o_generar_curiosidad_parada(self.parada, 'Sevilla')
+            
+        self.assertFalse(generada)
+        self.assertEqual(curiosidad.titulo, 'Existente')
+        mock_generar.assert_not_called()
+
 
 
 class CuriosidadParadaApiTest(TestCase):
@@ -585,7 +795,7 @@ class CuriosidadParadaApiTest(TestCase):
         self.url = reverse('parada-curiosidad', args=[self.parada.id])
 
     def test_devuelve_curiosidad_existente_sin_invocar_ia(self):
-        Curiosidad.objects.create(
+        curiosidad = Curiosidad.objects.create(
             parada=self.parada,
             ciudad='Sevilla',
             titulo='Título existente',
@@ -594,7 +804,8 @@ class CuriosidadParadaApiTest(TestCase):
         )
         self.client.force_login(self.user)
 
-        with patch('rutas.services.ServicioCuriosidadesIA.generar_curiosidad') as mock_ia:
+        with patch('rutas.services.obtener_o_generar_curiosidad_parada') as mock_ia:
+            mock_ia.return_value = (curiosidad, False)
             response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
@@ -602,18 +813,27 @@ class CuriosidadParadaApiTest(TestCase):
         self.assertEqual(data['status'], 'ok')
         self.assertFalse(data['generada'])
         self.assertEqual(data['curiosidad']['titulo'], 'Título existente')
-        mock_ia.assert_not_called()
+        mock_ia.assert_called_once()
 
     def test_genera_y_persiste_curiosidad_si_no_existe(self):
         self.client.force_login(self.user)
+        
+        from django.utils import timezone
+        # Simular la curiosidad guardada en BD que devolvería el helper
+        mock_curiosidad = Curiosidad(
+            id=999,
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Sevilla bajo tus pies',
+            texto='Un dato histórico breve para turistas.',
+            tipo=Curiosidad.TipoCuriosidad.EVENTO,
+            imagen_url=None,
+            fecha_generacion=timezone.now()
+        )
 
         with patch(
-            'rutas.services.ServicioCuriosidadesIA.generar_curiosidad',
-            return_value={
-                'titulo': 'Sevilla bajo tus pies',
-                'texto': 'Un dato histórico breve para turistas.',
-                'tipo': Curiosidad.TipoCuriosidad.EVENTO,
-            },
+            'rutas.services.obtener_o_generar_curiosidad_parada',
+            return_value=(mock_curiosidad, True),
         ) as mock_ia:
             response = self.client.get(f'{self.url}?ciudad=Sevilla')
 
@@ -622,11 +842,6 @@ class CuriosidadParadaApiTest(TestCase):
         self.assertEqual(data['status'], 'ok')
         self.assertTrue(data['generada'])
         self.assertEqual(data['curiosidad']['titulo'], 'Sevilla bajo tus pies')
-
-        self.assertEqual(Curiosidad.objects.filter(parada=self.parada).count(), 1)
-        curiosidad = Curiosidad.objects.get(parada=self.parada)
-        self.assertEqual(curiosidad.ciudad, 'Sevilla')
-        self.assertEqual(curiosidad.tipo, Curiosidad.TipoCuriosidad.EVENTO)
         mock_ia.assert_called_once()
 
 

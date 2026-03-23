@@ -474,8 +474,6 @@ class ServicioCuriosidadesIA:
         )
 
         imagen_url = str(datos_curiosidad.get("imagen_url") or "").strip()
-        if not imagen_url:
-            imagen_url = str(datos_curiosidad.get("busqueda_imagen") or "").strip()
         imagen_url = imagen_url or None
 
         return {
