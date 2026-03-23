@@ -614,10 +614,10 @@ class ServicioCuriosidadesIA:
             "generator": "search",
             "gsrsearch": consulta,
             "gsrnamespace": 6,
-            "gsrlimit": 5,
+            "gsrlimit": 10,
             "prop": "imageinfo",
             "iiprop": "url",
-            "iiurlwidth": 1200,
+            "iiurlwidth": 800,
         }
 
         try:
@@ -646,7 +646,7 @@ class ServicioCuriosidadesIA:
         pages = payload.get("query", {}).get("pages", {})
         for page in pages.values():
             titulo = (page.get("title") or "").lower()
-            if titulo.endswith(".svg"):
+            if not (titulo.endswith(".jpg") or titulo.endswith(".jpeg") or titulo.endswith(".png")):
                 continue
 
             for image_info in page.get("imageinfo", []):
