@@ -11,13 +11,13 @@
 {% csrf_token %}
 
 {% if es_guia %}
-    <a href="{% url 'catalogo' %}" class="btn-back">
-        <span class="material-icons-round">arrow_back</span>
-    </a>
+<a href="{% url 'catalogo' %}" class="btn-back">
+    <span class="material-icons-round">arrow_back</span>
+</a>
 {% else %}
-    <a href="/" class="btn-back">
-        <span class="material-icons-round">arrow_back</span>
-    </a>
+<a href="/" class="btn-back">
+    <span class="material-icons-round">arrow_back</span>
+</a>
 {% endif %}
 
 <div id="mapa-tour"></div>
@@ -45,16 +45,19 @@
         <div class="tab-content active" id="tab-itinerario">
             <div class="d-flex justify-content-between align-items-center mb-1 mt-2">
                 {% if sesion.estado == 'en_curso' %}
-                <span style="display:inline-flex;align-items:center;gap:5px;background:var(--success-light);color:#065F46;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                <span
+                    style="display:inline-flex;align-items:center;gap:5px;background:var(--success-light);color:#065F46;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
                     <span class="material-icons-round" style="font-size:10px;">fiber_manual_record</span>
                     En Curso
                 </span>
                 {% elif sesion.estado == 'pendiente' %}
-                <span style="display:inline-flex;align-items:center;gap:5px;background:var(--warning-light);color:#92400E;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                <span
+                    style="display:inline-flex;align-items:center;gap:5px;background:var(--warning-light);color:#92400E;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
                     Pendiente
                 </span>
                 {% else %}
-                <span style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                <span
+                    style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
                     Finalizado
                 </span>
                 {% endif %}
@@ -76,7 +79,8 @@
 
             <div class="timeline">
                 {% for parada in paradas %}
-                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}" data-parada-id="{{ parada.id }}">
+                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}"
+                    data-parada-id="{{ parada.id }}">
                     <div class="timeline-item-main">
                         <h6 class="timeline-stop-name mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
                             style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
@@ -85,20 +89,22 @@
                         <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
                             Parada {{ parada.orden }} del recorrido
                         </p>
-                        
-                        <div class="curiosidad-timeline-container" id="curiosidad-timeline-{{ parada.id }}" style="display: none; margin-top: 10px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 6px;">
-                            <span id="curiosidad-timeline-tipo-{{ parada.id }}" style="font-size: 0.7rem; color: #4338ca; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px;"></span>
-                            <strong id="curiosidad-timeline-titulo-{{ parada.id }}" style="font-size: 0.85rem; color: #1e293b; display: block; margin-bottom: 4px;"></strong>
-                            <p id="curiosidad-timeline-texto-{{ parada.id }}" style="font-size: 0.8rem; color: #475569; margin: 0; line-height: 1.4;"></p>
+
+                        <div class="curiosidad-timeline-container" id="curiosidad-timeline-{{ parada.id }}"
+                            style="display: none; margin-top: 10px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 6px;">
+                            <img id="curiosidad-timeline-img-{{ parada.id }}" src="" alt="Imagen de la curiosidad"
+                                style="width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <span id="curiosidad-timeline-tipo-{{ parada.id }}"
+                                style="font-size: 0.7rem; color: #4338ca; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px;"></span>
+                            <strong id="curiosidad-timeline-titulo-{{ parada.id }}"
+                                style="font-size: 0.85rem; color: #1e293b; display: block; margin-bottom: 4px;"></strong>
+                            <p id="curiosidad-timeline-texto-{{ parada.id }}"
+                                style="font-size: 0.8rem; color: #475569; margin: 0; line-height: 1.4;"></p>
                         </div>
                     </div>
                     {% if es_guia %}
-                    <button
-                        type="button"
-                        class="parada-focus-btn"
-                        data-parada-id="{{ parada.id }}"
-                        aria-label="Seleccionar parada actual: {{ parada.nombre }}"
-                        title="Seleccionar parada actual">
+                    <button type="button" class="parada-focus-btn" data-parada-id="{{ parada.id }}"
+                        aria-label="Seleccionar parada actual: {{ parada.nombre }}" title="Seleccionar parada actual">
                         Seleccionar parada actual
                     </button>
                     {% endif %}
@@ -116,17 +122,12 @@
                     </div>
                 </div>
                 <div class="chat-input-container">
-                    <input
-                        type="file"
-                        id="chat-image-input"
-                        class="chat-image-input"
-                        accept="image/jpeg,image/png,image/webp"
-                        hidden>
+                    <input type="file" id="chat-image-input" class="chat-image-input"
+                        accept="image/jpeg,image/png,image/webp" hidden>
                     <button id="chat-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto">
                         <span class="material-icons-round">image</span>
                     </button>
-                    <input type="text" id="chat-input" class="chat-input"
-                           placeholder="Escribe un mensaje...">
+                    <input type="text" id="chat-input" class="chat-input" placeholder="Escribe un mensaje...">
                     <button id="chat-send" class="chat-send-btn">
                         <span class="material-icons-round">send</span>
                     </button>
@@ -145,18 +146,19 @@
 {{ sesion.ruta.duracion_horas|json_script:"duracion-ruta-horas-data" }}
 
 <script>
-    const mapboxToken     = '{{ MAPBOX_ACCESS_TOKEN }}';
-    const sesionId        = {{ sesion.id }};
-    const esGuia          = {% if es_guia %}true{% else %}false{% endif %};
-    const sesionEstado    = '{{ sesion.estado }}';
+    const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
+    const sesionId = {{ sesion.id }};
+    const esGuia = {% if es_guia %}true{% else %} false{% endif %};
+    const sesionEstado = '{{ sesion.estado }}';
     const duracionRutaHoras = Number(JSON.parse(document.getElementById('duracion-ruta-horas-data').textContent));
     const sesionFechaInicioEpochMs = Number.parseInt('{{ sesion.fecha_inicio|date:"U" }}', 10) * 1000;
-    const paradasData     = JSON.parse(document.getElementById('paradas-data').textContent);
+    const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
     const currentUserName = '{{ current_user_name|escapejs }}';
-    const geometriaRuta   = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
+    const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
     const startCountdownUrl = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
     const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
     const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
+    const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
 </script>
 <script src="{% static 'js/mapa_turista.js' %}?v=2026032201"></script>
 {% endblock %}
