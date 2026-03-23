@@ -26,6 +26,14 @@
     const btnBack = document.querySelector('.btn-back');
     const btnAddStop = document.getElementById('btn-add-stop') || document.querySelector('[data-action="add-stop"]');
     const btnRemoveStop = document.getElementById('btn-remove-stop') || document.querySelector('[data-action="remove-stop"]');
+    const selectExigencia = document.getElementById('ruta-exigencia');
+    const exigenciaAyuda = document.getElementById('ruta-exigencia-ayuda');
+
+    const EXIGENCIA_DESCRIPCIONES = {
+        baja: 'Ritmo tranquilo, trayectos cortos y pausas frecuentes. Recomendada para paseos relajados o grupos con movilidad reducida.',
+        media: 'Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.',
+        alta: 'Ritmo intenso, más distancia caminada y menos pausas. Pensada para grupos habituados a caminar.',
+    };
 
     if (!container || !display || !btnGuardar || !mapModal) {
         console.error('Faltan elementos necesarios para inicializar route_manual.js');
@@ -56,6 +64,15 @@
 
     function updateDisplay() {
         display.innerText = stopCount;
+    }
+    
+    function actualizarAyudaExigencia() {
+        if (!selectExigencia || !exigenciaAyuda) {
+            return;
+        }
+
+        const clave = String(selectExigencia.value || '').trim().toLowerCase();
+        exigenciaAyuda.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
     }
 
     function crearTarjetaParada(index) {
@@ -405,6 +422,11 @@
         btnBack.addEventListener('click', function () {
             window.location.href = config.urls.volver;
         });
+    }
+
+    if (selectExigencia) {
+        selectExigencia.addEventListener('change', actualizarAyudaExigencia);
+        actualizarAyudaExigencia();
     }
 
     document.querySelectorAll('#ruta-etiquetas .manual-tag-pill input[type="checkbox"]').forEach(function (checkbox) {
