@@ -7,7 +7,7 @@ class Command(BaseCommand):
     help = 'Genera mediante IA (Gemini+Wikimedia) de forma masiva curiosidades para todas las paradas que NO tengan una.'
 
     def handle(self, *args, **kwargs):
-        paradas = Parada.objects.all()
+        paradas = Parada.objects.select_related('ruta').all()
         total = paradas.count()
         
         if total == 0:

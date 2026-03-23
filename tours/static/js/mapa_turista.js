@@ -386,8 +386,6 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
     const tituloTexto = curiosidad.titulo ? _escapeHtml(curiosidad.titulo) : 'Curiosidad de esta parada';
     const cuerpoTexto = curiosidad.texto ? _escapeHtml(curiosidad.texto) : '';
 
-    const imgHtml = `<img src="${_escapeHtml(finalImgUrl)}" onerror="this.onerror=null;this.src='${_escapeHtml(urlSeguridad)}';" style="width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" alt="Imagen de la curiosidad">`;
-
     card.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -397,11 +395,24 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
             <button type="button" id="curiosidad-auto-close" aria-label="Cerrar curiosidad"
                 style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;">×</button>
         </div>
-        ${imgHtml}
+        <div id="curiosidad-auto-img-container"></div>
         <div>
             <h4 style="margin:0 0 4px 0;font-size:1rem;color:#111827;">${tituloTexto}</h4>
             <p style="margin:0;font-size:.9rem;color:#374151;line-height:1.35;">${cuerpoTexto}</p>
         </div>`;
+
+    const imgContainer = card.querySelector('#curiosidad-auto-img-container');
+    if (imgContainer) {
+        const imgEl = document.createElement('img');
+        imgEl.src = finalImgUrl;
+        imgEl.style.cssText = "width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);";
+        imgEl.alt = "Imagen de la curiosidad";
+        imgEl.onerror = function() {
+            this.onerror = null;
+            this.src = urlSeguridad;
+        };
+        imgContainer.appendChild(imgEl);
+    }
 
     document.body.appendChild(card);
 
@@ -438,9 +449,9 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
            
             const timelineItem = contenedor.closest('.timeline-item');
             if (timelineItem) {
-                timelineItem.classList.add('active');
-                const stopName = timelineItem.querySelector('.timeline-stop-name');
-                if (stopName) stopName.classList.remove('text-muted');
+                // Marcar que esta parada ha mostrado una curiosidad sin alterar
+                // el estado de selección (`active` / `text-muted`).
+                timelineItem.classList.add('has-curiosidad');
             }
         }
     }

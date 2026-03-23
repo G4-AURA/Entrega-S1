@@ -802,7 +802,8 @@ class CuriosidadParadaApiTest(TestCase):
         )
         self.url = reverse('parada-curiosidad', args=[self.parada.id])
 
-    def test_devuelve_curiosidad_existente_sin_invocar_ia(self):
+    def test_devuelve_curiosidad_existente_sin_generar_via_ia(self):
+        # ...setup...
         curiosidad = Curiosidad.objects.create(
             parada=self.parada,
             ciudad='Sevilla',
@@ -812,8 +813,7 @@ class CuriosidadParadaApiTest(TestCase):
         )
         self.client.force_login(self.user)
 
-        with patch('rutas.services.obtener_o_generar_curiosidad_parada') as mock_ia:
-            mock_ia.return_value = (curiosidad, False)
+        with patch('rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia') as mock_ia:
             response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
@@ -821,7 +821,7 @@ class CuriosidadParadaApiTest(TestCase):
         self.assertEqual(data['status'], 'ok')
         self.assertFalse(data['generada'])
         self.assertEqual(data['curiosidad']['titulo'], 'Título existente')
-        mock_ia.assert_called_once()
+        mock_ia.assert_not_called()
 
     def test_genera_y_persiste_curiosidad_si_no_existe(self):
         self.client.force_login(self.user)
