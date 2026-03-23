@@ -671,7 +671,7 @@ def _normalizar_candidato_parada(candidato, idx):
         'categoria': str(candidato.get('categoria') or 'general').strip()[:60],
         'nivel_confianza': round(nivel_confianza, 2),
         'justificacion': str(candidato.get('justificacion') or '').strip()[:500],
-        'justificacion': str(candidato.get('justificacion') or '').strip()[:500],
+        'descripcion': str(candidato.get('descripcion') or '').strip()[:500],
     }
 
 

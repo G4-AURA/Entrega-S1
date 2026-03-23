@@ -157,7 +157,7 @@ def serializar_parada_ruta_final(poi: dict, orden: int) -> dict:
         'orden': orden,
         'descripcion': descripcion,
         # Mantener 'desc' por compatibilidad con código existente
-        'descripcion': poi.get('desc', ''),
+        'desc': descripcion,
     }
     for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):
         if meta_key in poi:

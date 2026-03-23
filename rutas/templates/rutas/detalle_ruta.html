@@ -217,6 +217,7 @@
                     <input type="text" name="nombre" class="form-control form-control-sm"
                            placeholder="Ej: Plaza Nueva" required>
                 </div>
+                <input type="hidden" name="descripcion" id="add-stop-descripcion" value="">
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label small mb-1">Latitud</label>
@@ -681,6 +682,7 @@ function agregarSugerenciaComoNuevaParada(candidato) {
     const nameInput = form.querySelector('input[name="nombre"]');
     const latInput = form.querySelector('input[name="lat"]');
     const lonInput = form.querySelector('input[name="lon"]');
+    const descInput = form.querySelector('input[name="descripcion"]');
 
     const lat = Number(candidato.lat);
     const lon = Number(candidato.lon);
@@ -691,6 +693,7 @@ function agregarSugerenciaComoNuevaParada(candidato) {
     nameInput.value = candidato.nombre || nameInput.value;
     latInput.value = lat.toFixed(6);
     lonInput.value = lon.toFixed(6);
+    if (descInput) descInput.value = candidato.descripcion || '';
 
     if (typeof form.requestSubmit === 'function') form.requestSubmit();
     else form.submit();
@@ -762,7 +765,12 @@ document.addEventListener('click', (event) => {
     );
     if (!confirmacion) return;
 
-    agregarSugerenciaComoNuevaParada({ nombre: candidato?.nombre || '', lat, lon });
+    agregarSugerenciaComoNuevaParada({
+        nombre: candidato?.nombre || '',
+        lat,
+        lon,
+        descripcion: candidato?.descripcion || '',
+    });
 });
 
 mapa.on('click', (event) => {

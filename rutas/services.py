@@ -231,13 +231,13 @@ def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
     parada.save(update_fields=["nombre", "coordenadas"])
 
 
-def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon):
+def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
     if len(nombre) > 255:
         raise ValueError("El nombre de la parada no puede superar los 255 caracteres")
-
+    
     lat, lon = _validar_coordenadas(raw_lat, raw_lon)
 
     ultimo_orden = ruta.paradas.order_by("-orden").values_list("orden", flat=True).first() or 0
@@ -245,6 +245,7 @@ def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon):
         ruta=ruta,
         orden=ultimo_orden + 1,
         nombre=nombre,
+        descripcion=(descripcion or "").strip()[:500],
         coordenadas=Point(lon, lat, srid=4326),
     )
 
