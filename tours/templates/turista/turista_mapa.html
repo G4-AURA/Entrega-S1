@@ -4,7 +4,7 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026031802">
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026032301">
 {% endblock %}
 
 {% block content %}
@@ -21,6 +21,10 @@
 {% endif %}
 
 <div id="mapa-tour"></div>
+
+<button id="btn-centrar-mapa" class="btn-centrar-mapa" type="button" aria-label="Centrar mapa" title="Centrar en tu ubicación">
+    <span class="material-icons-round">my_location</span>
+</button>
 
 <div class="tour-panel">
 
@@ -160,5 +164,5 @@
     const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
     const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
 </script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032201"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026032301"></script>
 {% endblock %}
