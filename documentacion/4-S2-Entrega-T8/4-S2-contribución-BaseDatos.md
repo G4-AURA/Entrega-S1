@@ -32,10 +32,6 @@ https://github.com/ispp-2026/common-knowledge-base
 
 ## 2. Feedback General y Específico
 
- **Última actualización:** 24 de febrero  
-
----
-
 ### 1. Definición de Producto
 
 - **Enfoque de la idea principal**  
@@ -120,8 +116,6 @@ https://github.com/ispp-2026/common-knowledge-base
 ---
 
 ## 7. Notas de Clase
-
----
 
 ### Semana 2 (12/02)
 
@@ -239,41 +233,41 @@ https://github.com/ispp-2026/common-knowledge-base
 
 ### Semana 5 (5/03)-Evaluación Sprint 1
 
-### Presentación
+#### Presentación
 - Cuidar los **elementos visuales adicionales** en las diapositivas:  
   pueden aportar valor, pero también restar protagonismo al contenido principal.  
 - Trabajar la **energía del inicio** para lograr un comienzo más impactante y efectivo.  
 
-### Sprints
+#### Sprints
 - Crear una **demo en formato vídeo** para validar de forma clara el progreso real del proyecto.  
 - Incorporar la **gestión de pruebas** dentro del desarrollo.  
 - En el análisis de mejora continua:
   - Incluir las **acciones concretas** que se están llevando a cabo  
   - Definir **métricas** para comprobar si realmente se está mejorando  
 
-### Usuarios Piloto
+#### Usuarios Piloto
 - Mantener una actitud **flexible** frente al feedback, permitiendo cambios en el plan y enfoque.  
 - Tener en cuenta la información aportada por los usuarios para:
   - Detectar nuevas funcionalidades  
   - Identificar mejoras de valor para el producto  
 - Incorporar de forma explícita el **feedback obtenido** en el análisis del proyecto.  
 
-### Commitment Agreement (CA)
+#### Commitment Agreement (CA)
 - Crear una **checklist** con los elementos que se están cumpliendo del acuerdo.  
 - Incluir comparativas en la evolución de horas de los miembros en casos relevantes.  
 - No centrarse únicamente en el tiempo:
   - Evaluar también el cumplimiento de tareas  
   - Analizar el rendimiento general  
 
-### Gestión de Costes
+#### Gestión de Costes
 - Utilizar **valores aproximados** en lugar de cifras demasiado detalladas (evitar el nivel de céntimos).  
 
-### Otros Aspectos
+#### Otros Aspectos
 - Incorporar una **diapositiva específica de team building** dentro de la presentación.  
 
 ### Semana 6 (12/03)- Sprint 2
 
-## Métricas, Seguimiento y Lecciones Aprendidas
+#### Métricas, Seguimiento y Lecciones Aprendidas
 - Incluir **porcentajes** en las lecciones aprendidas para evidenciar el cumplimiento de objetivos.  
 - Definir siempre:  
   - Métrica  
@@ -282,13 +276,13 @@ https://github.com/ispp-2026/common-knowledge-base
   - Estado actual  
 - Mostrar de forma sistemática si las acciones están **mejorando los problemas detectados**.
 
-## Datos, Gráficas y Comprensión
+#### Datos, Gráficas y Comprensión
 - Incluir **gráficas de supuestos** dentro del presupuesto.  
 - Asegurar que cada dato se entienda por sí solo o añadir contexto.  
 - Evitar saturar con demasiada información sin tiempo para explicarla.  
 - Destacar y explicar claramente los **puntos clave de las gráficas** durante la presentación.
 
-## Presentación
+#### Presentación
 - Mejorar la **gestión del tiempo**.  
 - Eliminar el índice si no aporta valor.  
 - Trabajar los **tonos de voz**, especialmente en partes críticas.  
@@ -296,7 +290,7 @@ https://github.com/ispp-2026/common-knowledge-base
 - Diseñar un **killer opener** más llamativo.  
 - Apoyarse en referencias como: *“cómo hablar para que la gente te escuche”*.  
 
-## Demo
+#### Demo
 - Cuidar **transiciones y fluidez**.  
 - Evitar cortar imágenes o elementos visuales.  
 - Centrarse en los **casos de uso core**.  
@@ -304,13 +298,13 @@ https://github.com/ispp-2026/common-knowledge-base
 - Mostrar una **historia clara** (ej. interacción guía–turista).  
 - Asegurar que la demo se visualiza correctamente en todo momento.
   
-## Problemas y Análisis
+#### Problemas y Análisis
 - Explicar el **impacto real** de los problemas.  
 - Acompañar siempre con **métricas**.  
 - Analizar desviaciones de tiempo y rendimiento del equipo.  
 - Evaluar complejidad de tareas y grado de cumplimiento.
 
-## Presentación del Sprint
+#### Presentación del Sprint
 - Mejorar claridad en títulos y temporalidad.  
 - Mostrar:
   - Qué se ha cumplido  
@@ -320,7 +314,7 @@ https://github.com/ispp-2026/common-knowledge-base
   - En el sprint  
   - En total  
 
-## Análisis Económico (CAPEX / OPEX)
+#### Análisis Económico (CAPEX / OPEX)
 - Profundizar más, evitando superficialidad.  
 - Diferenciar claramente:
   - **OPEX:** costes de operación  
@@ -328,7 +322,7 @@ https://github.com/ispp-2026/common-knowledge-base
 - Contextualizar cada cifra en el tiempo.  
 - Si depende de usuarios, representarlo con **gráficas basadas en fórmulas**.
 
-## Usuarios Piloto
+#### Usuarios Piloto
 - Enfatizar la **recogida de feedback**.  
 - Mostrar:
   - Número de usuarios  
@@ -339,29 +333,29 @@ https://github.com/ispp-2026/common-knowledge-base
   - Qué decisiones ha provocado  
   - Qué funcionalidades se han añadido o eliminado  
 
-## Iteración y Mejora Continua
--Implementar un sistema estructurado:
+#### Iteración y Mejora Continua
+- Implementar un sistema estructurado:
 
 > **Problema → Acción → Métrica → Umbral → Período → Estado**
 
 - Analizar si las acciones están funcionando realmente.  
 - Considerar el **feedback como el elemento más valioso del proyecto**.
 
-## Producto y Casos de Uso
+#### Producto y Casos de Uso
 - Mostrar casos de uso habituales:
   - Creación de rutas desde PC  
   - Uso en móvil con vista personalizada  
 - Enfocarse en **escenarios reales y relevantes**.
 
-## Stack Tecnológico
+#### Stack Tecnológico
 - Explicarlo de forma **directa y concisa**.  
 - Evitar comparativas innecesarias.
 
-## Equipo
+#### Equipo
 - Usar **fotos corporativas** del equipo.  
 - Incluir una presentación clara de los miembros.
 
-## Team Building
+#### Team Building
 - Mostrar resultados del team building.  
 - Reflexionar si se aplicarán cambios.  
 - Explicar el modelo utilizado y su funcionamiento.
