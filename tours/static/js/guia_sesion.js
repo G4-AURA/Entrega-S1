@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     fetchParticipants();
-    setInterval(fetchParticipants, 4000);
+    const fetchIntervalId = setInterval(fetchParticipants, 4000);
 
     const iniciarBtn = document.getElementById('iniciar-tour');
     if (iniciarBtn) {
@@ -191,7 +191,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 const accessBlock = document.getElementById('access-block');
                 if (accessBlock) {
-                    accessBlock.innerHTML = '<div class="session-code-display mb-4" style="background:var(--bg-surface);color:var(--text-muted);font-size:1.1rem;padding:2.5rem 1rem;">SESIÓN FINALIZADA</div>';
+                    accessBlock.textContent = '';
+                    const finalDiv = document.createElement('div');
+                    finalDiv.className = 'session-code-display mb-4';
+                    finalDiv.textContent = 'SESIÓN FINALIZADA';
+                    finalDiv.style.background = 'var(--bg-surface)';
+                    finalDiv.style.color = 'var(--text-muted)';
+                    finalDiv.style.fontSize = '1.1rem';
+                    finalDiv.style.padding = '2.5rem 1rem';
+                    accessBlock.appendChild(finalDiv);
                 }
 
                 const btnsRow = document.getElementById('action-buttons-container');
@@ -199,6 +207,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const closeContainer = document.getElementById('close-access-container');
                 if (closeContainer) closeContainer.style.display = 'none';
+
+                if (typeof fetchIntervalId !== 'undefined') {
+                    clearInterval(fetchIntervalId);
+                }
 
                 alert('Sesión finalizada con éxito.');
             }
