@@ -2,7 +2,7 @@
 
 <div align="center">  
     <p align="center">
-        <img src="logo.png" alt="AURA Logo" width="230"/>
+        <img src="../recursos/logo.png" alt="AURA Logo" width="230"/>
     </p>
 </div>
 
@@ -42,7 +42,7 @@ Este documento permite visualizar de forma clara:
 - La implicación de cada integrante en las distintas actividades del proyecto  
 
 **Acceso al informe:**  
-[Clockify Report - Sprint 1](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-S1-Clockify.pdf)
+[Clockify Report - Sprint 2](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-S1-Clockify.pdf)
 
 ---
 ## Análisis de los Resultados
