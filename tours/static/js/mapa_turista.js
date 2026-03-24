@@ -176,8 +176,29 @@ function _dibujarRutaYParadas() {
 
 // ── Posición propia (punto pulsante) ───────────────────────────────────────
 
-function _iniciarRastreoLocal() {
+async function _iniciarRastreoLocal() {
     if (!navigator.geolocation) return;
+    const feedback = window.AuraFeedback;
+
+    if (feedback && typeof feedback.confirm === 'function') {
+        const confirmarUbicacion = await feedback.confirm({
+            title: 'Compartir ubicación',
+            message: esGuia
+                ? 'Activa tu ubicación para que los turistas puedan seguirte durante el tour.'
+                : 'Activa tu ubicación para mostrar curiosidades cercanas y seguir al guía en tiempo real.',
+            confirmText: 'Permitir',
+            cancelText: 'Ahora no',
+            type: 'info',
+        });
+
+        if (!confirmarUbicacion) {
+            feedback.toast('Puedes activar la ubicación más tarde desde los permisos del navegador.', {
+                type: 'info',
+                duration: 3200,
+            });
+            return;
+        }
+    }
 
     navigator.geolocation.watchPosition(
         position => {

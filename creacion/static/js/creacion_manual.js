@@ -1,4 +1,13 @@
 (function() {
+    const feedback = window.AuraFeedback;
+    const avisar = function(message, type, duration) {
+        if (feedback && typeof feedback.toast === 'function') {
+            feedback.toast(message, { type: type || 'info', duration: duration || 3200 });
+            return;
+        }
+        console.warn('[AURA feedback]', message);
+    };
+
     let stopCount = 2;
     const stopsContainer = document.getElementById('stops-container');
     const display = document.getElementById('counter-display');
@@ -203,14 +212,16 @@
             });
             const data = await response.json();
             if (response.ok && data.status === 'OK') {
-                alert('Ruta guardada con éxito.');
-                window.location.href = '/catalogo/';
+                avisar('Ruta guardada con éxito.', 'success', 1800);
+                setTimeout(function() {
+                    window.location.href = '/catalogo/';
+                }, 500);
             } else {
                 throw new Error(data.mensaje || 'Error desconocido al guardar la ruta');
             }
         } catch (error) {
             console.error('Error:', error);
-            alert('Error al guardar la ruta: ' + error.message);
+            avisar('Error al guardar la ruta: ' + error.message, 'error', 4200);
         } finally {
             setBtnSaveState(btnSave, false);
         }
@@ -268,7 +279,7 @@
             currentInputTarget.value = 'Ubicación guardada (' + tempCoords.lat.toFixed(4) + ', ' + tempCoords.lng.toFixed(4) + ')';
             closeMapModal();
         } else {
-            alert('Haz clic en el mapa para seleccionar una ubicación primero.');
+            avisar('Haz clic en el mapa para seleccionar una ubicación primero.', 'error');
         }
     });
 })();

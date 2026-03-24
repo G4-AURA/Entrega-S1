@@ -289,8 +289,7 @@
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
                             <input type="hidden" name="parada_id" value="{{ parada.id }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm"
-                                    onclick="return confirm('¿Seguro que quieres eliminar esta parada?');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm btn-eliminar-parada">
                                 Eliminar
                             </button>
                         </form>
@@ -372,6 +371,23 @@ const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId = parseInt('{{ ruta.id }}', 10);
 const csrfToken     = '{{ csrf_token }}';
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
+const uiFeedback = window.AuraFeedback;
+
+async function confirmarAccion(options) {
+    try {
+        if (uiFeedback && typeof uiFeedback.confirm === 'function') {
+            return Boolean(await uiFeedback.confirm(options));
+        }
+    } catch (error) {
+        console.error('[AURA feedback] Error mostrando confirmación personalizada:', error);
+    }
+
+    const message = String(options?.message || '¿Deseas continuar?');
+    if (typeof window.confirm === 'function') {
+        return window.confirm(message);
+    }
+    return false;
+}
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
 const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
@@ -748,7 +764,27 @@ document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
     btn.addEventListener('click', () => cargarSugerenciasIAParaParada(btn.dataset.paradaId, btn));
 });
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
+    const deleteBtn = event.target.closest('.btn-eliminar-parada');
+    if (!deleteBtn) return;
+
+    event.preventDefault();
+    const form = deleteBtn.closest('form');
+    if (!form) return;
+
+    const confirmacion = await confirmarAccion({
+        title: 'Eliminar parada',
+        message: '¿Seguro que quieres eliminar esta parada?',
+        confirmText: 'Eliminar',
+        cancelText: 'Cancelar',
+        type: 'danger',
+    });
+    if (!confirmacion) return;
+
+    form.submit();
+});
+
+document.addEventListener('click', async (event) => {
     const usarBtn = event.target.closest('.btn-usar-sugerencia-ia');
     if (!usarBtn) return;
 
@@ -760,9 +796,13 @@ document.addEventListener('click', (event) => {
     const lat = coords[0];
     const lon = coords[1];
 
-    const confirmacion = window.confirm(
-        'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
-    );
+    const confirmacion = await confirmarAccion({
+        title: 'Añadir sugerencia IA',
+        message: 'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
+        confirmText: 'Añadir parada',
+        cancelText: 'Cancelar',
+        type: 'info',
+    });
     if (!confirmacion) return;
 
     agregarSugerenciaComoNuevaParada({
