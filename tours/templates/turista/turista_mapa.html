@@ -71,7 +71,7 @@
             <div class="session-countdown" id="session-countdown" aria-live="polite">
                 <span class="material-icons-round">timer</span>
                 <span>Tiempo restante</span>
-                <strong id="session-countdown-time">01:00:00</strong>
+                <strong id="session-countdown-time">-- min</strong>
             </div>
 
             {% if es_guia %}
@@ -164,5 +164,5 @@
     const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
     const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
 </script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032301"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026032401"></script>
 {% endblock %}

@@ -496,6 +496,7 @@ function _initSessionCountdown() {
     const startBtn = document.getElementById('start-countdown-btn');
     if (!timerContainer || !timerValue) return;
 
+    const MINUTE_MS = 60 * 1000;
     const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
         ? duracionRutaHoras
         : 1;
@@ -506,25 +507,31 @@ function _initSessionCountdown() {
         : Date.now();
 
     const setWaitingUi = () => {
-        timerValue.textContent = _formatRemainingTime(countdownMs);
+        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
         timerContainer.classList.remove('finished');
         timerContainer.classList.add('waiting');
     };
 
-    const startTicker = () => {
+    const startTicker = (remoteRemainingMinutes = null) => {
         if (countdownTimerId) {
             clearInterval(countdownTimerId);
             countdownTimerId = null;
         }
 
         timerContainer.classList.remove('waiting');
-        let endTimestamp = startTimestamp + countdownMs;
-        let remainingSeconds = Math.max(0, Math.floor((endTimestamp - Date.now()) / 1000));
-        let lastTickAt = Date.now();
+        const hasRemoteMinutes = Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0;
+        const normalizedRemoteMinutes = hasRemoteMinutes
+            ? Math.max(0, Math.ceil(remoteRemainingMinutes))
+            : null;
+        let endTimestamp = hasRemoteMinutes
+            ? Date.now() + (normalizedRemoteMinutes * MINUTE_MS)
+            : startTimestamp + countdownMs;
 
         const render = () => {
-            timerValue.textContent = _formatRemainingTime(remainingSeconds * 1000);
-            if (remainingSeconds === 0) {
+            const remainingMinutes = Math.max(0, Math.ceil((endTimestamp - Date.now()) / MINUTE_MS));
+            timerValue.textContent = _formatRemainingMinutes(remainingMinutes);
+
+            if (remainingMinutes === 0) {
                 timerContainer.classList.add('finished');
                 if (countdownTimerId) {
                     clearInterval(countdownTimerId);
@@ -537,13 +544,8 @@ function _initSessionCountdown() {
 
         render();
         countdownTimerId = setInterval(() => {
-            const tickNow = Date.now();
-            const elapsedSeconds = Math.max(1, Math.floor((tickNow - lastTickAt) / 1000));
-            remainingSeconds = Math.max(0, remainingSeconds - elapsedSeconds);
-            lastTickAt = tickNow;
-            if (remainingSeconds > 0) endTimestamp = tickNow + (remainingSeconds * 1000);
             render();
-        }, 1000);
+        }, MINUTE_MS);
     };
 
     const applyRemoteState = (data) => {
@@ -566,7 +568,8 @@ function _initSessionCountdown() {
                 startBtn.disabled = true;
                 startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
             }
-            startTicker();
+            const remoteMinutes = Number(data.minutos_restantes);
+            startTicker(remoteMinutes);
         } else {
             sesionIniciada = false;
             if (!countdownTimerId) setWaitingUi();
@@ -587,7 +590,7 @@ function _initSessionCountdown() {
     else setWaitingUi();
 
     fetchCountdownState();
-    countdownPollId = setInterval(fetchCountdownState, 1200);
+    countdownPollId = setInterval(fetchCountdownState, MINUTE_MS);
 
     if (startBtn) {
         startBtn.addEventListener('click', () => {
@@ -606,7 +609,8 @@ function _initSessionCountdown() {
                         if (Number.isFinite(parsed)) startTimestamp = parsed;
                         sesionIniciada = true;
                         startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
-                        startTicker();
+                        const remoteMinutes = Number(data.minutos_restantes);
+                        startTicker(remoteMinutes);
                     } else {
                         startBtn.disabled = false;
                     }
@@ -616,13 +620,9 @@ function _initSessionCountdown() {
     }
 }
 
-function _formatRemainingTime(milliseconds) {
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+function _formatRemainingMinutes(totalMinutes) {
+    const safeMinutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.ceil(totalMinutes)) : 0;
+    return `${safeMinutes} min`;
 }
 
 

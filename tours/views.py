@@ -333,11 +333,24 @@ def estado_cronometro(request, sesion_id):
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
+    minutos_restantes = None
+    duracion_horas = float(sesion.ruta.duracion_horas or 0)
+    if (
+        sesion.estado == SesionTour.EN_CURSO
+        and sesion.fecha_inicio
+        and math.isfinite(duracion_horas)
+        and duracion_horas > 0
+    ):
+        fecha_fin = sesion.fecha_inicio + timedelta(hours=duracion_horas)
+        segundos_restantes = max(0, int((fecha_fin - timezone.now()).total_seconds()))
+        minutos_restantes = math.ceil(segundos_restantes / 60) if segundos_restantes else 0
+
     return JsonResponse(
         {
             "estado": sesion.estado,
             "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
-            "duracion_horas": sesion.ruta.duracion_horas,
+            "duracion_horas": duracion_horas,
+            "minutos_restantes": minutos_restantes,
             "parada_actual_id": sesion.parada_actual_id,
         }
     )
