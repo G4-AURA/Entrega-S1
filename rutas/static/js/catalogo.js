@@ -2,6 +2,21 @@
     if (window._catalogoInit) return;
     window._catalogoInit = true;
 
+    const feedback = window.AuraFeedback;
+    const confirmar = async (options) => {
+        if (feedback && typeof feedback.confirm === 'function') {
+            return feedback.confirm(options);
+        }
+        return true;
+    };
+    const avisar = (message, type = 'info') => {
+        if (feedback && typeof feedback.toast === 'function') {
+            feedback.toast(message, { type });
+            return;
+        }
+        console.warn('[AURA feedback]', message);
+    };
+
     let currentLimit = 3;
     let pageManual = 1;
     let pageIa = 1;
@@ -222,17 +237,25 @@
         deleteBtn.addEventListener('click', async (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!confirm('¿Seguro que quieres eliminar esta ruta?')) return;
+            const confirmacion = await confirmar({
+                title: 'Eliminar ruta',
+                message: '¿Seguro que quieres eliminar esta ruta?',
+                confirmText: 'Eliminar',
+                cancelText: 'Cancelar',
+                type: 'danger',
+            });
+            if (!confirmacion) return;
             try {
                 const resp = await fetch(`/catalogo/${ruta.id}/eliminar/`, {
                     method: 'POST',
                     headers: { 'X-CSRFToken': getCookie('csrftoken') },
                 });
                 if (!resp.ok) throw new Error('No se pudo eliminar la ruta');
+                avisar('Ruta eliminada correctamente.', 'success');
                 cargarRutas('manual');
                 cargarRutas('ia');
             } catch (err) {
-                alert(err.message || 'Error al eliminar la ruta');
+                avisar(err.message || 'Error al eliminar la ruta', 'error');
             }
         });
         actionsDiv.appendChild(deleteBtn);
