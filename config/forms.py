@@ -28,6 +28,11 @@ class RegistroUsuarioForm(UserCreationForm):
         max_length=150,
         error_messages={"required": "Los apellidos son obligatorios."},
     )
+    accept_terms = forms.BooleanField(
+        required=True,
+        label="Acepto los términos y condiciones",
+        error_messages={"required": "Debes aceptar los términos y condiciones para continuar."},
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User

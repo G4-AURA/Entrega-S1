@@ -32,6 +32,7 @@
             {% endif %}
 
             {% for field in form %}
+                {% if field.name != "accept_terms" %}
                 <p>
                     <label for="{{ field.id_for_label }}">{{ field.label }}</label>
                     {{ field }}
@@ -46,7 +47,28 @@
                         <small>{{ field.help_text|safe }}</small>
                     {% endif %}
                 </p>
+                {% endif %}
             {% endfor %}
+
+            <div class="terms-check-wrapper" style="display:flex; flex-direction:row; align-items:center; justify-content:center; gap:0.75rem; flex-wrap:nowrap;">
+                <input type="checkbox" name="accept_terms" id="id_accept_terms" required
+                       {% if form.is_bound and form.accept_terms.value %}checked{% endif %}
+                       style="width:18px; height:18px; margin:0; padding:0; display:inline-block; vertical-align:middle; appearance:auto; -webkit-appearance:checkbox; flex:0 0 auto;">
+                <span class="terms-check-text" style="margin:0; line-height:1.2; white-space:nowrap;">
+                    Acepto los
+                    <a href="{% url 'terminos_uso' %}" target="_blank" rel="noopener noreferrer" class="terms-link">
+                        términos de uso y condiciones
+                    </a>
+                    
+                </span>
+            </div>
+            {% if form.accept_terms.errors %}
+                <ul class="errorlist">
+                    {% for error in form.accept_terms.errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
 
             <button type="submit" class="btn btn-brand btn-lg fw-bold w-100 mt-2"
                     style="border-radius:var(--radius);">
