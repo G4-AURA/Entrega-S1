@@ -726,6 +726,7 @@ class ObtenerUbicacionGuiaTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.client.force_login(self.guia_user)
 
     def test_obtener_ubicacion_sin_ubicacion_404(self):
         """Verifica error si no hay ubicación"""
