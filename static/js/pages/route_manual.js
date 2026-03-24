@@ -19,6 +19,15 @@
               },
           };
 
+    const feedback = window.AuraFeedback;
+    const avisar = (message, type = 'info', duration = 3200) => {
+        if (feedback && typeof feedback.toast === 'function') {
+            feedback.toast(message, { type, duration });
+            return;
+        }
+        console.warn('[AURA feedback]', message);
+    };
+
     const container = document.getElementById('stops-container');
     const display = document.getElementById('counter-display');
     const btnGuardar = document.getElementById('btn-guardar-tour');
@@ -214,6 +223,9 @@
         if (duracion < LIMITES_MANUAL.duracionMin || duracion > LIMITES_MANUAL.duracionMax) {
             return 'La duración debe estar entre 0.5 y 24 horas.';
         }
+        if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
+            return 'La duración debe indicarse en bloques de 0.5 horas.';
+        }
         if (!Number.isInteger(personas)) {
             return 'El número de personas debe ser un entero válido.';
         }
@@ -287,7 +299,7 @@
     }
 
     function renderizarErrores(mensaje) {
-        alert(`Ocurrió un error al intentar guardar la ruta: ${mensaje}`);
+        avisar(`Ocurrió un error al intentar guardar la ruta: ${mensaje}`, 'error', 4200);
     }
 
     function renderizarErroresCampos(errores) {
@@ -306,8 +318,8 @@
                 const idx = campo.split('_')[1];
                 input = document.querySelector(`#stop-${idx} .stop-nombre`);
             } else {
-                // Para general o otros, mostrar alert
-                alert(mensaje);
+                // Para general u otros campos, usamos feedback global.
+                avisar(mensaje, 'error', 3800);
                 continue;
             }
 
@@ -415,7 +427,7 @@
                 : null;
 
         if (!coords || !currentInputTarget) {
-            alert('Por favor, haz clic en el mapa para seleccionar una ubicación primero.');
+            avisar('Por favor, haz clic en el mapa para seleccionar una ubicación primero.', 'error');
             return;
         }
 
@@ -457,8 +469,10 @@
                 throw new Error(errorValidacion);
             }
             await enviarPeticion(payload);
-            alert('¡Ruta guardada con éxito!');
-            window.location.href = config.urls.catalogo;
+            avisar('¡Ruta guardada con éxito!', 'success', 1800);
+            setTimeout(() => {
+                window.location.href = config.urls.catalogo;
+            }, 500);
         } catch (error) {
             console.error(error);
             if (error.errores) {

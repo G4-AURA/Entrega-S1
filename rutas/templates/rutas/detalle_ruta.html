@@ -106,8 +106,11 @@
                 <div class="col-12 col-md-3">
 
                     <label class="form-label">Duración (horas)</label>
-                    <input type="number" step="0.1" min="0.1" max="24" name="duracion_horas"
+                    <input type="number" step="any" min="0.5" max="24" name="duracion_horas"
                            class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
+                    <div class="form-text mt-1">
+                        Usa incrementos de 0.5h al cambiar la duración.
+                    </div>
                 </div>
                 <div class="col-12 col-md-3">
                     <label class="form-label">Número de personas</label>
@@ -116,7 +119,7 @@
                 </div>
                 <div class="col-12 col-md-3">
                     <label class="form-label">Nivel de exigencia</label>
-                    <select name="nivel_exigencia" class="form-select" required>
+                    <select id="detalle-nivel-exigencia" name="nivel_exigencia" class="form-select" required>
                         {% for value, label in exigencia_choices %}
                         <option value="{{ value }}"
                                 {% if value == ruta.nivel_exigencia %}selected{% endif %}>
@@ -124,6 +127,9 @@
                         </option>
                         {% endfor %}
                     </select>
+                    <div id="detalle-exigencia-ayuda" class="form-text mt-2" aria-live="polite">
+                        Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.
+                    </div>
                 </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
@@ -289,8 +295,7 @@
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
                             <input type="hidden" name="parada_id" value="{{ parada.id }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm"
-                                    onclick="return confirm('¿Seguro que quieres eliminar esta parada?');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm btn-eliminar-parada">
                                 Eliminar
                             </button>
                         </form>
@@ -372,6 +377,23 @@ const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId = parseInt('{{ ruta.id }}', 10);
 const csrfToken     = '{{ csrf_token }}';
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
+const uiFeedback = window.AuraFeedback;
+
+async function confirmarAccion(options) {
+    try {
+        if (uiFeedback && typeof uiFeedback.confirm === 'function') {
+            return Boolean(await uiFeedback.confirm(options));
+        }
+    } catch (error) {
+        console.error('[AURA feedback] Error mostrando confirmación personalizada:', error);
+    }
+
+    const message = String(options?.message || '¿Deseas continuar?');
+    if (typeof window.confirm === 'function') {
+        return window.confirm(message);
+    }
+    return false;
+}
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
 const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
@@ -540,6 +562,8 @@ const btnEditarTitulo     = document.getElementById('btn-editar-titulo');
 const formEditarTitulo    = document.getElementById('form-editar-titulo');
 const btnEditarMeta       = document.getElementById('btn-editar-meta');
 const formEditarMeta      = document.getElementById('form-editar-meta');
+const selectExigenciaMeta = document.getElementById('detalle-nivel-exigencia');
+const ayudaExigenciaMeta  = document.getElementById('detalle-exigencia-ayuda');
 const btnEditarEtiquetas  = document.getElementById('btn-editar-etiquetas');
 const etiquetasLectura    = document.getElementById('etiquetas-lectura');
 const formEditarEtiquetas = document.getElementById('form-editar-etiquetas');
@@ -552,12 +576,28 @@ const btnCancelarReorden  = document.getElementById('btn-cancelar-reorden');
 const stopOrderInput      = document.getElementById('stop-order-input');
 const listaParadas        = document.getElementById('lista-paradas');
 
+const EXIGENCIA_DESCRIPCIONES = {
+    baja: 'Ritmo tranquilo, trayectos cortos y pausas frecuentes. Recomendada para paseos relajados o grupos con movilidad reducida.',
+    media: 'Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.',
+    alta: 'Ritmo intenso, más distancia caminada y menos pausas. Pensada para grupos habituados a caminar.',
+};
+
+function actualizarAyudaExigenciaMeta() {
+    if (!selectExigenciaMeta || !ayudaExigenciaMeta) return;
+    const clave = String(selectExigenciaMeta.value || '').trim().toLowerCase();
+    ayudaExigenciaMeta.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
+}
+
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
 if (btnEditarMeta)      btnEditarMeta.addEventListener('click', () => formEditarMeta?.classList.toggle('d-none'));
 if (btnEditarEtiquetas) btnEditarEtiquetas.addEventListener('click', () => {
     etiquetasLectura?.classList.toggle('d-none');
     formEditarEtiquetas?.classList.toggle('d-none');
 });
+if (selectExigenciaMeta) {
+    selectExigenciaMeta.addEventListener('change', actualizarAyudaExigenciaMeta);
+    actualizarAyudaExigenciaMeta();
+}
 
 function deactivateParadaEditMode() {
     activeParadaForm?.classList.add('d-none');
@@ -748,7 +788,27 @@ document.querySelectorAll('.btn-sugerir-parada-ia').forEach((btn) => {
     btn.addEventListener('click', () => cargarSugerenciasIAParaParada(btn.dataset.paradaId, btn));
 });
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
+    const deleteBtn = event.target.closest('.btn-eliminar-parada');
+    if (!deleteBtn) return;
+
+    event.preventDefault();
+    const form = deleteBtn.closest('form');
+    if (!form) return;
+
+    const confirmacion = await confirmarAccion({
+        title: 'Eliminar parada',
+        message: '¿Seguro que quieres eliminar esta parada?',
+        confirmText: 'Eliminar',
+        cancelText: 'Cancelar',
+        type: 'danger',
+    });
+    if (!confirmacion) return;
+
+    form.submit();
+});
+
+document.addEventListener('click', async (event) => {
     const usarBtn = event.target.closest('.btn-usar-sugerencia-ia');
     if (!usarBtn) return;
 
@@ -760,9 +820,13 @@ document.addEventListener('click', (event) => {
     const lat = coords[0];
     const lon = coords[1];
 
-    const confirmacion = window.confirm(
-        'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
-    );
+    const confirmacion = await confirmarAccion({
+        title: 'Añadir sugerencia IA',
+        message: 'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
+        confirmText: 'Añadir parada',
+        cancelText: 'Cancelar',
+        type: 'info',
+    });
     if (!confirmacion) return;
 
     agregarSugerenciaComoNuevaParada({

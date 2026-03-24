@@ -160,16 +160,18 @@ def generar_ruta_ia(request):
     except (services.ErrorValidacionRuta, ValueError) as exc:
         logger.warning('Error de validación en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': f'Error en los datos: {str(exc)}'}, status=400)
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        logger.warning('Sesión de generación no encontrada en generar_ruta_ia: %s', exc)
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        logger.warning('Sesión de generación expirada en generar_ruta_ia: %s', exc)
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
     except services.ErrorIntegracionIA as exc:
         logger.warning('Error de integración IA en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
     except services.ErrorPersistenciaRuta as exc:
         logger.exception('Error de persistencia en generar_ruta_ia')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
-
-    except services.ErrorIntegracionIA as exc:
-        logger.error('Error de IA en generar_ruta_ia: %s', exc)
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
 
 
 @csrf_exempt
@@ -246,7 +248,14 @@ def confirmar_ruta_ia(request):
         'paradas': paradas_seleccionadas,
     }
 
-    guia = _obtener_guia_para_usuario(request.user)
+    try:
+        guia = _obtener_guia_para_usuario(request.user)
+    except services.ErrorPermisosRuta as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=403)
+    except services.ErrorPersistenciaRuta as exc:
+        logger.exception('Error de persistencia obteniendo guía en confirmar_ruta_ia')
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
+
     if not guia:
         return JsonResponse(
             {'status': 'ERROR', 'mensaje': 'No se pudo encontrar o crear un perfil de guía para este usuario.'},
@@ -260,21 +269,26 @@ def confirmar_ruta_ia(request):
     except services.ErrorPersistenciaRuta as exc:
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
 
-    for parada_rechazada in paradas_rechazadas:
-        services.avanzar_checkpoint_sesion_generacion(
+    try:
+        for parada_rechazada in paradas_rechazadas:
+            services.avanzar_checkpoint_sesion_generacion(
+                request,
+                sesion_generacion_id,
+                checkpoint='seleccion_paradas_guia',
+                parada_rechazada=parada_rechazada,
+                motivo_rechazo='No seleccionada por el guía durante la confirmación de la ruta.',
+            )
+
+        estado_final = services.avanzar_checkpoint_sesion_generacion(
             request,
             sesion_generacion_id,
-            checkpoint='seleccion_paradas_guia',
-            parada_rechazada=parada_rechazada,
-            motivo_rechazo='No seleccionada por el guía durante la confirmación de la ruta.',
+            checkpoint='ruta_guardada',
+            datos_extra={'ruta_id': ruta_guardada.id},
         )
-
-    estado_final = services.avanzar_checkpoint_sesion_generacion(
-        request,
-        sesion_generacion_id,
-        checkpoint='ruta_guardada',
-        datos_extra={'ruta_id': ruta_guardada.id},
-    )
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
 
     ruta_generada_final['id'] = ruta_guardada.id
     ruta_generada_final['checkpoint_contexto'] = {

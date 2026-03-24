@@ -18,12 +18,15 @@
             </p>
             <h1 class="session-title">{{ sesion.ruta.titulo }}</h1>
         </div>
+        {% if sesion.estado != 'finalizado' %}
         <a href="{% url 'tours:mapa_guia' sesion.id %}"
+           id="map-link-btn"
            class="btn btn-brand fw-bold px-4 d-flex align-items-center gap-2"
            style="border-radius:var(--radius);">
             <span class="material-icons-round" style="font-size:18px;">map</span>
             Ver mapa
         </a>
+        {% endif %}
     </div>
 
     <div class="row g-3">
@@ -42,25 +45,32 @@
                     </span>
                 </div>
 
-                <!-- Access code -->
-                <p style="font-size:.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);margin-bottom:.35rem;">
-                    Código de acceso
-                </p>
-                <div class="session-code-display" id="sesion-code">{{ sesion.codigo_acceso }}</div>
-
-                <!-- QR code -->
-                {% url 'tours:join_tour_by_code' sesion.codigo_acceso as join_path %}
-                {% with full_url=request.scheme|add:'://'|add:request.get_host|add:join_path %}
-                <div class="mb-4 qr-center">
-                    <img id="qr-code"
-                         alt="QR de acceso"
-                         style="width:200px;height:200px;border-radius:var(--radius-md);border:1px solid var(--border-color);display:block;"
-                         src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ full_url|urlencode }}" />
+                {% if sesion.estado == 'finalizado' %}
+                <div class="session-code-display mb-4" style="background:var(--bg-surface);color:var(--text-muted);font-size:1.1rem;padding:2.5rem 1rem;">
+                    SESIÓN FINALIZADA
                 </div>
-                {% endwith %}
+                {% else %}
+                <!-- Access code -->
+                <div id="access-block">
+                    <p style="font-size:.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);margin-bottom:.35rem;">
+                        Código de acceso
+                    </p>
+                    <div class="session-code-display" id="sesion-code">{{ sesion.codigo_acceso }}</div>
+
+                    <!-- QR code -->
+                    {% url 'tours:join_tour_by_code' sesion.codigo_acceso as join_path %}
+                    {% with full_url=request.scheme|add:'://'|add:request.get_host|add:join_path %}
+                    <div class="mb-4 qr-center" id="qr-container">
+                        <img id="qr-code"
+                             alt="QR de acceso"
+                             style="width:200px;height:200px;border-radius:var(--radius-md);border:1px solid var(--border-color);display:block;"
+                             src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ full_url|urlencode }}" />
+                    </div>
+                    {% endwith %}
+                </div>
 
                 <!-- Action buttons -->
-                <div class="action-btn-row">
+                <div class="action-btn-row" id="action-buttons-container">
                     {% if sesion.estado == 'pendiente' %}
                     <button id="iniciar-tour"
                             class="btn btn-brand fw-bold d-flex align-items-center gap-1"
@@ -83,13 +93,25 @@
                     </button>
                 </div>
 
-                <div class="d-flex justify-content-center mt-3">
+                <div class="d-flex justify-content-center mt-3" id="close-access-container">
                     <button id="close-access"
                             class="btn fw-semibold d-flex align-items-center gap-1"
                             style="border:1px solid rgba(239,68,68,.25);border-radius:var(--radius);font-size:.875rem;color:var(--danger);background:var(--danger-light);">
                         <span class="material-icons-round" style="font-size:16px;">lock</span>
-                        Cerrar acceso
+                        Finalizar sesión
                     </button>
+                </div>
+                {% endif %}
+
+                <div
+                    class="d-flex justify-content-center mt-3 {% if sesion.estado != 'finalizado' %}d-none{% endif %}"
+                    id="back-to-catalog-container">
+                    <a href="{% url 'catalogo' %}"
+                       class="btn btn-brand fw-bold d-flex align-items-center gap-1"
+                       style="border-radius:var(--radius);font-size:.875rem;">
+                        <span class="material-icons-round" style="font-size:17px;">arrow_back</span>
+                        Volver al catálogo
+                    </a>
                 </div>
 
             </div>
@@ -126,5 +148,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/guia_sesion.js' %}"></script>
+<script src="{% static 'js/guia_sesion.js' %}?v=1.4"></script>
 {% endblock %}

@@ -32,6 +32,18 @@ MIN_NUM_PERSONAS = 1
 MAX_NUM_PERSONAS = 50
 
 
+def _es_incremento_media_hora(valor):
+    return math.isclose(valor * 2, round(valor * 2), rel_tol=0.0, abs_tol=1e-9)
+
+
+def _es_misma_duracion(ruta, duracion_horas):
+    try:
+        actual = float(ruta.duracion_horas)
+    except (TypeError, ValueError):
+        return False
+    return math.isclose(actual, duracion_horas, rel_tol=0.0, abs_tol=1e-9)
+
+
 # ================================================
 # LISTADO DE RUTAS (CATÁLOGO)
 # ================================================
@@ -164,6 +176,12 @@ def actualizar_duracion_ruta(ruta, raw_duracion):
         raise ValueError("Valores numéricos inválidos (duración)")
     if duracion_horas < MIN_DURACION_HORAS or duracion_horas > MAX_DURACION_HORAS:
         raise ValueError("Valores numéricos inválidos (duración)")
+    if not _es_incremento_media_hora(duracion_horas):
+        # Compatibilidad retroactiva:
+        # si la ruta ya tenía una duración legacy (p. ej. 1.2h) y no se modifica,
+        # permitimos guardar otros metadatos sin bloquear la edición.
+        if not _es_misma_duracion(ruta, duracion_horas):
+            raise ValueError("Valores numéricos inválidos (duración)")
 
     ruta.duracion_horas = duracion_horas
     ruta.save(update_fields=["duracion_horas"])
@@ -688,4 +706,3 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     )
 
     return curiosidad, True
-

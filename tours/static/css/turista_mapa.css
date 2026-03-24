@@ -60,6 +60,39 @@ main.container {
     font-size: 20px;
 }
 
+/* ── Botón centrar mapa ────────────────────────────────────────────– */
+.btn-centrar-mapa {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    z-index: 1002;
+    color: var(--text-primary);
+    padding: 0;
+}
+
+.btn-centrar-mapa:hover {
+    background: var(--bg-white);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.btn-centrar-mapa:active {
+    transform: scale(0.95);
+}
+
+.btn-centrar-mapa .material-icons-round {
+    font-size: 20px;
+}
+
 /* ── Panel de tour ────────────────────────────────────────────────– */
 .tour-panel {
     position: fixed;

@@ -530,6 +530,8 @@ def mapa_guia(request, sesion_id):
 
     if not services.es_guia_de_sesion(request.user, sesion):
         return _render_ruta_no_autorizada(request)
+    if sesion.esta_finalizada:
+        return redirect("tours:guia_sesion", sesion_id=sesion.id)
 
     if sesion.esta_finalizada:
         return _render_join_error(request, "La sesión ya ha finalizado.", status=410)
@@ -1059,4 +1061,3 @@ def obtener_mensajes(request, sesion_id):
             "estado_sesion": sesion.estado,
         }
     )
-

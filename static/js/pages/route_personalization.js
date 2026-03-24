@@ -19,6 +19,7 @@
     const btnGenerarAdicionales = document.getElementById('btn-generar-adicionales');
     const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
+    const feedback = window.AuraFeedback;
 
     let leafletMap = null;
     let sesionGeneracionActiva = null;
@@ -116,6 +117,21 @@
 
         if ('geolocation' in navigator) {
             try {
+                let permisoSolicitado = true;
+                if (feedback && typeof feedback.confirm === 'function') {
+                    permisoSolicitado = await feedback.confirm({
+                        title: 'Compartir ubicación',
+                        message: '¿Quieres permitir tu ubicación para sugerir una ciudad automáticamente?',
+                        confirmText: 'Permitir',
+                        cancelText: 'Ahora no',
+                        type: 'info',
+                    });
+                }
+
+                if (!permisoSolicitado) {
+                    return meta;
+                }
+
                 const pos = await new Promise((resolve, reject) =>
                     navigator.geolocation.getCurrentPosition(resolve, reject, {
                         timeout: 5000,
@@ -142,7 +158,14 @@
                         meta.ubicacion.pais = addr.country || null;
                     }
                 } catch (_) {}
-            } catch (_) {}
+            } catch (_) {
+                if (feedback && typeof feedback.toast === 'function') {
+                    feedback.toast('No se pudo obtener tu ubicación automática.', {
+                        type: 'info',
+                        duration: 2800,
+                    });
+                }
+            }
         }
         return meta;
     }
@@ -250,6 +273,22 @@
         }
 
         return data;
+    }
+
+    function validarPayloadPersonalizacion(payload) {
+        const duracion = Number(payload?.duracion);
+        if (!Number.isFinite(duracion)) {
+            throw new Error('La duración debe ser un número válido.');
+        }
+        if (duracion < 0.5 || duracion > 24) {
+            throw new Error('La duración debe estar entre 0.5 y 24 horas.');
+        }
+        if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
+            throw new Error('La duración debe indicarse en bloques de 0.5 horas.');
+        }
+
+        payload.duracion = duracion;
+        return payload;
     }
 
     async function obtenerEstadoSesionGeneracion(sesionGeneracionId) {
@@ -468,7 +507,8 @@
         iniciarMensajesProgreso('generar');
 
         try {
-            const payload = await leerFormulario();
+            let payload = await leerFormulario();
+            payload = validarPayloadPersonalizacion(payload);
             const data = await enviarPeticion(payload);
             sesionGeneracionActiva = data.sesion_generacion_id || null;
 
