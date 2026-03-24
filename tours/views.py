@@ -98,6 +98,18 @@ def _render_ruta_no_autorizada(request):
     )
 
 
+def _render_sesion_no_activa_para_union(request):
+    return render(
+        request,
+        "tours/join_error.html",
+        {
+            "error": "Esta sesión aún no está activa. Espera a que el guía inicie el tour.",
+            "show_contact_hint": False,
+        },
+        status=409,
+    )
+
+
 # ===========================================================================
 # TURISTAS ANÃ“NIMOS
 # Flujo Ãºnico: /live/code/<codigo>/ â†’ alias â†’ /live/<token>/mapa/
@@ -126,6 +138,9 @@ def join_tour_by_code(request, codigo):
             status=410,
         )
 
+    if not sesion.esta_activa:
+        return _render_sesion_no_activa_para_union(request)
+
     return redirect("tours:join_tour", token=sesion.token)
 
 
@@ -143,6 +158,9 @@ def join_tour(request, token):
             {"error": "Esta sesiÃ³n ya ha finalizado."},
             status=410,
         )
+
+    if not sesion.esta_activa:
+        return _render_sesion_no_activa_para_union(request)
 
     if request.method == "GET":
         turista = services.obtener_turista_anonimo(request)
@@ -307,9 +325,18 @@ def iniciar_tour(request, sesion_id):
     """Transiciona la sesiÃ³n de PENDIENTE â†’ EN_CURSO."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
 
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
     if sesion.esta_finalizada:
         return JsonResponse(
             {"error": "No se puede iniciar una sesiÃ³n finalizada."}, status=400
+        )
+
+    if sesion.estado != SesionTour.PENDIENTE:
+        return JsonResponse(
+            {"error": "Solo se pueden iniciar sesiones en estado pendiente."},
+            status=409,
         )
 
     services.iniciar_sesion(sesion)
@@ -403,6 +430,9 @@ def cerrar_acceso(request, sesion_id):
 
     if not services.es_guia_de_sesion(request.user, sesion):
         return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "La sesión ya está finalizada."}, status=409)
 
     services.cerrar_sesion(sesion)
     return JsonResponse({"status": "cerrado"})
@@ -502,6 +532,12 @@ def registrar_ubicacion(request):
             {"error": "Solo el guÃ­a puede registrar ubicaciones."}, status=403
         )
 
+    if sesion.esta_finalizada:
+        return JsonResponse(
+            {"error": "No se puede registrar ubicación en una sesión finalizada."},
+            status=410,
+        )
+
     ubicacion = UbicacionVivo.objects.create(
         coordenadas=Point(longitud, latitud, srid=4326),
         timestamp=timezone.now(),
@@ -525,6 +561,12 @@ def registrar_ubicacion(request):
 def obtener_ubicacion_guia(request, sesion_id):
     """Ãšltima posiciÃ³n GPS del guÃ­a (polling desde el mapa del turista)."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "La sesión está finalizada."}, status=410)
 
     try:
         guia_user = sesion.ruta.guia.user.user
@@ -555,6 +597,12 @@ def obtener_ubicacion_guia(request, sesion_id):
 def registrar_ubicacion_turista(request, sesion_id):
     """Registra la posición GPS del turista anónimo activo en la sesión."""
     sesion = get_object_or_404(SesionTour, id=sesion_id)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "La sesión está finalizada."}, status=410)
+
+    if not sesion.esta_activa:
+        return JsonResponse({"error": "La sesión no está activa."}, status=409)
 
     turista = services.obtener_turista_request(request)
     if not turista:
