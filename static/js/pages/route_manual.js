@@ -223,6 +223,9 @@
         if (duracion < LIMITES_MANUAL.duracionMin || duracion > LIMITES_MANUAL.duracionMax) {
             return 'La duración debe estar entre 0.5 y 24 horas.';
         }
+        if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
+            return 'La duración debe indicarse en bloques de 0.5 horas.';
+        }
         if (!Number.isInteger(personas)) {
             return 'El número de personas debe ser un entero válido.';
         }

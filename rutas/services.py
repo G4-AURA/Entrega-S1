@@ -32,6 +32,10 @@ MIN_NUM_PERSONAS = 1
 MAX_NUM_PERSONAS = 50
 
 
+def _es_incremento_media_hora(valor):
+    return math.isclose(valor * 2, round(valor * 2), rel_tol=0.0, abs_tol=1e-9)
+
+
 # ================================================
 # LISTADO DE RUTAS (CATÁLOGO)
 # ================================================
@@ -163,6 +167,8 @@ def actualizar_duracion_ruta(ruta, raw_duracion):
     if not math.isfinite(duracion_horas):
         raise ValueError("Valores numéricos inválidos (duración)")
     if duracion_horas < MIN_DURACION_HORAS or duracion_horas > MAX_DURACION_HORAS:
+        raise ValueError("Valores numéricos inválidos (duración)")
+    if not _es_incremento_media_hora(duracion_horas):
         raise ValueError("Valores numéricos inválidos (duración)")
 
     ruta.duracion_horas = duracion_horas
@@ -688,4 +694,3 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     )
 
     return curiosidad, True
-
