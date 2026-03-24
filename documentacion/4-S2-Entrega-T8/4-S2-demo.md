@@ -2,7 +2,7 @@
 
 <div align="center">  
     <p align="center">
-        <img src="logo.png" alt="AURA Logo" width="230"/>
+        <img src="../recursos/logo.png" alt="AURA Logo" width="230"/>
     </p>
 </div>
 
@@ -23,3 +23,6 @@
 </div>
 
 ---
+
+## Contenido
+### Este documento contiene el enlace al video demostrativo del funcionamiento de la aplicación.
