@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     fetchParticipants();
-    setInterval(fetchParticipants, 4000);
+    const fetchIntervalId = setInterval(fetchParticipants, 4000);
 
     const iniciarBtn = document.getElementById('iniciar-tour');
     if (iniciarBtn) {
@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.getElementById('close-access')?.addEventListener('click', async() => {
-        if (!confirm('¿Cerrar el acceso? Esto finalizará la sesión para todos.')) return;
+        if (!confirm('¿Finalizar sesión? Esto cerrará el tour permanentemente y nadie podrá volver a unirse.')) return;
         try {
             const closeUrl = document.querySelector('meta[name="close-access-url"]')?.content || '';
             const resp = await fetch(closeUrl, {
@@ -176,13 +176,43 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             const data = await resp.json();
             if (data.status === 'cerrado') {
-                document.getElementById('sesion-code').textContent = 'CERRADO';
-                const qrEl = document.getElementById('qr-code');
-                if (qrEl) qrEl.style.opacity = '0.2';
-                document.getElementById('regenerate-code').disabled = true;
-                document.getElementById('copy-code').disabled = true;
-                document.getElementById('close-access').disabled = true;
-                alert('Acceso cerrado.');
+                
+                const dot = document.getElementById('status-dot');
+                const label = document.getElementById('sesion-estado');
+                if (dot) {
+                    dot.className = 'status-dot status-dot--closed';
+                    dot.style.background = '';
+                    dot.style.boxShadow = '';
+                }
+                if (label) {
+                    label.className = 'sesion-estado-label sesion-estado--closed';
+                    label.textContent = 'FINALIZADO';
+                    label.style.color = '';
+                }
+                const accessBlock = document.getElementById('access-block');
+                if (accessBlock) {
+                    accessBlock.textContent = '';
+                    const finalDiv = document.createElement('div');
+                    finalDiv.className = 'session-code-display mb-4';
+                    finalDiv.textContent = 'SESIÓN FINALIZADA';
+                    finalDiv.style.background = 'var(--bg-surface)';
+                    finalDiv.style.color = 'var(--text-muted)';
+                    finalDiv.style.fontSize = '1.1rem';
+                    finalDiv.style.padding = '2.5rem 1rem';
+                    accessBlock.appendChild(finalDiv);
+                }
+
+                const btnsRow = document.getElementById('action-buttons-container');
+                if (btnsRow) btnsRow.style.display = 'none';
+
+                const closeContainer = document.getElementById('close-access-container');
+                if (closeContainer) closeContainer.style.display = 'none';
+
+                if (typeof fetchIntervalId !== 'undefined') {
+                    clearInterval(fetchIntervalId);
+                }
+
+                alert('Sesión finalizada con éxito.');
             }
         } catch (e) {
             alert('Error conectando con el servidor.');
