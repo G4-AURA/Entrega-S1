@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.getElementById('close-access')?.addEventListener('click', async() => {
-        if (!confirm('¿Cerrar el acceso? Esto finalizará la sesión para todos.')) return;
+        if (!confirm('¿Finalizar sesión? Esto cerrará el tour permanentemente y nadie podrá volver a unirse.')) return;
         try {
             const closeUrl = document.querySelector('meta[name="close-access-url"]')?.content || '';
             const resp = await fetch(closeUrl, {
@@ -176,13 +176,31 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             const data = await resp.json();
             if (data.status === 'cerrado') {
-                document.getElementById('sesion-code').textContent = 'CERRADO';
-                const qrEl = document.getElementById('qr-code');
-                if (qrEl) qrEl.style.opacity = '0.2';
-                document.getElementById('regenerate-code').disabled = true;
-                document.getElementById('copy-code').disabled = true;
-                document.getElementById('close-access').disabled = true;
-                alert('Acceso cerrado.');
+                
+                const dot = document.getElementById('status-dot');
+                const label = document.getElementById('sesion-estado');
+                if (dot) {
+                    dot.className = 'status-dot status-dot--closed';
+                    dot.style.background = '';
+                    dot.style.boxShadow = '';
+                }
+                if (label) {
+                    label.className = 'sesion-estado-label sesion-estado--closed';
+                    label.textContent = 'FINALIZADO';
+                    label.style.color = '';
+                }
+                const accessBlock = document.getElementById('access-block');
+                if (accessBlock) {
+                    accessBlock.innerHTML = '<div class="session-code-display mb-4" style="background:var(--bg-surface);color:var(--text-muted);font-size:1.1rem;padding:2.5rem 1rem;">SESIÓN FINALIZADA</div>';
+                }
+
+                const btnsRow = document.getElementById('action-buttons-container');
+                if (btnsRow) btnsRow.style.display = 'none';
+
+                const closeContainer = document.getElementById('close-access-container');
+                if (closeContainer) closeContainer.style.display = 'none';
+
+                alert('Sesión finalizada con éxito.');
             }
         } catch (e) {
             alert('Error conectando con el servidor.');
