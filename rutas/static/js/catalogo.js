@@ -4,10 +4,19 @@
 
     const feedback = window.AuraFeedback;
     const confirmar = async (options) => {
-        if (feedback && typeof feedback.confirm === 'function') {
-            return feedback.confirm(options);
+        try {
+            if (feedback && typeof feedback.confirm === 'function') {
+                return Boolean(await feedback.confirm(options));
+            }
+        } catch (error) {
+            console.error('[AURA feedback] Error mostrando confirmación personalizada:', error);
         }
-        return true;
+
+        const message = String(options?.message || '¿Deseas continuar?');
+        if (typeof window.confirm === 'function') {
+            return window.confirm(message);
+        }
+        return false;
     };
     const avisar = (message, type = 'info') => {
         if (feedback && typeof feedback.toast === 'function') {

@@ -374,10 +374,19 @@ const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 const uiFeedback = window.AuraFeedback;
 
 async function confirmarAccion(options) {
-    if (uiFeedback && typeof uiFeedback.confirm === 'function') {
-        return uiFeedback.confirm(options);
+    try {
+        if (uiFeedback && typeof uiFeedback.confirm === 'function') {
+            return Boolean(await uiFeedback.confirm(options));
+        }
+    } catch (error) {
+        console.error('[AURA feedback] Error mostrando confirmación personalizada:', error);
     }
-    return true;
+
+    const message = String(options?.message || '¿Deseas continuar?');
+    if (typeof window.confirm === 'function') {
+        return window.confirm(message);
+    }
+    return false;
 }
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
