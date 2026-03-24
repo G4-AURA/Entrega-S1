@@ -30,6 +30,15 @@ let solicitudCuriosidadEnCurso = false;
 let sesionEstadoActual = (typeof sesionEstado !== 'undefined' && sesionEstado) ? sesionEstado : '';
 const RADIO_PARADA_METROS = 75;
 
+// ── Estados de centrado del mapa ───────────────────────────────────────────
+const CENTRADO_STATES = {
+    TURISTA: 'turista',
+    GUIA: 'guia',
+    PARADA: 'parada',
+};
+let estadoCentradoActual = CENTRADO_STATES.PARADA;
+let primeraParadaCentrada = false;
+
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -100,6 +109,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
+
+    // ── Inicializar botón de centrado ──────────────────────────────────────
+    _initBotónCentraMapa();
+    
+    // ── Centralizar en primera parada al cargar ────────────────────────────
+    _centro_primera_parada();
 
     // ── Chat ──────────────────────────────────────────────────────────────
     _initSessionCountdown();
@@ -1010,4 +1025,127 @@ function _buildParadaIcon(parada, highlighted = false) {
         iconAnchor: [size / 2, size / 2],
         popupAnchor: [0, -(size / 2) - 4],
     });
+}
+
+
+// ── Botón de centrado del mapa ─────────────────────────────────────────────
+
+function _centro_primera_parada() {
+    if (!map || primeraParadaCentrada) return;
+    if (!Array.isArray(paradasData) || paradasData.length === 0) return;
+
+    const existePrimera = paradasData[0];
+    if (!existePrimera || existePrimera.lat == null || existePrimera.lng == null) return;
+
+    const pos = [existePrimera.lat, existePrimera.lng];
+    map.flyTo(pos, 15, { duration: 0.8 });
+    primeraParadaCentrada = true;
+}
+
+function _initBotónCentraMapa() {
+    const btn = document.getElementById('btn-centrar-mapa');
+    if (!btn || !map) return;
+
+    const actualizar_texto = () => {
+        const textos = {
+            [CENTRADO_STATES.TURISTA]: 'En tu ubicación',
+            [CENTRADO_STATES.GUIA]: 'En el guía',
+            [CENTRADO_STATES.PARADA]: 'En la parada actual',
+        };
+        btn.setAttribute('title', textos[estadoCentradoActual] || 'Centrar mapa');
+    };
+
+    actualizar_texto();
+
+    btn.addEventListener('click', () => {
+        // Rotar a través de los tres estados
+        const estados_secuencia = [
+            CENTRADO_STATES.TURISTA,
+            CENTRADO_STATES.GUIA,
+            CENTRADO_STATES.PARADA,
+        ];
+
+        const indice_actual = estados_secuencia.indexOf(estadoCentradoActual);
+        const indice_siguiente = (indice_actual + 1) % estados_secuencia.length;
+        estadoCentradoActual = estados_secuencia[indice_siguiente];
+
+        // Ejecutar centrado según el estado
+        switch (estadoCentradoActual) {
+            case CENTRADO_STATES.TURISTA:
+                _centrar_en_turista();
+                break;
+            case CENTRADO_STATES.GUIA:
+                _centrar_en_guia();
+                break;
+            case CENTRADO_STATES.PARADA:
+                _centrar_en_parada_actual();
+                break;
+        }
+
+        actualizar_texto();
+    });
+}
+
+function _centrar_en_turista() {
+    if (!map || !miUbicacionMarker) {
+        console.warn('No se puede centrar: posición del turista no disponible');
+        return;
+    }
+
+    const pos = miUbicacionMarker.getLatLng();
+    map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+}
+
+function _centrar_en_guia() {
+    if (!map) return;
+
+    // Si estoy en guía, centrar en mi posición
+    if (esGuia) {
+        if (!miUbicacionMarker) {
+            console.warn('No se puede centrar: posición del guía no disponible');
+            return;
+        }
+        const pos = miUbicacionMarker.getLatLng();
+        map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+    } else {
+        // Si soy turista, centrar en el marcador del guía
+        if (!guiaMarker) {
+            console.warn('No se puede centrar: posición del guía no disponible aún');
+            return;
+        }
+        const pos = guiaMarker.getLatLng();
+        map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+    }
+}
+
+function _centrar_en_parada_actual() {
+    if (!map) return;
+
+    // Si hay una parada seleccionada, centrar en ella
+    if (paradaSeleccionadaId) {
+        const marker = paradasMarkers.get(paradaSeleccionadaId);
+        if (marker) {
+            const pos = marker.getLatLng();
+            map.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+            return;
+        }
+
+        // Si no hay marcador visual, buscar en los datos
+        const parada = paradasDataById.get(paradaSeleccionadaId);
+        if (parada && parada.lat != null && parada.lng != null) {
+            map.flyTo([parada.lat, parada.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+            return;
+        }
+    }
+
+    // Si no hay parada seleccionada, centrar en la primera parada
+    if (Array.isArray(paradasData) && paradasData.length > 0) {
+        const primera = paradasData[0];
+        if (primera && primera.lat != null && primera.lng != null) {
+            map.flyTo([primera.lat, primera.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+            return;
+        }
+    }
+
+    console.warn('No hay parada actual para centrar');
 }
