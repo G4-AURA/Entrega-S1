@@ -160,16 +160,18 @@ def generar_ruta_ia(request):
     except (services.ErrorValidacionRuta, ValueError) as exc:
         logger.warning('Error de validación en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': f'Error en los datos: {str(exc)}'}, status=400)
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        logger.warning('Sesión de generación no encontrada en generar_ruta_ia: %s', exc)
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except services.ErrorSesionGeneracionExpirada as exc:
+        logger.warning('Sesión de generación expirada en generar_ruta_ia: %s', exc)
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
     except services.ErrorIntegracionIA as exc:
         logger.warning('Error de integración IA en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
     except services.ErrorPersistenciaRuta as exc:
         logger.exception('Error de persistencia en generar_ruta_ia')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
-
-    except services.ErrorIntegracionIA as exc:
-        logger.error('Error de IA en generar_ruta_ia: %s', exc)
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
 
 
 @csrf_exempt

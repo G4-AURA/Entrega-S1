@@ -102,6 +102,24 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()['status'], 'ERROR')
 
+    @patch(
+        'creacion.views.services.avanzar_checkpoint_sesion_generacion',
+        side_effect=services.ErrorSesionGeneracionExpirada(
+            'La sesión de generación ha expirado. Vuelve a iniciar la generación de la ruta.'
+        ),
+    )
+    @patch('creacion.views.consultar_langgraph')
+    def test_sesion_generacion_expirada_retorna_410(self, mock_consultar, _mock_checkpoint):
+        user = User.objects.create_user(username='guia_sesion_expirada', password='1234')
+        self.client.force_login(user)
+        mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
+
+        response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertIn('expirado', response.json()['mensaje'].lower())
+
 
 class GuardarRutaManualViewTests(TestCase):
     def setUp(self):
