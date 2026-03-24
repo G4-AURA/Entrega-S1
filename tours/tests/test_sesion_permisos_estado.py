@@ -161,3 +161,50 @@ class SesionPermisosEstadoTests(TestCase):
         client_turista = self._client_turista(self.turista.id)
         response_ok = client_turista.get(reverse("tours:ubicacion_guia", args=[self.sesion_activa.id]))
         self.assertEqual(response_ok.status_code, 200)
+
+    def test_crear_sesion_controla_ruta_inexistente(self):
+        client_owner = self._client_guia_owner()
+        response = client_owner.get(reverse("tours:crear_sesion"), {"ruta_id": 999999})
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("error", response.json())
+
+    def test_join_tour_controla_token_invalido(self):
+        client = Client()
+        response = client.get("/tours/live/00000000-0000-0000-0000-000000000000/")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_endpoints_json_devuelven_404_si_sesion_no_existe(self):
+        client_owner = self._client_guia_owner()
+
+        response_iniciar = client_owner.post(reverse("tours:iniciar_tour", args=[999999]))
+        self.assertEqual(response_iniciar.status_code, 404)
+        self.assertIn("error", response_iniciar.json())
+
+        response_cronometro = client_owner.get(reverse("tours:estado_cronometro", args=[999999]))
+        self.assertEqual(response_cronometro.status_code, 404)
+        self.assertIn("error", response_cronometro.json())
+
+    def test_chat_y_ubicacion_guia_requieren_sesion_en_curso(self):
+        client_owner = self._client_guia_owner()
+
+        response_chat_pendiente = client_owner.post(
+            reverse("tours:enviar_mensaje", args=[self.sesion_pendiente.id]),
+            data=json.dumps({"texto": "hola"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response_chat_pendiente.status_code, 409)
+
+        response_ubi_pendiente = client_owner.post(
+            reverse("tours:registrar_ubicacion"),
+            data=json.dumps(
+                {
+                    "sesion_id": self.sesion_pendiente.id,
+                    "latitud": 37.3901,
+                    "longitud": -5.9820,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response_ubi_pendiente.status_code, 409)

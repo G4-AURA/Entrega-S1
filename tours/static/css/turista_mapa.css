@@ -473,6 +473,26 @@ main.container {
     font-size: 18px;
 }
 
+.chat-input:disabled,
+.chat-send-btn:disabled,
+.chat-image-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.chat-send-btn:disabled:hover,
+.chat-image-btn:disabled:hover {
+    background: inherit;
+    border-color: var(--border-color);
+    color: inherit;
+}
+
+.chat-locked-note {
+    margin: 8px 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .chat-preview-container {
     min-height: 0;
 }
