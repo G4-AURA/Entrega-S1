@@ -568,14 +568,19 @@ class ObtenerMensajesAPITest(TestCase):
 
         # Crear mensajes de prueba (con timestamps diferentes)
         self.messages_data = []
+        base_time = timezone.now()
         for i in range(5):
             msg = MensajeChat.objects.create(
                 sesion_tour=self.sesion,
                 remitente=self.user_guia if i % 2 == 0 else None,
                 turista=None if i % 2 == 0 else self.turista,
                 nombre_remitente='Guía' if i % 2 == 0 else 'Turista',
-                texto=f'Mensaje {i}'
+                texto=f'Mensaje {i}',
             )
+            # auto_now_add ignora valores en create(); ajustamos por update para tests estables.
+            ts = base_time + timedelta(seconds=i)
+            MensajeChat.objects.filter(id=msg.id).update(momento=ts)
+            msg.momento = ts
             self.messages_data.append(msg)
 
         # Clientes
