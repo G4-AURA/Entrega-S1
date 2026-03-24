@@ -106,8 +106,11 @@
                 <div class="col-12 col-md-3">
 
                     <label class="form-label">Duración (horas)</label>
-                    <input type="number" step="0.1" min="0.1" max="24" name="duracion_horas"
+                    <input type="number" step="any" min="0.5" max="24" name="duracion_horas"
                            class="form-control" value="{{ ruta.duracion_horas|unlocalize }}" required>
+                    <div class="form-text mt-1">
+                        Usa incrementos de 0.5h al cambiar la duración.
+                    </div>
                 </div>
                 <div class="col-12 col-md-3">
                     <label class="form-label">Número de personas</label>
@@ -116,7 +119,7 @@
                 </div>
                 <div class="col-12 col-md-3">
                     <label class="form-label">Nivel de exigencia</label>
-                    <select name="nivel_exigencia" class="form-select" required>
+                    <select id="detalle-nivel-exigencia" name="nivel_exigencia" class="form-select" required>
                         {% for value, label in exigencia_choices %}
                         <option value="{{ value }}"
                                 {% if value == ruta.nivel_exigencia %}selected{% endif %}>
@@ -124,6 +127,9 @@
                         </option>
                         {% endfor %}
                     </select>
+                    <div id="detalle-exigencia-ayuda" class="form-text mt-2" aria-live="polite">
+                        Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.
+                    </div>
                 </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
@@ -556,6 +562,8 @@ const btnEditarTitulo     = document.getElementById('btn-editar-titulo');
 const formEditarTitulo    = document.getElementById('form-editar-titulo');
 const btnEditarMeta       = document.getElementById('btn-editar-meta');
 const formEditarMeta      = document.getElementById('form-editar-meta');
+const selectExigenciaMeta = document.getElementById('detalle-nivel-exigencia');
+const ayudaExigenciaMeta  = document.getElementById('detalle-exigencia-ayuda');
 const btnEditarEtiquetas  = document.getElementById('btn-editar-etiquetas');
 const etiquetasLectura    = document.getElementById('etiquetas-lectura');
 const formEditarEtiquetas = document.getElementById('form-editar-etiquetas');
@@ -568,12 +576,28 @@ const btnCancelarReorden  = document.getElementById('btn-cancelar-reorden');
 const stopOrderInput      = document.getElementById('stop-order-input');
 const listaParadas        = document.getElementById('lista-paradas');
 
+const EXIGENCIA_DESCRIPCIONES = {
+    baja: 'Ritmo tranquilo, trayectos cortos y pausas frecuentes. Recomendada para paseos relajados o grupos con movilidad reducida.',
+    media: 'Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.',
+    alta: 'Ritmo intenso, más distancia caminada y menos pausas. Pensada para grupos habituados a caminar.',
+};
+
+function actualizarAyudaExigenciaMeta() {
+    if (!selectExigenciaMeta || !ayudaExigenciaMeta) return;
+    const clave = String(selectExigenciaMeta.value || '').trim().toLowerCase();
+    ayudaExigenciaMeta.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
+}
+
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
 if (btnEditarMeta)      btnEditarMeta.addEventListener('click', () => formEditarMeta?.classList.toggle('d-none'));
 if (btnEditarEtiquetas) btnEditarEtiquetas.addEventListener('click', () => {
     etiquetasLectura?.classList.toggle('d-none');
     formEditarEtiquetas?.classList.toggle('d-none');
 });
+if (selectExigenciaMeta) {
+    selectExigenciaMeta.addEventListener('change', actualizarAyudaExigenciaMeta);
+    actualizarAyudaExigenciaMeta();
+}
 
 function deactivateParadaEditMode() {
     activeParadaForm?.classList.add('d-none');

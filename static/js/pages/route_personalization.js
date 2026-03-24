@@ -275,6 +275,22 @@
         return data;
     }
 
+    function validarPayloadPersonalizacion(payload) {
+        const duracion = Number(payload?.duracion);
+        if (!Number.isFinite(duracion)) {
+            throw new Error('La duración debe ser un número válido.');
+        }
+        if (duracion < 0.5 || duracion > 24) {
+            throw new Error('La duración debe estar entre 0.5 y 24 horas.');
+        }
+        if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
+            throw new Error('La duración debe indicarse en bloques de 0.5 horas.');
+        }
+
+        payload.duracion = duracion;
+        return payload;
+    }
+
     async function obtenerEstadoSesionGeneracion(sesionGeneracionId) {
         if (!sesionGeneracionId || !config?.urls?.obtenerSesion) return null;
 
@@ -491,7 +507,8 @@
         iniciarMensajesProgreso('generar');
 
         try {
-            const payload = await leerFormulario();
+            let payload = await leerFormulario();
+            payload = validarPayloadPersonalizacion(payload);
             const data = await enviarPeticion(payload);
             sesionGeneracionActiva = data.sesion_generacion_id || null;
 

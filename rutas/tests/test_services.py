@@ -94,6 +94,23 @@ class RutasServicesValidationTest(TestCase):
         with self.assertRaisesMessage(ValueError, "Valores numéricos inválidos (duración)"):
             actualizar_duracion_ruta(self.ruta, "25.0")
 
+    def test_actualizar_duracion_legacy_unchanged_permitida(self):
+        self.ruta.duracion_horas = 1.2
+        self.ruta.save(update_fields=["duracion_horas"])
+
+        # No debe fallar si se reenvía el mismo valor legacy.
+        actualizar_duracion_ruta(self.ruta, "1.2")
+        self.ruta.refresh_from_db()
+        self.assertAlmostEqual(self.ruta.duracion_horas, 1.2, places=6)
+
+    def test_actualizar_duracion_legacy_changed_no_permitida(self):
+        self.ruta.duracion_horas = 1.2
+        self.ruta.save(update_fields=["duracion_horas"])
+
+        # Cambiar a un valor nuevo que no es múltiplo de 0.5 debe seguir fallando.
+        with self.assertRaisesMessage(ValueError, "Valores numéricos inválidos (duración)"):
+            actualizar_duracion_ruta(self.ruta, "1.3")
+
     # 5. Actualizar Personas
     def test_actualizar_personas_invalido(self):
         with self.assertRaisesMessage(ValueError, "Valores numéricos inválidos (número de personas)"):

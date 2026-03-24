@@ -130,6 +130,10 @@ MAX_REINTENTOS_PARADA_INVALIDA = 3
 MAX_ALTERNATIVAS_RUTA = 5
 UMBRAL_DISTANCIA_MAXIMA_PARADA_KM = 35.0
 
+
+def _es_incremento_media_hora(valor):
+    return math.isclose(valor * 2, round(valor * 2), rel_tol=0.0, abs_tol=1e-9)
+
 _MOOD_A_CATEGORIAS_OSM: dict[str, list[str]] = {
     'historia': [
         'historic=monument', 'historic=castle', 'historic=ruins',
@@ -1040,18 +1044,28 @@ def normalizar_payload_ia(datos):
     restricciones = _normalizar_restricciones(datos.get('restricciones'), deseos=deseos)
     metadata = datos.get('metadata') or {}
     try:
-        return {
-            'ciudad': ciudad,
-            'duracion': float(duracion),
-            'personas': int(personas),
-            'exigencia': exigencia_normalizada,
-            'mood': moods_normalizados,
-            'deseos': deseos,
-            'restricciones': restricciones,
-            'metadata': metadata,
-        }
+        duracion_num = float(duracion)
+        personas_num = int(personas)
     except (TypeError, ValueError) as exc:
         raise ErrorValidacionRuta('Duración y personas deben tener un formato válido.') from exc
+
+    if not math.isfinite(duracion_num):
+        raise ErrorValidacionRuta('La duración debe ser un número finito válido.')
+    if duracion_num < MIN_DURACION_HORAS_MANUAL or duracion_num > MAX_DURACION_HORAS_MANUAL:
+        raise ErrorValidacionRuta('La duración debe estar entre 0.5 y 24 horas.')
+    if not _es_incremento_media_hora(duracion_num):
+        raise ErrorValidacionRuta('La duración debe indicarse en incrementos de 0.5 horas.')
+
+    return {
+        'ciudad': ciudad,
+        'duracion': duracion_num,
+        'personas': personas_num,
+        'exigencia': exigencia_normalizada,
+        'mood': moods_normalizados,
+        'deseos': deseos,
+        'restricciones': restricciones,
+        'metadata': metadata,
+    }
 
 
 def mapear_payload_ia(payload):
@@ -1063,9 +1077,12 @@ def mapear_payload_ia(payload):
     mood = normalizar_mood(payload.get('mood') or [])
     if not mood:
         raise ValueError('Debes seleccionar al menos un mood para generar la ruta.')
+    duracion_num = float(duracion)
+    if not _es_incremento_media_hora(duracion_num):
+        raise ValueError('La duración debe indicarse en incrementos de 0.5 horas.')
     return {
         'ciudad': ciudad,
-        'duracion': float(duracion),
+        'duracion': duracion_num,
         'personas': int(personas),
         'exigencia': normalizar_nivel_exigencia(payload.get('exigencia')),
         'mood': mood,
@@ -1090,10 +1107,13 @@ def mapear_payload_manual(payload):
         })
     if not paradas_normalizadas:
         raise ValueError('La ruta manual debe incluir al menos una parada con coordenadas válidas.')
+    duracion_horas = float(payload.get('duracion_horas') or 2.0)
+    if not _es_incremento_media_hora(duracion_horas):
+        raise ValueError('La duración debe indicarse en incrementos de 0.5 horas.')
     return {
         'titulo': str(payload.get('titulo') or '').strip() or 'Ruta manual',
         'descripcion': str(payload.get('descripcion') or '').strip(),
-        'duracion_horas': float(payload.get('duracion_horas') or 2.0),
+        'duracion_horas': duracion_horas,
         'num_personas': int(payload.get('num_personas') or 10),
         'nivel_exigencia': normalizar_nivel_exigencia(payload.get('nivel_exigencia')),
         'mood': normalizar_mood(payload.get('mood') or []),
@@ -1272,6 +1292,8 @@ def guardar_ruta_manual(guia, payload):
         raise ErrorValidacionRuta('La duración debe ser un número finito válido.')
     if duracion_horas < MIN_DURACION_HORAS_MANUAL or duracion_horas > MAX_DURACION_HORAS_MANUAL:
         raise ErrorValidacionRuta('La duración debe estar entre 0.5 y 24 horas.')
+    if not _es_incremento_media_hora(duracion_horas):
+        raise ErrorValidacionRuta('La duración debe indicarse en incrementos de 0.5 horas.')
     if num_personas < MIN_PERSONAS_MANUAL or num_personas > MAX_PERSONAS_MANUAL:
         raise ErrorValidacionRuta('El número de personas debe estar entre 1 y 50.')
 
