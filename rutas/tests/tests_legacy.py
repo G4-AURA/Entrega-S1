@@ -8,8 +8,8 @@ from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
 
 from rutas import services as rutas_services
-from .models import AuthUser, Curiosidad, Guia, Ruta, Parada
-from .services import ServicioCuriosidadesIA
+from rutas.models import AuthUser, Curiosidad, Guia, Ruta, Parada
+from rutas.services import ServicioCuriosidadesIA
 
 
 class AuthUserModelTest(TestCase):
