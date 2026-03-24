@@ -475,103 +475,6 @@ def _construir_pois_fallback_allowlist(
     return candidatos
 
 
-def guardar_ruta_manual(guia, payload):
-    if not isinstance(payload, dict):
-        raise ErrorValidacionRuta('El cuerpo de la petición debe ser un JSON válido.')
-
-    titulo = str(payload.get('titulo') or '').strip()
-    descripcion = str(payload.get('descripcion') or '').strip()
-    paradas_data = payload.get('paradas', [])
-
-    if not titulo:
-        raise ErrorValidacionRuta('El título de la ruta es obligatorio.')
-    if not descripcion:
-        raise ErrorValidacionRuta('La descripción de la ruta es obligatoria.')
-    if not isinstance(paradas_data, list):
-        raise ErrorValidacionRuta('El formato de paradas no es válido.')
-    if len(paradas_data) < MIN_PARADAS_MANUAL:
-        raise ErrorValidacionRuta('Debes indicar al menos 2 paradas para guardar la ruta.')
-
-    try:
-        duracion_horas = float(payload.get('duracion_horas'))
-        num_personas = int(payload.get('num_personas'))
-    except (TypeError, ValueError) as exc:
-        raise ErrorValidacionRuta('Duración y número de personas deben tener un formato válido.') from exc
-
-    if not math.isfinite(duracion_horas):
-        raise ErrorValidacionRuta('La duración debe ser un número finito válido.')
-    if duracion_horas < MIN_DURACION_HORAS_MANUAL or duracion_horas > MAX_DURACION_HORAS_MANUAL:
-        raise ErrorValidacionRuta('La duración debe estar entre 0.5 y 24 horas.')
-    if num_personas < MIN_PERSONAS_MANUAL or num_personas > MAX_PERSONAS_MANUAL:
-        raise ErrorValidacionRuta('El número de personas debe estar entre 1 y 50.')
-
-    exigencia_raw = str(payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA)).strip().lower()
-    nivel_exigencia = MAPA_EXIGENCIA_RUTA.get(exigencia_raw, payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA))
-    exigencias_validas = {value for value, _ in Ruta.Exigencia.choices}
-    if nivel_exigencia not in exigencias_validas:
-        raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
-
-    moods = normalizar_moods(payload.get('mood', []))
-
-    try:
-        with transaction.atomic():
-            ruta = Ruta.objects.create(
-                titulo=titulo,
-                descripcion=descripcion,
-                duracion_horas=duracion_horas,
-                num_personas=num_personas,
-                nivel_exigencia=nivel_exigencia,
-                mood=moods,
-                es_generada_ia=False,
-                guia=guia,
-            )
-
-            for idx, parada_data in enumerate(paradas_data, start=1):
-                if not isinstance(parada_data, dict):
-                    raise ErrorValidacionRuta('Cada parada debe ser un objeto válido.')
-
-                nombre_parada = str(parada_data.get('nombre') or '').strip()
-                if not nombre_parada:
-                    raise ErrorValidacionRuta(f'El nombre de la parada {idx} es obligatorio.')
-
-                lat_raw = parada_data.get('lat')
-                lon_raw = parada_data.get('lon')
-                if lat_raw is None or lon_raw is None:
-                    raise ErrorValidacionRuta(
-                        f'Debes indicar la ubicación de la parada {idx} desde el mapa.'
-                    )
-
-                try:
-                    lat = float(lat_raw)
-                    lon = float(lon_raw)
-                except (TypeError, ValueError) as exc:
-                    raise ErrorValidacionRuta(
-                        f'La ubicación de la parada {idx} tiene coordenadas inválidas.'
-                    ) from exc
-
-                if not math.isfinite(lat) or not math.isfinite(lon):
-                    raise ErrorValidacionRuta(
-                        f'La ubicación de la parada {idx} contiene valores fuera de rango.'
-                    )
-                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                    raise ErrorValidacionRuta(
-                        f'La ubicación de la parada {idx} está fuera de rango válido.'
-                    )
-
-                Parada.objects.create(
-                    ruta=ruta,
-                    orden=idx,
-                    nombre=nombre_parada,
-                    coordenadas=Point(float(lon), float(lat), srid=4326),
-                )
-    except ErrorValidacionRuta:
-        raise
-    except (DatabaseError, IntegrityError, TypeError, ValueError) as exc:
-        raise ErrorPersistenciaRuta('No se pudo guardar la ruta manual en la base de datos.') from exc
-
-    return ruta
-
-
 def _normalizar_candidato_parada(candidato, idx):
     if not isinstance(candidato, dict):
         return None
@@ -671,6 +574,7 @@ def _normalizar_candidato_parada(candidato, idx):
         'categoria': str(candidato.get('categoria') or 'general').strip()[:60],
         'nivel_confianza': round(nivel_confianza, 2),
         'justificacion': str(candidato.get('justificacion') or '').strip()[:500],
+        'descripcion': str(candidato.get('descripcion') or '').strip()[:500],
     }
 
 
@@ -837,6 +741,7 @@ def _construir_prompt_candidatos_paradas(
             "categoria": "Categoría turística",
             "nivel_confianza": 0.0,
             "justificacion": "Motivo breve de por qué encaja en la ruta"
+            "descripcion": "Breve descripción del lugar para el turista (máximo 60 palabras)"
           }}
         ]
     """
@@ -976,6 +881,7 @@ def _normalizar_parada_checkpoint(parada):
         'coordenadas': coordenadas,
         'categoria': str(parada.get('categoria') or '').strip()[:80],
         'justificacion': str(parada.get('justificacion') or '').strip()[:500],
+        'descripcion': str(parada.get('descripcion') or parada.get('desc') or '').strip()[:500],
     }
 
 
@@ -1261,15 +1167,22 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
                     raise ErrorValidacionRuta('La ruta generada contiene paradas sin coordenadas válidas.')
                 if lat is None or lon is None:
                     raise ErrorValidacionRuta('La ruta generada contiene paradas sin coordenadas válidas.')
+                
+                descripcion_parada = str(
+                    parada.get('descripcion') or parada.get('desc') or ''
+                ).strip()[:500]
+
                 Parada.objects.create(
                     ruta=ruta,
                     orden=parada.get('orden') or idx,
                     nombre=parada.get('nombre') or f'Parada {idx}',
+                    descripcion=descripcion_parada,
                     coordenadas=Point(float(lon), float(lat), srid=4326),
                 )
                 parada_payload = {
                     'orden': parada.get('orden') or idx,
                     'nombre': parada.get('nombre') or f'Parada {idx}',
+                    'descripcion': descripcion_parada,
                     'coordenadas': [float(lat), float(lon)],
                 }
                 for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):
@@ -1329,39 +1242,47 @@ def obtener_contexto_checkpoint_por_ruta(ruta_id):
 
 
 def guardar_ruta_manual(guia, payload):
+    if not isinstance(payload, dict):
+        raise ErrorValidacionRuta('El cuerpo de la petición debe ser un JSON válido.')
+
     titulo = str(payload.get('titulo') or '').strip()
-    descripcion = payload.get('descripcion') or ''
+    descripcion = str(payload.get('descripcion') or '').strip()
     paradas_data = payload.get('paradas', [])
+
     if not titulo:
-        raise ErrorValidacionRuta({'titulo': 'El título de la ruta es obligatorio.'})
+        raise ErrorValidacionRuta('El título de la ruta es obligatorio.')
     if len(titulo) > 255:
-        raise ErrorValidacionRuta({'titulo': 'El título no puede superar los 255 caracteres.'})
+        raise ErrorValidacionRuta('El título de la ruta no puede superar los 255 caracteres.')
+        
+    if not descripcion:
+        raise ErrorValidacionRuta('La descripción de la ruta es obligatoria.')
+    
     if not isinstance(paradas_data, list):
-        raise ErrorValidacionRuta({'paradas': 'El formato de paradas no es válido.'})
-
-    for idx, parada_data in enumerate(paradas_data, start=1):
-        nombre = parada_data.get('nombre', '')
-        if len(str(nombre)) > 255:
-            raise ErrorValidacionRuta({f'parada_{idx}': 'El nombre no puede superar los 255 caracteres.'})
+        raise ErrorValidacionRuta('El formato de paradas no es válido.')
+    if len(paradas_data) < MIN_PARADAS_MANUAL:
+        raise ErrorValidacionRuta('Debes indicar al menos 2 paradas para guardar la ruta.')
 
     try:
-        duracion_horas = float(payload.get('duracion_horas', 2.0))
-    except (TypeError, ValueError):
-        raise ErrorValidacionRuta({'duracion_horas': 'Duración debe tener un formato válido.'})
+        duracion_horas = float(payload.get('duracion_horas'))
+        num_personas = int(payload.get('num_personas'))
+    except (TypeError, ValueError) as exc:
+        raise ErrorValidacionRuta('Duración y número de personas deben tener un formato válido.') from exc
 
-    try:
-        num_personas = int(payload.get('num_personas', 10))
-    except (TypeError, ValueError):
-        raise ErrorValidacionRuta({'num_personas': 'Número de personas debe tener un formato válido.'})
-
-    if duracion_horas <= 0.1 or duracion_horas > 24:
-        raise ErrorValidacionRuta({'duracion_horas': 'El valor debe ser superior a 0,1'})
-    if num_personas < 1 or num_personas > 50:
-        raise ErrorValidacionRuta({'num_personas': 'El valor debe ser superior o igual a 1'})
+    if not math.isfinite(duracion_horas):
+        raise ErrorValidacionRuta('La duración debe ser un número finito válido.')
+    if duracion_horas < MIN_DURACION_HORAS_MANUAL or duracion_horas > MAX_DURACION_HORAS_MANUAL:
+        raise ErrorValidacionRuta('La duración debe estar entre 0.5 y 24 horas.')
+    if num_personas < MIN_PERSONAS_MANUAL or num_personas > MAX_PERSONAS_MANUAL:
+        raise ErrorValidacionRuta('El número de personas debe estar entre 1 y 50.')
 
     exigencia_raw = str(payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA)).strip().lower()
     nivel_exigencia = MAPA_EXIGENCIA_RUTA.get(exigencia_raw, payload.get('nivel_exigencia', Ruta.Exigencia.MEDIA))
+    exigencias_validas = {value for value, _ in Ruta.Exigencia.choices}
+    if nivel_exigencia not in exigencias_validas:
+        raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
+
     moods = normalizar_moods(payload.get('mood', []))
+
     try:
         with transaction.atomic():
             ruta = Ruta.objects.create(
@@ -1374,18 +1295,58 @@ def guardar_ruta_manual(guia, payload):
                 es_generada_ia=False,
                 guia=guia,
             )
+
             for idx, parada_data in enumerate(paradas_data, start=1):
-                lat = parada_data.get('lat', 37.38)
-                lon = parada_data.get('lon', -5.99)
+                if not isinstance(parada_data, dict):
+                    raise ErrorValidacionRuta(f'La parada {idx} debe ser un objeto válido.')
+
+                nombre_parada = str(parada_data.get('nombre') or '').strip()
+                if not nombre_parada:
+                    raise ErrorValidacionRuta(f'El nombre de la parada {idx} es obligatorio.')
+                if len(nombre_parada) > 255:
+                    raise ErrorValidacionRuta(f'El nombre de la parada {idx} no puede superar los 255 caracteres.')
+
+                lat_raw = parada_data.get('lat')
+                lon_raw = parada_data.get('lon')
+                if lat_raw is None or lon_raw is None:
+                    raise ErrorValidacionRuta(
+                        f'Debes indicar la ubicación de la parada {idx} desde el mapa.'
+                    )
+
+                try:
+                    lat = float(lat_raw)
+                    lon = float(lon_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ErrorValidacionRuta(
+                        f'La ubicación de la parada {idx} tiene coordenadas inválidas.'
+                    ) from exc
+
+                if not math.isfinite(lat) or not math.isfinite(lon):
+                    raise ErrorValidacionRuta(
+                        f'La ubicación de la parada {idx} contiene valores fuera de rango.'
+                    )
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    raise ErrorValidacionRuta(
+                        f'La ubicación de la parada {idx} está fuera de rango válido.'
+                    )
+                
+                # Extraemos y limitamos la descripción de la parada a 500 caracteres por seguridad
+                descripcion_parada = str(parada_data.get('descripcion') or '').strip()[:500]
+
                 Parada.objects.create(
                     ruta=ruta,
                     orden=idx,
-                    nombre=parada_data.get('nombre', f'Parada {idx}'),
+                    nombre=nombre_parada,
+                    descripcion=descripcion_parada,
                     coordenadas=Point(float(lon), float(lat), srid=4326),
                 )
+    except ErrorValidacionRuta:
+        raise
     except (DatabaseError, IntegrityError, TypeError, ValueError) as exc:
         raise ErrorPersistenciaRuta('No se pudo guardar la ruta manual en la base de datos.') from exc
+
     return ruta
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1525,6 +1486,7 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
             "categoria": "Categoría turística",
             "nivel_confianza": 0.0,
             "justificacion": "Motivo breve"
+            "descripcion": "Breve descripción del lugar para el turista (máximo 60 palabras)"
           }}
         ]
     """

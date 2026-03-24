@@ -101,6 +101,11 @@
                     <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
                 </div>
 
+                <div class="form-group">
+                    <label class="input-label">Descripción (opcional)</label>
+                    <textarea class="input-field stop-descripcion" placeholder="Breve descripción de la parada..." maxlength="500"></textarea>
+                </div>
+
                 <div class="form-group form-group-no-margin">
                     <label class="input-label">Ubicación</label>
                     <div class="location-group">
@@ -167,11 +172,13 @@
 
         const paradas = Array.from(container.querySelectorAll('.stop-card')).map(function (card, index) {
             const nombreInput = card.querySelector('.stop-nombre');
+            const descInput = card.querySelector('.stop-descripcion');
             const rawLat = card.dataset.lat;
             const rawLon = card.dataset.lon;
 
             return {
                 nombre: nombreInput && nombreInput.value ? nombreInput.value : `Parada ${index + 1}`,
+                descripcion: descInput && descInput.value ? descInput.value : '',
                 lat: rawLat === undefined ? null : parseFloat(rawLat),
                 lon: rawLon === undefined ? null : parseFloat(rawLon),
             };

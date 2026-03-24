@@ -78,6 +78,19 @@
         nameGroup.appendChild(nameLabel);
         nameGroup.appendChild(nameInput);
 
+        // desc group
+        const descGroup = document.createElement('div');
+        descGroup.className = 'form-group';
+        const descLabel = document.createElement('label');
+        descLabel.className = 'input-label';
+        descLabel.textContent = 'Descripción (Opcional)';
+        const descInput = document.createElement('textarea');
+        descInput.className = 'input-field stop-descripcion';
+        descInput.placeholder = 'Breve descripción de la parada...';
+        descInput.maxLength = 500;
+        descGroup.appendChild(descLabel);
+        descGroup.appendChild(descInput);
+
         // location group
         const locGroup = document.createElement('div');
         locGroup.className = 'form-group';
@@ -107,6 +120,7 @@
         div.appendChild(imgArea);
         div.appendChild(fileInput);
         div.appendChild(nameGroup);
+        div.appendChild(descGroup);
         div.appendChild(locGroup);
         return div;
     }
@@ -155,11 +169,13 @@
         const paradas = [];
         document.querySelectorAll('.stop-card').forEach(function(card, index) {
             const nombreInput = card.querySelector('.stop-nombre');
+            const descInput = card.querySelector('.stop-descripcion');
             const ubicacionInput = card.querySelector('.stop-ubicacion');
             const lat = ubicacionInput && ubicacionInput.dataset.lat ? parseFloat(ubicacionInput.dataset.lat) : 37.38;
             const lon = ubicacionInput && ubicacionInput.dataset.lon ? parseFloat(ubicacionInput.dataset.lon) : -5.99;
             paradas.push({
                 nombre: nombreInput ? nombreInput.value : 'Parada ' + (index + 1),
+                descripcion: descInput ? descInput.value : '',
                 direccion: ubicacionInput ? ubicacionInput.value : '',
                 lat: lat,
                 lon: lon
