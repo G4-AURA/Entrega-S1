@@ -111,6 +111,22 @@ class RutasViewsTest(TestCase):
         })
         self.assertRedirects(response, f"{url}?meta_updated=1")
 
+    def test_ruta_detalle_post_meta_success_con_duracion_legacy_sin_cambiar(self):
+        self.ruta.duracion_horas = 1.2
+        self.ruta.save(update_fields=["duracion_horas"])
+
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'meta',
+            'duracion_horas': '1.2',
+            'num_personas': '18',
+            'nivel_exigencia': 'Alta'
+        })
+        self.assertRedirects(response, f"{url}?meta_updated=1")
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.num_personas, 18)
+        self.assertEqual(self.ruta.nivel_exigencia, 'Alta')
+
     def test_ruta_detalle_post_stop_add_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
         response = self.client.post(url, {
