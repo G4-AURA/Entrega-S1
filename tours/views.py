@@ -447,6 +447,8 @@ def mapa_guia(request, sesion_id):
 
     if not services.es_guia_de_sesion(request.user, sesion):
         return _render_ruta_no_autorizada(request)
+    if sesion.esta_finalizada:
+        return redirect("tours:guia_sesion", sesion_id=sesion.id)
 
     snapshot = services.get_route_snapshot(sesion)
 
@@ -914,4 +916,3 @@ def obtener_mensajes(request, sesion_id):
             "estado_sesion": sesion.estado,
         }
     )
-

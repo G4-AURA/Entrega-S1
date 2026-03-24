@@ -18,12 +18,15 @@
             </p>
             <h1 class="session-title">{{ sesion.ruta.titulo }}</h1>
         </div>
+        {% if sesion.estado != 'finalizado' %}
         <a href="{% url 'tours:mapa_guia' sesion.id %}"
+           id="map-link-btn"
            class="btn btn-brand fw-bold px-4 d-flex align-items-center gap-2"
            style="border-radius:var(--radius);">
             <span class="material-icons-round" style="font-size:18px;">map</span>
             Ver mapa
         </a>
+        {% endif %}
     </div>
 
     <div class="row g-3">
@@ -100,6 +103,17 @@
                 </div>
                 {% endif %}
 
+                <div
+                    class="d-flex justify-content-center mt-3 {% if sesion.estado != 'finalizado' %}d-none{% endif %}"
+                    id="back-to-catalog-container">
+                    <a href="{% url 'catalogo' %}"
+                       class="btn btn-brand fw-bold d-flex align-items-center gap-1"
+                       style="border-radius:var(--radius);font-size:.875rem;">
+                        <span class="material-icons-round" style="font-size:17px;">arrow_back</span>
+                        Volver al catálogo
+                    </a>
+                </div>
+
             </div>
         </div>
 
@@ -134,5 +148,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/guia_sesion.js' %}?v=1.1"></script>
+<script src="{% static 'js/guia_sesion.js' %}?v=1.2"></script>
 {% endblock %}

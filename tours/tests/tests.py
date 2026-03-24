@@ -62,6 +62,16 @@ class SessionLogicEndpointsTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_mapa_guia_redirige_al_panel_si_sesion_esta_finalizada(self):
+        client = Client()
+        client.force_login(self.guia)
+        self.sesion.estado = 'finalizado'
+        self.sesion.save(update_fields=['estado'])
+
+        response = client.get(reverse('tours:mapa_guia', args=[self.sesion.id]))
+
+        self.assertRedirects(response, reverse('tours:guia_sesion', args=[self.sesion.id]))
+
     def test_unirse_tour_ok_agrega_turista(self):
         # SKIP: URL pattern 'unirse_tour' no existe - el flujo actual usa join_tour_by_code
         self.skipTest("URL pattern 'tours:unirse_tour' no existe en la implementación actual")

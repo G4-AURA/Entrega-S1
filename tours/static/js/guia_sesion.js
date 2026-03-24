@@ -159,8 +159,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    document.getElementById('close-access')?.addEventListener('click', async() => {
+    const closeAccessBtn = document.getElementById('close-access');
+    closeAccessBtn?.addEventListener('click', async() => {
         if (!confirm('¿Finalizar sesión? Esto cerrará el tour permanentemente y nadie podrá volver a unirse.')) return;
+        closeAccessBtn.disabled = true;
         try {
             const closeUrl = document.querySelector('meta[name="close-access-url"]')?.content || '';
             const resp = await fetch(closeUrl, {
@@ -172,6 +174,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (!resp.ok) {
                 alert('Error cerrando acceso: ' + resp.status);
+                closeAccessBtn.disabled = false;
                 return;
             }
             const data = await resp.json();
@@ -208,13 +211,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 const closeContainer = document.getElementById('close-access-container');
                 if (closeContainer) closeContainer.style.display = 'none';
 
+                const mapLinkBtn = document.getElementById('map-link-btn');
+                if (mapLinkBtn) mapLinkBtn.remove();
+
+                const backToCatalogContainer = document.getElementById('back-to-catalog-container');
+                if (backToCatalogContainer) backToCatalogContainer.classList.remove('d-none');
+
                 if (typeof fetchIntervalId !== 'undefined') {
                     clearInterval(fetchIntervalId);
                 }
 
                 alert('Sesión finalizada con éxito.');
+            } else {
+                closeAccessBtn.disabled = false;
             }
         } catch (e) {
+            closeAccessBtn.disabled = false;
             alert('Error conectando con el servidor.');
         }
     });
