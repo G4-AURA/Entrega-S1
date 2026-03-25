@@ -307,21 +307,32 @@ class Command(BaseCommand):
         ]
         
         for data in sessions_data:
-            # Evitar duplicados
-            if SESION_TOUR.objects.filter(codigo_acceso=data['codigo_acceso']).exists():
-                self.stdout.write(f"  ∼ Sesión existente: {data['codigo_acceso']}")
-                continue
-            
             ruta = rutas[data['ruta_idx']]
             ahora = timezone.now()
-            
-            sesion = SESION_TOUR.objects.create(
+
+            sesion, created = SESION_TOUR.objects.get_or_create(
                 codigo_acceso=data['codigo_acceso'],
-                estado=data['estado'],
-                fecha_inicio=ahora,
-                ruta=ruta,
-                token=uuid.uuid4()
+                defaults={
+                    'estado': data['estado'],
+                    'fecha_inicio': ahora,
+                    'ruta': ruta,
+                    'token': uuid.uuid4(),
+                },
             )
+
+            # Mantener seed idempotente: actualizar datos base aunque la sesión ya exista.
+            cambios = []
+            if sesion.estado != data['estado']:
+                sesion.estado = data['estado']
+                cambios.append('estado')
+            if sesion.ruta_id != ruta.id:
+                sesion.ruta = ruta
+                cambios.append('ruta')
+            if not sesion.fecha_inicio:
+                sesion.fecha_inicio = ahora
+                cambios.append('fecha_inicio')
+            if cambios:
+                sesion.save(update_fields=cambios)
             
             # Asignar parada actual
             if data['parada_actual_orden'] is not None:
@@ -333,14 +344,18 @@ class Command(BaseCommand):
                     sesion.parada_actual = parada_actual
                     sesion.save()
             
-            # Agregar turistas
+            # Agregar/re-activar turistas aunque la sesión ya exista.
             for turista_idx in data['turistas_idx']:
-                TURISTASESION.objects.get_or_create(
+                turista_sesion, _ = TURISTASESION.objects.get_or_create(
                     turista=turistas[turista_idx],
                     sesion_tour=sesion
                 )
+                if not turista_sesion.activo:
+                    turista_sesion.activo = True
+                    turista_sesion.save(update_fields=['activo'])
             
             self.stdout.write(
                 f"  ✓ Sesión {data['codigo_acceso']} "
                 f"({len(data['turistas_idx'])} turistas, estado: {data['estado']})"
+                f" {'[creada]' if created else '[actualizada]'}"
             )
