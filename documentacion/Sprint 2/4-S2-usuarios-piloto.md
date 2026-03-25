@@ -34,55 +34,58 @@ El presente documento detalla la relación de los perfiles que han participado e
 
 ### 2. Tabla de Guías confirmados
 
-| Nombre       | Origen | Rol  | Contacto |
-|--------------|----------|------|----------|
-| Elena S.     | GuruWalk | Guía | Perfil GuruWalk |
-| Francisco R. | GuruWalk | Guía | Perfil GuruWalk |
-| Kevin S.     | GuruWalk | Guía | Perfil GuruWalk |
-| José Antonio | GuruWalk | Guía | Perfil GuruWalk |
-| Cris         | GuruWalk | Guía | Perfil GuruWalk |
-| Miguel P.    | GuruWalk | Guía | Perfil GuruWalk |
-| Irene G.     | Instagram | Guía | @mostrandoelrumbo |
-| Sergio S.    | Instagram | Guía | @s.s.c_c |
-| Justmibu     | Instagram | Guía | @justmibu |
-| Guiandoteporsevilla | Instagram | Guía | @guiandoteporsevilla |
-| Guiandaluza | Instagram | Guía | @guiandaluza |
-| Malagueandotours | Instagram | Guía | @malagueandotours |
-| Alantetours | Instagram | Guía | @alantetours |
-| Guialope | Instagram | Guía | @guialope |
-| Guiafartusco | Instagram | Guía | @guiafartusco |
+### 2. Tabla de Guías confirmados
 
+| # | Nombre | Origen | Rol | Contacto |
+|---|---|---|---|---|
+| 1 | Elena S. | GuruWalk | Guía | Perfil GuruWalk |
+| 2 | Francisco R. | GuruWalk | Guía | Perfil GuruWalk |
+| 3 | Kevin S. | GuruWalk | Guía | Perfil GuruWalk |
+| 4 | José Antonio | GuruWalk | Guía | Perfil GuruWalk |
+| 5 | Cris | GuruWalk | Guía | Perfil GuruWalk |
+| 6 | Miguel P. | GuruWalk | Guía | Perfil GuruWalk |
+| 7 | Irene G. | Instagram | Guía | @mostrandoelrumbo |
+| 8 | Sergio S. | Instagram | Guía | @s.s.c_c |
+| 9 | Justmibu | Instagram | Guía | @justmibu |
+| 10 | Guiandoteporsevilla | Instagram | Guía | @guiandoteporsevilla |
+| 11 | Guiandaluza | Instagram | Guía | @guiandaluza |
+| 12 | Malagueandotours | Instagram | Guía | @malagueandotours |
+| 13 | Alantetours | Instagram | Guía | @alantetours |
+| 14 | Guialope | Instagram | Guía | @guialope |
+| 15 | Guiafartusco | Instagram | Guía | @guiafartusco |
 ---
 
 ### 3. Tabla de Turistas confirmados
 
-| Nombre | Origen | Rol | Correo Electrónico |
-| :--- | :--- | :--- | :--- |
-| Laura M. G. | Conocido | Turista | l****g@gmail.com |
-| Irene V. M. | Conocido | Turista | i****e@gmail.com |
-| María José G. C. | Conocido | Turista | j****o@gmail.com |
-| Ana María N. D. | Conocido | Turista | l****z@gmail.com |
-| Laura M. P. | Conocido | Turista | a****o@juntadeandalucia.es |
-| Pablo C. C. | Conocido | Turista | p****m@alum.us.es |
-| Daniel B. H. | Conocido | Turista | d****d@alum.us.es |
-| Miguel H. S. | Conocido | Turista | m****1@alum.us.es |
-| Fernando José C. H. | Conocido | Turista | f****r@alum.us.es |
-| Héctor N. G. | Conocido | Turista | h****n@alum.us.es |
-| Iván R. V. | Conocido | Turista | i****l@alum.us.es |
-| Diego C. R. | Conocido | Turista | d****v@alum.us.es |
-| Fernando José R. C. | Conocido | Turista | f****3@gmail.com |
-| Ana C. D. | Conocido | Turista | a****m@alum.us.es |
-| Samuel C. D. | Conocido | Turista | s****l@alum.us.es |
-| Sergio P. L. | Conocido | Turista | s****p@alum.us.es |
-| Adrián C. M. | Conocido | Turista | a****r@alum.us.es |
-| Pedro A. B. | Conocido | Turista | p****a@alum.us.es |
-| Gonzalo N. R. | Conocido | Turista | g****m@alum.us.es |
-| David G. F. | Conocido | Turista | d****r@alum.us.es |
-| Laura R. V | Conocido | Turista | L****4@gmail.com |
-| Benito P. S. | Conocido | Turista | b****g@gmail.com |
-| Iván M. C. | Conocido | Turista | i****o@gmail.com |
-| Javier G. C. | Conocido | Turista | j****3@gmail.com |
-| Francisco C. P. | Conocido | Turista | f****l@alum.us.es |
-| Pedro J. G. | Conocido | Turista | p****e@alum.us.es |
+### 3. Tabla de Turistas confirmados
+
+| # | Nombre | Origen | Rol | Correo Electrónico |
+|---|:---|:---|:---|:---|
+| 1 | Laura M. G. | Conocido | Turista | l****g@gmail.com |
+| 2 | Irene V. M. | Conocido | Turista | i****e@gmail.com |
+| 3 | María José G. C. | Conocido | Turista | j****o@gmail.com |
+| 4 | Ana María N. D. | Conocido | Turista | l****z@gmail.com |
+| 5 | Laura M. P. | Conocido | Turista | a****o@juntadeandalucia.es |
+| 6 | Pablo C. C. | Conocido | Turista | p****m@alum.us.es |
+| 7 | Daniel B. H. | Conocido | Turista | d****d@alum.us.es |
+| 8 | Miguel H. S. | Conocido | Turista | m****1@alum.us.es |
+| 9 | Fernando José C. H. | Conocido | Turista | f****r@alum.us.es |
+| 10 | Héctor N. G. | Conocido | Turista | h****n@alum.us.es |
+| 11 | Iván R. V. | Conocido | Turista | i****l@alum.us.es |
+| 12 | Diego C. R. | Conocido | Turista | d****v@alum.us.es |
+| 13 | Fernando José R. C. | Conocido | Turista | f****3@gmail.com |
+| 14 | Ana C. D. | Conocido | Turista | a****m@alum.us.es |
+| 15 | Samuel C. D. | Conocido | Turista | s****l@alum.us.es |
+| 16 | Sergio P. L. | Conocido | Turista | s****p@alum.us.es |
+| 17 | Adrián C. M. | Conocido | Turista | a****r@alum.us.es |
+| 18 | Pedro A. B. | Conocido | Turista | p****a@alum.us.es |
+| 19 | Gonzalo N. R. | Conocido | Turista | g****m@alum.us.es |
+| 20 | David G. F. | Conocido | Turista | d****r@alum.us.es |
+| 21 | Laura R. V | Conocido | Turista | L****4@gmail.com |
+| 22 | Benito P. S. | Conocido | Turista | b****g@gmail.com |
+| 23 | Iván M. C. | Conocido | Turista | i****o@gmail.com |
+| 24 | Javier G. C. | Conocido | Turista | j****3@gmail.com |
+| 25 | Francisco C. P. | Conocido | Turista | f****l@alum.us.es |
+| 26 | Pedro J. G. | Conocido | Turista | p****e@alum.us.es |
 
 ---
