@@ -25,7 +25,7 @@
 ---
 
 ## 1. Contenido
-### Este documento contiene el enlace al archivo que contiene la presentacion que se realizará el jueves 26/03/2026.
+Este documento contiene el enlace al archivo que contiene la presentacion que se realizará el jueves 26/03/2026.
 
 ## 2. Enlace al documento que contiene las transparencias
 
