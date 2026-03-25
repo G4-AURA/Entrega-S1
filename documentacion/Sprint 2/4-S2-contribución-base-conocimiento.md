@@ -32,7 +32,7 @@ Este contenido se **actualiza de forma semanal** a partir del feedback recibido 
 
 ---
 ## 2. Enlace a la base de conocimiento común
-https://github.com/ispp-2026/common-knowledge-base
+[Enlace a la base común de conocimiento](https://github.com/ispp-2026/common-knowledge-base)
 
 ---
 
