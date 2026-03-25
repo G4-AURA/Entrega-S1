@@ -23,9 +23,9 @@
 </div>
 
 ---
-## 1. Objetivo del uso de IA
+## 1. Contenido
 
-El equipo ha utilizado herramientas de Inteligencia Artificial como apoyo en tareas de investigación, análisis y estructuración de información, siempre manteniendo una validación humana posterior y el criterio propio del equipo en la toma de decisiones.
+Este documento especifica los casos en los que el equipo ha utilizado herramientas de Inteligencia Artificial como apoyo en tareas de investigación, análisis y estructuración de información, siempre manteniendo una validación humana posterior y el criterio propio del equipo en la toma de decisiones, así como las limitaciones que el equipo ha impuesto donde no habría participación de la IA.
 
 ---
 
