@@ -34,7 +34,7 @@ El presente documento detalla la relación de los perfiles que han participado e
 
 ### 2. Tabla de Guías confirmados
 
-| Nombre       | Contacto | Rol  | Contacto |
+| Nombre       | Origen | Rol  | Contacto |
 |--------------|----------|------|----------|
 | Elena S.     | GuruWalk | Guía | Perfil GuruWalk |
 | Francisco R. | GuruWalk | Guía | Perfil GuruWalk |
