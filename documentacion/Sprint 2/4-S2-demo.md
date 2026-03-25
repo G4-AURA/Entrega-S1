@@ -24,5 +24,7 @@
 
 ---
 
-## Contenido
+## 1. Contenido
 ### Este documento contiene el enlace al video demostrativo del funcionamiento de la aplicación.
+
+## 2. Enlace al video demostrativo de las funcionalidades principales de la aplicación
