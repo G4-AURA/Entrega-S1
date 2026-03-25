@@ -23,14 +23,20 @@
 </div>
 
 ---
-## 1. Base de Conocimiento Compartida
+## 1.Contenido
+Este documento recoge la apaortación a la **Base de Conocimiento Común** desarrollada por el Grupo de AURA, con el objetivo de centralizar, organizar y facilitar el acceso a toda la información relevante generada durante el desarrollo de la asignatura.
 
-**Enlace a la base común:**  
+La base de conocimiento surge como respuesta a la necesidad de disponer de un repositorio estructurado, reutilizable y eficiente, que permita no solo almacenar el feedback recibido en clase, sino también transformarlo en conocimiento útil para la toma de decisiones y la mejora continua del proyecto.
+
+Este contenido se **actualiza de forma semanal** a partir del feedback recibido en las sesiones, garantizando que la información se mantiene vigente, relevante y alineada con la evolución del proyecto.
+
+---
+## 2. Enlace a la base de conocimiento común
 https://github.com/ispp-2026/common-knowledge-base
 
 ---
 
-## 2. Feedback General y Específico
+## 3. Feedback General y Específico
 
 ### 1. Definición de Producto
 
