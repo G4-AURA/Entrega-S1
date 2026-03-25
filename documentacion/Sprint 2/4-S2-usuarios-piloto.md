@@ -24,9 +24,15 @@
 
 ---
 
+## 1. Contenido
+El presente documento detalla la relación de los perfiles que han participado en la fase de pruebas funcionales de la aplicación. Con el objetivo de evaluar la experiencia de usuario de manera integral, los participantes han sido segmentados según sus roles operativos dentro de la aplicación en las siguientes categorías:
+
+* **Guías:** Usuarios responsables de la gestión, creación y dinamización de las experiencias.
+* **Turistas:** Usuarios finales enfocados en el consumo y recepción de los servicios ofrecidos.
 
 
-### Tabla de Guías confirmados
+
+### 2. Tabla de Guías confirmados
 
 | Nombre       | Contacto | Rol  |
 |--------------|----------|------|
@@ -39,7 +45,7 @@
 
 ---
 
-### Tabla de Turistas confirmados
+### 3. Tabla de Turistas confirmados
 
 | Nombre               | Contacto  | Rol     |
 |----------------------|----------|----------|
