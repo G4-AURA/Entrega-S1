@@ -88,16 +88,16 @@ Se observan desviaciones muy elevadas en la mayoría del equipo:
 - Más del **70% del equipo supera ampliamente el 150% del objetivo**
 - Algunos miembros alcanzan incluso el **200%–270%**
 
-Esto indica:
-- **Sobrecarga de trabajo**
-- Posible **mala estimación inicial del sprint**
+**Esto indica**:
+- Sobrecarga de trabajo
+- Posible mala estimación inicial del sprint
 - Falta de ajuste entre planificación y realidad
   
 ### 4.2.3. Posibles Soluciones para equilibrar al equipo
 - Aunque todos cumplen, existe una **gran dispersión en la dedicación**
 - Diferencia entre el mínimo (~20h) y el máximo (~55h)
 
-  **Posibles cambios:
+**Posibles cambios**:
 - Delegar tareas
 - Balancear el reparto de tareas críticas  
 - Seguimiento semanal de horas para detectar desviaciones
