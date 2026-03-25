@@ -33,3 +33,4 @@ Este archivo recoge de manera estructurada los aspectos clave del proyecto que h
 
 ## 2. Enlace al documento que contiene las transparencias
 
+[Enlace a las slides Sprint 2](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-S2-slides.pdf)
