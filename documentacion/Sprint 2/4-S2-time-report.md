@@ -41,15 +41,16 @@ Este documento permite visualizar de forma clara:
 - El esfuerzo individual  
 - La implicación de cada integrante en las distintas actividades del proyecto  
 
-**Acceso al informe:**  
+---
+## 3. Enlace al informe de tiempo y esfuerzo 
 [Clockify Report - Sprint 2](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-S1-Clockify.pdf)
 
 ---
-## 3. Enlace al Análisis de los Resultados
+## 4. Análisis de los resultados
 
 
 ---
-## 4. Resumen del tiempo por persona — Sprint 2
+## 5. Resumen del tiempo por persona — Sprint 2
 
 | Nombre             |   Total (horas) |
 |--------------------|-----------------|
