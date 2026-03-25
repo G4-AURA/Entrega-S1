@@ -24,8 +24,6 @@
 
 ---
 ## 1.Contenido
-## 📖 Introducción
-
 Este documento recoge la apaortación a la **Base de Conocimiento Común** desarrollada por el Grupo de AURA, con el objetivo de centralizar, organizar y facilitar el acceso a toda la información relevante generada durante el desarrollo de la asignatura.
 
 La base de conocimiento surge como respuesta a la necesidad de disponer de un repositorio estructurado, reutilizable y eficiente, que permita no solo almacenar el feedback recibido en clase, sino también transformarlo en conocimiento útil para la toma de decisiones y la mejora continua del proyecto.
