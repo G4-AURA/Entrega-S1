@@ -47,7 +47,62 @@ Este documento permite visualizar de forma clara:
 
 ---
 ## 4. Análisis de los resultados
+Para el Sprint 2 se ha establecido como referencia una dedicación mínima de:
+- **10 horas por semana por persona**
+- **Duración del sprint: 2 semanas**
+- **Objetivo total por miembro: 20 horas**
 
+A continuación, se muestra el análisis de desviaciones respecto a este objetivo:
+
+---
+
+### 📈 Tabla de desviaciones por miembro
+
+| 👤 Miembro                     | ⏳ Horas reales | 🎯 Objetivo | 📊 Desviación | 📈 % sobre objetivo |
+|------------------------------|---------------|------------|--------------|-------------------|
+| maxcor                       | 55:17         | 20h        | +35h         | 277%              |
+| Marruivaz1                   | 46:14         | 20h        | +26h         | 231%              |
+| nicpargen                    | 38:41         | 20h        | +18h         | 193%              |
+| fraayadia                    | 38:19         | 20h        | +18h         | 191%              |
+| Javluqrui                    | 35:47         | 20h        | +15h         | 178%              |
+| emiespeli                    | 35:31         | 20h        | +15h         | 177%              |
+| Mario Reyes Apresa           | 34:07         | 20h        | +14h         | 170%              |
+| Javier Ramírez Núñez         | 32:33         | 20h        | +12h         | 163%              |
+| Felipepn_13                  | 31:21         | 20h        | +11h         | 156%              |
+| Alexis Molins                | 30:35         | 20h        | +10h         | 153%              |
+| Alberto José Paleteiro López | 24:59         | 20h        | +5h          | 125%              |
+| Javier Manrique Riquelme     | 24:31         | 20h        | +4h          | 122%              |
+| Rafa Bermudo Álvarez         | 20:51         | 20h        | +0,8h        | 104%              |
+
+---
+
+## Interpretación de resultados
+
+### Cumplimiento del objetivo
+- **El 100% del equipo ha cumplido el mínimo exigido (20h)**  
+- Esto indica un **alto nivel de compromiso global**
+
+### Desviaciones significativas
+Se observan desviaciones muy elevadas en la mayoría del equipo:
+
+- Más del **70% del equipo supera ampliamente el 150% del objetivo**
+- Algunos miembros alcanzan incluso el **200%–270%**
+
+Esto indica:
+- **Sobrecarga de trabajo**
+- Posible **mala estimación inicial del sprint**
+- Falta de ajuste entre planificación y realidad
+  
+### Posibles Soluciones para equilibrar al equipo
+- Aunque todos cumplen, existe una **gran dispersión en la dedicación**
+- Diferencia entre el mínimo (~20h) y el máximo (~55h)
+
+  Posibles cambios:
+
+- Delegar tareas
+- Balancear el reparto de tareas críticas  
+- Seguimiento semanal de horas para detectar desviaciones
+- Reducir el alcance 
 
 ---
 ## 5. Resumen del tiempo por persona — Sprint 2
