@@ -60,7 +60,7 @@ A continuación, se muestra el análisis de desviaciones respecto a este objetiv
 
 | Miembro                          | Horas reales |  Objetivo |  Desviación     | % sobre objetivo |
 |----------------------------------|---------------|------------|--------------|-------------------|
-| maxcor                           | 55:17         | 30h        | +25h         | 184%              |
+| maxcor                           | 57:51         | 30h        | +27,8h       | 184%              |
 | Marruivaz1                       | 46:14         | 30h        | +16h         | 154%              |
 | nicpargen                        | 38:41         | 30h        | +8h          | 129%              |
 | fraayadia                        | 38:19         | 30h        | +8h          | 128%              |
@@ -69,7 +69,7 @@ A continuación, se muestra el análisis de desviaciones respecto a este objetiv
 | Mario Reyes Apresa               | 34:07         | 30h        | +4h          | 114%              |
 | Javier Ramírez Núñez             | 32:33         | 30h        | +2h          | 108%              |
 | Javier Manrique Riquelme         | 31:47         | 30h        | +1,7h        | 106%              |
-| Felipepn_13                      | 31:21         | 30h        | +1h          | 104%              |
+| Felipepn_13                      | 31:51         | 30h        | +1,8h        | 104%              |
 | Alexis Molins                    | 30:35         | 30h        | +0,5h        | 102%              |
 | Alberto José Paleteiro López     | 24:59         | 30h        | -5h          | 83%               |
 | Rafa Bermudo Álvarez             | 23:56         | 30h        | -6h          | 80%               |
@@ -94,7 +94,7 @@ Se observan desviaciones al alza en la gran mayoría del equipo, aunque con dos 
 - Necesidad de apoyo puntual para los dos miembros que han quedado ligeramente por debajo del umbral de las 30h.
   
 ### 4.2.3. Posibles Soluciones para equilibrar al equipo
-- Se mantiene una **dispersión en la dedicación** entre el mínimo (~24h) y el máximo (~55h).
+- Se mantiene una **dispersión en la dedicación** entre el mínimo (~24h) y el máximo (~57h).
 - Es prioritario optimizar el reparto para evitar el agotamiento de los perfiles con mayor carga.
 
 **Posibles cambios**:
