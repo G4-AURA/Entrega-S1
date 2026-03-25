@@ -54,18 +54,18 @@ Este documento permite visualizar de forma clara:
 
 | Nombre             |   Total (horas) |
 |--------------------|-----------------|
-| Alberto José       | 00:00           |
-| Alexis             | 22:42           |
-| Emilio             | 29:20           |
-| Felipe             | 24:24           |
-| Francisco          | 33:35           |
-| Javier Luque       | 30:41           |
-| Javier Manrique    | 27:13           |
-| Javier Núñez       | 19:06           |
-| María José         | 41:15           |
-| Mario              | 25:37           |
-| Max                | 47:05           |
-| Nicolás            | 32:29           |
-| Rafael             | 27:26           |
+| Alberto José       | 24:59           |
+| Alexis             | 30:35           |
+| Emilio             | 35:31           |
+| Felipe             | 31:21           |
+| Francisco          | 38:19           |
+| Javier Luque       | 35:47           |
+| Javier Manrique    | 24:31           |
+| Javier Núñez       | 32:33           |
+| María José         | 46:14           |
+| Mario              | 34:07           |
+| Max                | 55:17           |
+| Nicolás            | 38:41           |
+| Rafael             | 20:51           |
 
 ---
