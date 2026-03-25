@@ -32,3 +32,6 @@ El contenido de los vídeos se centra en la representación de los **casos de us
 Además, en la demo se reflejan los **distintos roles implicados en el sistema**, mostrando las interacciones entre ellos (por ejemplo, guía y turista) y cómo cada uno utiliza la plataforma en función de sus necesidades.
 
 ## 2. Enlace al video demostrativo de las funcionalidades principales de la aplicación
+Para poder visualizar el contenido de la demo, debes descargarte el archivo .mp4 
+
+[Enlace a la demo](https://github.com/G4-AURA/Entrega-S1/blob/doc/documentacion/demo/4-S2-demo.mp4)
