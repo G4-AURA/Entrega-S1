@@ -23,7 +23,7 @@
 </div>
 
 ---
-## Registro de Tiempo y Esfuerzo
+## 1. Contenido
 
 El informe incluye un enlace al documento que recoge el registro de tiempo y esfuerzo dedicado por cada miembro del grupo a las distintas tareas del proyecto.
 
@@ -31,7 +31,7 @@ Para la medición y seguimiento de estas horas se ha utilizado **Clockify**, una
 
 ---
 
-## Informe oficial de Clockify
+## 2. Informe oficial de Clockify
 
 Se ha generado un informe a partir de la herramienta Clockify en el que se recogen todas las tareas realizadas durante el desarrollo de la entrega, junto con el tiempo dedicado a cada una de ellas por parte de los distintos miembros del equipo.
 
@@ -45,11 +45,11 @@ Este documento permite visualizar de forma clara:
 [Clockify Report - Sprint 2](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-S1-Clockify.pdf)
 
 ---
-## Análisis de los Resultados
+## 3. Enlace al Análisis de los Resultados
 
 
 ---
-## Resumen del tiempo por persona — Sprint 2
+## 4. Resumen del tiempo por persona — Sprint 2
 
 | Nombre             |   Total (horas) |
 |--------------------|-----------------|
