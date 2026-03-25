@@ -286,7 +286,7 @@ class Command(BaseCommand):
             {
                 'ruta_idx': 0,
                 'codigo_acceso': 'TOUR001',
-                'estado': 'en_curso',
+                'estado': 'pendiente',
                 'turistas_idx': [0, 1, 2],
                 'parada_actual_orden': 2
             },
