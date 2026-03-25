@@ -372,7 +372,7 @@ https://github.com/ispp-2026/common-knowledge-base
 
 Durante las primeras sesiones, los distintos grupos acordaron crear una **base de conocimiento común en OneDrive**, cuya dinámica inicial consistía en que cada grupo realizara un volcado del feedback recibido en clase dentro de documentos independientes.
 
-### Problemas detectados
+### 3.1. Problemas detectados
 Tras una primera prueba de validación (realizada de forma aleatoria para evaluar la efectividad del sistema), se obtuvo un **feedback mayoritariamente negativo**, identificándose los siguientes problemas:
 
 - La base de conocimiento no cumplía su objetivo principal, que iba más allá de la asignatura:  
@@ -381,12 +381,12 @@ Tras una primera prueba de validación (realizada de forma aleatoria para evalua
 - Existía **duplicidad de contenido** entre documentos  
 - Falta de estructura clara, dificultando la navegación  
 
-### Redefinición del enfoque
+### 3.2. Redefinición del enfoque
 Tras analizar el feedback recibido, se decidió realizar un **cambio de enfoque completo** en la base de conocimiento, alineándolo con las recomendaciones del profesorado.
 
 Los responsables de la gestión de esta base se reunieron para definir una nueva estructura que solucionara los problemas detectados y mejorara la usabilidad del sistema.
 
-### Nueva arquitectura de la base de conocimiento
+### 3.3. Nueva arquitectura de la base de conocimiento
 Se tomaron las siguientes decisiones clave:
 
 #### 1. Cambio de herramienta
@@ -401,7 +401,7 @@ Se estructuró el repositorio en dos partes:
 - **Base de conocimiento consolidada**  
   Información organizada en **categorías temáticas**, facilitando la búsqueda y reutilización.
 
-### Organización por categorías
+### 3.4. Organización por categorías
 Siguiendo las recomendaciones recibidas, la base de conocimiento se estructuró en **categorías**, permitiendo:
 
 - Acceso rápido a la información  
@@ -414,7 +414,7 @@ Cada una de estas categorías fue **asignada a uno de los 5 grupos**, encargánd
 - Sintetizar la información relevante  
 - Actualizar su categoría correspondiente  
 
-### Gestión del proceso
+### 3.5. Gestión del proceso
 Para optimizar la coordinación y el uso del tiempo, se definieron dos hitos semanales:
 
 - **Fecha límite 1:** subida del feedback en crudo por cada grupo  
@@ -425,7 +425,7 @@ Una vez completado el proceso:
 - Se notifica al profesorado  
 - Se comparte el enlace actualizado de la base de conocimiento  
 
-### Resultados y mejora continua
+### 3.6. Resultados y mejora continua
 
 Tras implementar esta nueva estructura, el feedback recibido ha sido **positivo**, destacando:
 
