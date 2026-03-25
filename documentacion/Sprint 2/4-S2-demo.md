@@ -25,6 +25,10 @@
 ---
 
 ## 1. Contenido
-### Este documento contiene el enlace al video demostrativo del funcionamiento de la aplicación.
+Este documento incluye el enlace al vídeo demostrativo del funcionamiento de la aplicación, cuyo objetivo es mostrar de forma clara y visual el estado actual del desarrollo y las principales funcionalidades implementadas.
+
+El contenido de los vídeos se centra en la representación de los **casos de uso core del producto**, permitiendo entender cómo se comporta la aplicación en escenarios reales y cómo aporta valor a los usuarios.
+
+Además, en la demo se reflejan los **distintos roles implicados en el sistema**, mostrando las interacciones entre ellos (por ejemplo, guía y turista) y cómo cada uno utiliza la plataforma en función de sus necesidades.
 
 ## 2. Enlace al video demostrativo de las funcionalidades principales de la aplicación
