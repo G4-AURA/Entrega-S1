@@ -60,9 +60,9 @@ El presente documento detalla la relación de los perfiles que han participado e
 | :--- | :--- | :--- | :--- |
 | Laura M. G. | Conocido | Turista | l****g@gmail.com |
 | Irene V. M. | Conocido | Turista | i****e@gmail.com |
-| María José G. C. | Conocido | Turista |  |
-| Ana María N. D. | Conocido | Turista |  |
-| Laura M. P. | Conocido | Turista |  |
+| María José G. C. | Conocido | Turista | j****o@gmail.com |
+| Ana María N. D. | Conocido | Turista | l****z@gmail.com |
+| Laura M. P. | Conocido | Turista | a****o@juntadeandalucia.es |
 | Pablo C. C. | Conocido | Turista | p****m@alum.us.es |
 | Daniel B. H. | Conocido | Turista | d****d@alum.us.es |
 | Miguel H. S. | Conocido | Turista | m****1@alum.us.es |
@@ -78,8 +78,8 @@ El presente documento detalla la relación de los perfiles que han participado e
 | Pedro A. B. | Conocido | Turista | p****a@alum.us.es |
 | Gonzalo N. R. | Conocido | Turista | g****m@alum.us.es |
 | David G. F. | Conocido | Turista | d****r@alum.us.es |
-| Laura R. V | Conocido | Turista | l****z@gmail.com |
-| Benito P. S. | Conocido | Turista | b****n@alum.us.es |
+| Laura R. V | Conocido | Turista | L****4@gmail.com |
+| Benito P. S. | Conocido | Turista | b****g@gmail.com |
 | Iván M. C. | Conocido | Turista | i****o@gmail.com |
 | Javier G. C. | Conocido | Turista | j****3@gmail.com |
 | Francisco C. P. | Conocido | Turista | f****l@alum.us.es |
