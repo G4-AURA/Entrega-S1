@@ -424,6 +424,14 @@ def generar_paradas_ia(request, ruta_id):
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
 
     ruta = get_object_or_404(Ruta, id=ruta_id, guia=guia)
+    if not ruta.es_generada_ia:
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'Las sugerencias de paradas con IA solo están disponibles para rutas generadas con IA.',
+            },
+            status=400,
+        )
 
     try:
         body = json.loads(request.body.decode('utf-8') or '{}')
@@ -457,7 +465,20 @@ def generar_paradas_ia(request, ruta_id):
     except services.ErrorSesionGeneracionExpirada as exc:
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
     except services.ErrorIntegracionIA as exc:
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
+        return JsonResponse(
+            {
+                'status': 'OK',
+                'mensaje': f'No se pudieron generar sugerencias IA en este momento: {exc}',
+                'datos': {
+                    'ruta_id': ruta.id,
+                    'ciudad': None,
+                    'tematicas': ruta.mood,
+                    'paradas_existentes': [],
+                    'candidatos': [],
+                },
+            },
+            status=200,
+        )
 
     return JsonResponse({'status': 'OK', 'datos': resultado}, status=200)
 

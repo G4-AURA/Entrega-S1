@@ -241,6 +241,8 @@ class GenerarParadasIAViewTests(TestCase):
     @patch('creacion.views.services.generar_candidatos_paradas_ia')
     def test_retorna_candidatos_cuando_servicio_responde_ok(self, mock_generar):
         self.client.force_login(self.user)
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=['es_generada_ia'])
         mock_generar.return_value = {'ruta_id': self.ruta.id, 'candidatos': [{'nombre': 'Archivo'}]}
 
         response = self.client.post(self.url, data=json.dumps({'cantidad': 2}), content_type='application/json')
@@ -252,6 +254,8 @@ class GenerarParadasIAViewTests(TestCase):
     @patch('creacion.views.services.generar_candidatos_paradas_ia')
     def test_retorna_400_si_cantidad_no_es_numerica(self, mock_generar):
         self.client.force_login(self.user)
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=['es_generada_ia'])
 
         response = self.client.post(self.url, data=json.dumps({'cantidad': 'abc'}), content_type='application/json')
 
@@ -261,12 +265,26 @@ class GenerarParadasIAViewTests(TestCase):
         mock_generar.assert_not_called()
         
     @patch('creacion.views.services.generar_candidatos_paradas_ia', side_effect=services.ErrorIntegracionIA('sin convergencia'))
-    def test_retorna_502_si_servicio_no_completa_cantidad_objetivo(self, _mock_generar):
+    def test_retorna_200_con_candidatos_vacios_si_falla_integracion_ia(self, _mock_generar):
         self.client.force_login(self.user)
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=['es_generada_ia'])
         response = self.client.post(self.url, data=json.dumps({'cantidad': 3}), content_type='application/json')
 
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'OK')
+        self.assertEqual(response.json()['datos']['candidatos'], [])
+
+    @patch('creacion.views.services.generar_candidatos_paradas_ia')
+    def test_retorna_400_si_la_ruta_no_es_generada_con_ia(self, mock_generar):
+        self.client.force_login(self.user)
+
+        response = self.client.post(self.url, data=json.dumps({'cantidad': 3}), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertIn('solo están disponibles', response.json()['mensaje'])
+        mock_generar.assert_not_called()
 
 
 class SesionGeneracionIAViewTests(TestCase):
