@@ -56,9 +56,9 @@ A continuación, se muestra el análisis de desviaciones respecto a este objetiv
 
 ---
 
-### 📈 Tabla de desviaciones por miembro
+### 4.1. Tabla de desviaciones por miembro
 
-| 👤 Miembro                     | ⏳ Horas reales | 🎯 Objetivo | 📊 Desviación | 📈 % sobre objetivo |
+| Miembro                      | Horas reales |  Objetivo |  Desviación     | % sobre objetivo |
 |------------------------------|---------------|------------|--------------|-------------------|
 | maxcor                       | 55:17         | 20h        | +35h         | 277%              |
 | Marruivaz1                   | 46:14         | 20h        | +26h         | 231%              |
@@ -76,13 +76,13 @@ A continuación, se muestra el análisis de desviaciones respecto a este objetiv
 
 ---
 
-## Interpretación de resultados
+## 4.2. Interpretación de resultados
 
-### Cumplimiento del objetivo
+### 4.2.1. Cumplimiento del objetivo
 - **El 100% del equipo ha cumplido el mínimo exigido (20h)**  
 - Esto indica un **alto nivel de compromiso global**
 
-### Desviaciones significativas
+### 4.2.2. Desviaciones significativas
 Se observan desviaciones muy elevadas en la mayoría del equipo:
 
 - Más del **70% del equipo supera ampliamente el 150% del objetivo**
@@ -93,34 +93,15 @@ Esto indica:
 - Posible **mala estimación inicial del sprint**
 - Falta de ajuste entre planificación y realidad
   
-### Posibles Soluciones para equilibrar al equipo
+### 4.2.3. Posibles Soluciones para equilibrar al equipo
 - Aunque todos cumplen, existe una **gran dispersión en la dedicación**
 - Diferencia entre el mínimo (~20h) y el máximo (~55h)
 
-  Posibles cambios:
-
+  **Posibles cambios:
 - Delegar tareas
 - Balancear el reparto de tareas críticas  
 - Seguimiento semanal de horas para detectar desviaciones
 - Reducir el alcance 
 
 ---
-## 5. Resumen del tiempo por persona — Sprint 2
 
-| Nombre             |   Total (horas) |
-|--------------------|-----------------|
-| Alberto José       | 24:59           |
-| Alexis             | 30:35           |
-| Emilio             | 35:31           |
-| Felipe             | 31:21           |
-| Francisco          | 38:19           |
-| Javier Luque       | 35:47           |
-| Javier Manrique    | 24:31           |
-| Javier Núñez       | 32:33           |
-| María José         | 46:14           |
-| Mario              | 34:07           |
-| Max                | 55:17           |
-| Nicolás            | 38:41           |
-| Rafael             | 20:51           |
-
----
