@@ -57,9 +57,9 @@ class GeneracionRutaIATestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'OK')
-        self.assertTrue(payload.get('ruta_id'))
+        self.assertTrue(payload.get('datos', {}).get('ruta_id'))
 
-        ruta = Ruta.objects.get(id=payload['ruta_id'])
+        ruta = Ruta.objects.get(id=payload['datos']['ruta_id'])
         self.assertEqual(ruta.guia.user.user, guia_user)
         self.assertEqual(ruta.titulo, f"Sevilla {timezone.localtime().strftime('%Y-%m-%d')}")
         self.assertTrue(ruta.es_generada_ia)
@@ -86,7 +86,7 @@ class GeneracionRutaIATestCase(TestCase):
 
 class CatalogoRutasIATestCase(TestCase):
     def test_filtro_solo_ia(self):
-        guia_user = User.objects.create_user(username='guia2', password='1234')
+        User.objects.create_user(username='guia2', password='1234')
         self.client.login(username='guia2', password='1234')
 
         with patch('creacion.views.consultar_langgraph') as mock_consultar:
@@ -117,9 +117,9 @@ class CatalogoRutasIATestCase(TestCase):
                 content_type='application/json',
             )
 
-        response = self.client.get(reverse('rutas-catalogo') + '?solo_ia=1')
+        response = self.client.get(reverse('rutas-catalogo') + '?tipo=ia')
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = response.json()['results']
         self.assertEqual(len(data), 1)
         self.assertTrue(data[0]['es_generada_ia'])
 
@@ -178,7 +178,7 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
 
         response = self.client.get(reverse('rutas-catalogo'))
         self.assertEqual(response.status_code, 200)
-        data = response.json()
+        data = response.json()['results']
 
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['guia']['username'], user_2.username)

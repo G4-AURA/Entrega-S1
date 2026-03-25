@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.utils import timezone
 
-from rutas.models import AuthUser, Guia, Ruta, Parada
+from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
 from tours.models import TURISTA, SESION_TOUR, TURISTASESION
 
 
@@ -208,18 +208,51 @@ class Command(BaseCommand):
             ]
         }
         
+        datos_curiosos = {
+            "Plaza Nueva": {"titulo": "Un convento enterrado", "texto": "Bajo la actual plaza se encontraba el Convento de San Francisco, demolido en el siglo XIX. Aún hoy se pueden encontrar restos en su subsuelo.", "tipo": "Historia"},
+            "Catedral de Sevilla": {"titulo": "¿Una locura de dimensiones?", "texto": "Sus constructores dijeron 'Hagamos una obra tan grande que los que la vieren nos tengan por locos'. Efectivamente, es la catedral gótica más grande del mundo.", "tipo": "Arquitectura"},
+            "Barrio Santa Cruz": {"titulo": "La sombra del laberinto", "texto": "Sus estrechas calles no son casualidad: fueron diseñadas así por los árabes para mantener a los viandantes siempre en la sombra huyendo del sol abrasador.", "tipo": "Dato Curioso"},
+            "Barrio de Santa Cruz": {"titulo": "La judería olvidada", "texto": "En la Edad Media fue el barrio judío más grande de Andalucía. Sus patios internos todavía guardan ecos de sinagogas y antiguas tradiciones escondidas.", "tipo": "Historia"},
+            "Real Alcázar": {"titulo": "Juego de Tronos Real", "texto": "Este palacio todavía es la residencia oficial de los reyes de España cuando visitan Sevilla, ¡siendo además escenario de los Jardines del Agua de Dorne!", "tipo": "Evento"},
+            "Torre del Oro": {"titulo": "¿Estaba hecha de oro?", "texto": "Su brillo dorado no provenía de oro real, sino de un revestimiento de cal y paja prensada que resplandecía intensamente con los reflejos del Guadalquivir.", "tipo": "Historia"},
+            "Plaza de Castilla": {"titulo": "Un nombre engañoso", "texto": "Pese a su nombre, este enclave rinde homenaje al intercambio cultural entre las Andalucías y los mercaderes castellanos del río.", "tipo": "Historia"},
+            "Mercado de Triana": {"titulo": "Castillo y calabozo", "texto": "El bullicioso mercado actual fue construido sobre los mismísimos cimientos del antiguo Castillo de San Jorge, sede de la temible Inquisición española.", "tipo": "Historia"},
+            "Taberna Tradicional": {"titulo": "La cuna de las tapas", "texto": "Según cuenta la leyenda local, la costumbre de poner una 'tapa' en la bebida nació en tascas como esta para evitar que entrasen moscas en las copas de jerez.", "tipo": "Dato Curioso"},
+            "Cerámica de Triana": {"titulo": "Un imperio de barro", "texto": "Durante el siglo XVI, los azulejos y cerámicas fabricados aquí eran tan famosos que incluso terminaron exportándose masivamente a las colonias en el Nuevo Mundo.", "tipo": "Arquitectura"},
+            "Callejones Oscuros": {"titulo": "El duelo de los susurros", "texto": "En estos recovecos tuvieron lugar decenas de letales duelos a espada entre caballeros en el siglo XVII para saldar deudas de honor en total clandestinidad.", "tipo": "Evento"},
+            "Iglesia de la Magdalena": {"titulo": "El entierro sin cruz", "texto": "En esta iglesia está la misteriosa y austera tumba anónima que mandó construir el famoso inquisidor general o un noble arrepentido de sus oscuros crímenes.", "tipo": "Personaje"},
+            "Parque Natural Doñana": {"titulo": "Un lince esquivo", "texto": "A pesar de abarcar más de 50.000 hectáreas, encontrar al Lince Ibérico requiere un ojo experto, ¡pues es uno de los felinos con más capacidad de camuflaje de Europa!", "tipo": "Personaje"},
+            "Centro de Visitantes": {"titulo": "Un antiguo palacio", "texto": "Lo que parece un moderno centro administrativo fue originalmente el palacete veraniego de unos nobles terratenientes que cedieron las marismas al estado.", "tipo": "Arquitectura"},
+            "Laguna de Santa Olalla": {"titulo": "La laguna permanente", "texto": "A diferencia de docenas de cuerpos de agua en la zona, es la única laguna que misteriosamente no se seca jamás en verano, ni siquiera en los años de peor sequía.", "tipo": "Dato Curioso"},
+        }
+        
         for idx, ruta in enumerate(rutas):
             # Eliminar paradas antiguas
             Parada.objects.filter(ruta=ruta).delete()
             
             for stop_data in stops_by_route.get(idx, []):
-                Parada.objects.create(
+                parada = Parada.objects.create(
                     nombre=stop_data['nombre'],
                     orden=stop_data['orden'],
                     coordenadas=Point(stop_data['lng'], stop_data['lat'], srid=4326),
                     ruta=ruta
                 )
-            self.stdout.write(f"  ✓ Paradas para: {ruta.titulo}")
+                
+                # Curiosidad con texto único IA-like 
+                curio_data = datos_curiosos.get(parada.nombre, {
+                    "titulo": f"El secreto de {parada.nombre}", 
+                    "texto": f"{parada.nombre} tiene anécdotas increíbles que a menudo pasan desapercibidas frente a los ojos de los turistas habituales.", 
+                    "tipo": "Historia"
+                })
+                
+                Curiosidad.objects.create(
+                    parada=parada,
+                    ciudad="Sevilla",
+                    titulo=curio_data["titulo"],
+                    texto=curio_data["texto"],
+                    tipo=curio_data["tipo"]
+                )
+            self.stdout.write(f"  ✓ Paradas (con curiosidades de IA simulada) para: {ruta.titulo}")
 
     def _create_tourists(self):
         """Crea turistas de prueba"""
@@ -253,7 +286,7 @@ class Command(BaseCommand):
             {
                 'ruta_idx': 0,
                 'codigo_acceso': 'TOUR001',
-                'estado': 'en_curso',
+                'estado': 'pendiente',
                 'turistas_idx': [0, 1, 2],
                 'parada_actual_orden': 2
             },
@@ -274,21 +307,32 @@ class Command(BaseCommand):
         ]
         
         for data in sessions_data:
-            # Evitar duplicados
-            if SESION_TOUR.objects.filter(codigo_acceso=data['codigo_acceso']).exists():
-                self.stdout.write(f"  ∼ Sesión existente: {data['codigo_acceso']}")
-                continue
-            
             ruta = rutas[data['ruta_idx']]
             ahora = timezone.now()
-            
-            sesion = SESION_TOUR.objects.create(
+
+            sesion, created = SESION_TOUR.objects.get_or_create(
                 codigo_acceso=data['codigo_acceso'],
-                estado=data['estado'],
-                fecha_inicio=ahora,
-                ruta=ruta,
-                token=uuid.uuid4()
+                defaults={
+                    'estado': data['estado'],
+                    'fecha_inicio': ahora,
+                    'ruta': ruta,
+                    'token': uuid.uuid4(),
+                },
             )
+
+            # Mantener seed idempotente: actualizar datos base aunque la sesión ya exista.
+            cambios = []
+            if sesion.estado != data['estado']:
+                sesion.estado = data['estado']
+                cambios.append('estado')
+            if sesion.ruta_id != ruta.id:
+                sesion.ruta = ruta
+                cambios.append('ruta')
+            if not sesion.fecha_inicio:
+                sesion.fecha_inicio = ahora
+                cambios.append('fecha_inicio')
+            if cambios:
+                sesion.save(update_fields=cambios)
             
             # Asignar parada actual
             if data['parada_actual_orden'] is not None:
@@ -300,14 +344,18 @@ class Command(BaseCommand):
                     sesion.parada_actual = parada_actual
                     sesion.save()
             
-            # Agregar turistas
+            # Agregar/re-activar turistas aunque la sesión ya exista.
             for turista_idx in data['turistas_idx']:
-                TURISTASESION.objects.get_or_create(
+                turista_sesion, _ = TURISTASESION.objects.get_or_create(
                     turista=turistas[turista_idx],
                     sesion_tour=sesion
                 )
+                if not turista_sesion.activo:
+                    turista_sesion.activo = True
+                    turista_sesion.save(update_fields=['activo'])
             
             self.stdout.write(
                 f"  ✓ Sesión {data['codigo_acceso']} "
                 f"({len(data['turistas_idx'])} turistas, estado: {data['estado']})"
+                f" {'[creada]' if created else '[actualizada]'}"
             )

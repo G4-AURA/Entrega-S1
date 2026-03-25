@@ -1,36 +1,43 @@
+"""tours/urls.py"""
 from django.urls import path
+
 from . import views
 
-app_name = 'tours'
+app_name = "tours"
 
 urlpatterns = [
-    # =======================================================================
-    # Rutas para TURISTAS REGISTRADOS (requieren @login_required)
-    # =======================================================================
-    path('turista', views.pantalla_unirse_tour, name='pantalla_unirse'),
-    path('sesiones/<int:sesion_id>/mapa/', views.mapa_turista, name='mapa_turista'),
-	path('sesiones/unirse/', views.unirse_tour, name='unirse_tour'),	
-    # =======================================================================
-    # Rutas para GUÍAS (requieren @login_required)
-    # =======================================================================
-    path('sesiones/crear/', views.crear_sesion, name='crear_sesion'),
-    path('sesiones/<int:sesion_id>/guia/', views.guia_sesion, name='guia_sesion'),
-    path('sesiones/<int:sesion_id>/regenerar_codigo/', views.regenerar_codigo, name='regenerar_codigo'),
-    path('sesiones/<int:sesion_id>/cerrar_acceso/', views.cerrar_acceso, name='cerrar_acceso'),
-    path('sesiones/<int:sesion_id>/participantes/', views.participantes_sesion, name='participantes_sesion'),
-	path('sesiones/<int:sesion_id>/iniciar/', views.iniciar_tour, name='iniciar_tour'),
-	path('ubicacion/', views.registrar_ubicacion, name='registrar_ubicacion'),
-	
-    # =======================================================================
-    # Rutas /live/ para TURISTAS ANÓNIMOS (solo requieren token/cookie)
-    # =======================================================================
-	path('live/<uuid:token>/', views.join_tour, name='join_tour'),
-	path('live/<uuid:token>/mapa/', views.mapa_turista_anonimo, name='mapa_turista_anonimo'),
-	path('live/code/<str:codigo>/', views.join_tour_by_code, name='join_tour_by_code'),
-
-	# Endpoints REST para chat
-	path('sesiones/<int:sesion_id>/mensajes/enviar/', views.enviar_mensaje, name='enviar_mensaje'),
-	path('sesiones/<int:sesion_id>/mensajes/', views.obtener_mensajes, name='obtener_mensajes'),
-    path('sesiones/<int:sesion_id>/ubicacion_guia/', views.obtener_ubicacion_guia, name='ubicacion_guia'),
-
+    # ------------------------------------------------------------------
+    # Turistas anónimos — flujo único de entrada
+    # ------------------------------------------------------------------
+    path("live/code/<str:codigo>/", views.join_tour_by_code, name="join_tour_by_code"),
+    path("live/<uuid:token>/", views.join_tour, name="join_tour"),
+    path("live/<uuid:token>/espera/", views.sala_espera, name="sala_espera"),
+    path("live/<uuid:token>/mapa/", views.mapa_turista_anonimo, name="mapa_turista_anonimo"),
+    # ------------------------------------------------------------------
+    # Guías (requieren @login_required)
+    # ------------------------------------------------------------------
+    path("sesiones/crear/", views.crear_sesion, name="crear_sesion"),
+    path("sesiones/<int:sesion_id>/guia/", views.guia_sesion, name="guia_sesion"),
+    path("sesiones/<int:sesion_id>/iniciar/", views.iniciar_tour, name="iniciar_tour"),
+    path("sesiones/<int:sesion_id>/mapa/guia/", views.mapa_guia, name="mapa_guia"),
+    path("sesiones/<int:sesion_id>/regenerar_codigo/", views.regenerar_codigo, name="regenerar_codigo"),
+    path("sesiones/<int:sesion_id>/cerrar_acceso/", views.cerrar_acceso, name="cerrar_acceso"),
+    path("sesiones/<int:sesion_id>/participantes/", views.participantes_sesion, name="participantes_sesion"),
+    path("sesiones/<int:sesion_id>/cronometro/estado/", views.estado_cronometro, name="estado_cronometro"),
+    path("sesiones/<int:sesion_id>/parada_actual/", views.seleccionar_parada_actual, name="seleccionar_parada_actual"),
+    # ------------------------------------------------------------------
+    # API REST — ubicación y chat
+    # ------------------------------------------------------------------
+    path("ubicacion/", views.registrar_ubicacion, name="registrar_ubicacion"),
+    path("sesiones/<int:sesion_id>/ubicacion_turista/", views.registrar_ubicacion_turista, name="registrar_ubicacion_turista"),
+    path("sesiones/<int:sesion_id>/paradas/<int:parada_id>/curiosidad/", views.obtener_curiosidad_parada, name="obtener_curiosidad_parada"),
+    path("sesiones/<int:sesion_id>/ubicacion_guia/", views.obtener_ubicacion_guia, name="ubicacion_guia"),
+    path("sesiones/<int:sesion_id>/ubicaciones_turistas/", views.obtener_ubicaciones_turistas, name="ubicaciones_turistas"),
+    path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
+    path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
+    path(
+        "sesiones/<int:sesion_id>/mensajes/<int:mensaje_id>/imagen/",
+        views.descargar_imagen_mensaje,
+        name="descargar_imagen_mensaje",
+    ),
 ]

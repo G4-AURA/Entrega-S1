@@ -1,0 +1,83 @@
+.recalc-cta {
+    width: 100%;
+}
+
+.recalc-cta .btn-recalcular {
+    width: 100%;
+    min-height: 3rem;
+    border: none;
+    border-radius: 14px;
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(120deg, #0f766e, #0ea5e9, #0284c7);
+    background-size: 220% 220%;
+    box-shadow: 0 12px 24px rgb(2 132 199 / 22%);
+    transition: transform 0.2s ease, box-shadow 0.25s ease, filter 0.25s ease;
+    animation: recalc-gradient-shift 4.8s ease infinite;
+}
+
+.recalc-cta .btn-recalcular::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-135%);
+    background: linear-gradient(100deg, rgb(255 255 255 / 0%), rgb(255 255 255 / 30%), rgb(255 255 255 / 0%));
+    animation: recalc-sheen 2.7s ease-in-out infinite;
+}
+
+.recalc-cta .btn-recalcular:hover:not(:disabled) {
+    background: linear-gradient(120deg, #0f766e, #0ea5e9, #0284c7);
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 16px 30px rgb(2 132 199 / 28%);
+    filter: brightness(1.04);
+}
+
+.recalc-cta .btn-recalcular:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.recalc-cta .btn-recalcular.is-loading {
+    animation: none;
+    background: linear-gradient(120deg, #2563eb, #1d4ed8);
+}
+
+.recalc-cta .btn-recalcular.is-loading::after {
+    animation-duration: 1.2s;
+}
+
+.recalc-cta .btn-recalcular:disabled {
+    opacity: 1;
+    cursor: wait;
+}
+
+.recalc-cta .btn-recalcular:disabled:not(.is-loading) {
+    background: linear-gradient(120deg, #94a3b8, #64748b);
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+@keyframes recalc-gradient-shift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@keyframes recalc-sheen {
+    0% {
+        transform: translateX(-135%);
+    }
+    100% {
+        transform: translateX(135%);
+    }
+}

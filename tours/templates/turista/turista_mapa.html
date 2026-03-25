@@ -4,37 +4,34 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<style>
-    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-</style>
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026032301">
 {% endblock %}
 
 {% block content %}
 {% csrf_token %}
+
 {% if es_guia %}
-    <a href="/catalogo/" class="btn-back"> 
-        <span class="material-icons-round">arrow_back</span>
-    </a>
-{% elif is_anonymous %}
-    <a href="/" class="btn-back">
-        <span class="material-icons-round">arrow_back</span>
-    </a>
+<a href="{% url 'catalogo' %}" class="btn-back">
+    <span class="material-icons-round">arrow_back</span>
+</a>
 {% else %}
-    <a href="/tours/turista" class="btn-back">
-        <span class="material-icons-round">arrow_back</span>
-    </a>
+<a href="/" class="btn-back">
+    <span class="material-icons-round">arrow_back</span>
+</a>
 {% endif %}
 
 <div id="mapa-tour"></div>
 
+<button id="btn-centrar-mapa" class="btn-centrar-mapa" type="button" aria-label="Centrar mapa" title="Centrar en tu ubicación">
+    <span class="material-icons-round">my_location</span>
+</button>
+
 <div class="tour-panel">
-    
+
     <div class="panel-header">
         <div class="panel-drag-handle"></div>
     </div>
-    
-    <!-- Tabs de navegación -->
+
     <div class="panel-tabs">
         <button class="tab-btn active" data-tab="itinerario">
             <span class="material-icons-round">map</span>
@@ -43,58 +40,83 @@
         <button class="tab-btn" data-tab="chat">
             <span class="material-icons-round">chat</span>
             Chat
-            <span class="chat-badge" id="chat-badge" style="display: none;"></span>
+            <span class="chat-badge" id="chat-badge" style="display:none;"></span>
         </button>
     </div>
-    
+
     <div class="panel-content">
 
-        <!-- Tab: Itinerario -->
         <div class="tab-content active" id="tab-itinerario">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between align-items-center mb-1 mt-2">
                 {% if sesion.estado == 'en_curso' %}
-                <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2 fw-bold text-uppercase" style="font-size: 0.7rem;">
+                <span
+                    style="display:inline-flex;align-items:center;gap:5px;background:var(--success-light);color:#065F46;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
+                    <span class="material-icons-round" style="font-size:10px;">fiber_manual_record</span>
                     En Curso
                 </span>
                 {% elif sesion.estado == 'pendiente' %}
-                <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill px-3 py-2 fw-bold text-uppercase" style="font-size: 0.7rem;">
+                <span
+                    style="display:inline-flex;align-items:center;gap:5px;background:var(--warning-light);color:#92400E;border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
                     Pendiente
                 </span>
-                {% elif sesion.estado == 'finalizado' %}
-                <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 fw-bold text-uppercase" style="font-size: 0.7rem;">
+                {% else %}
+                <span
+                    style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">
                     Finalizado
                 </span>
                 {% endif %}
-                <span class="text-muted small fw-bold d-flex align-items-center">
-                    <span class="material-icons-round me-1" style="font-size: 16px;">schedule</span>
-                    {{ sesion.ruta.duracion_horas }} h
-                </span>
-                <span class="text-muted small fw-bold d-flex align-items-center">
-                    <span class="material-icons-round me-1" style="font-size: 16px;">directions_walk</span>
-                    2.5 km
-                </span>
+                <span style="color:var(--text-muted);font-size:.8rem;font-weight:500;">{{ sesion.ruta.titulo }}</span>
             </div>
 
-            <h2 class="fw-bold mb-1 text-dark">{{ sesion.ruta.titulo }}</h2>
-            
-            <p class="text-muted mb-4 d-flex align-items-center">
-                <span class="material-icons-round me-2" style="font-size: 18px;">person_pin</span> 
-                Guiado por {{ sesion.ruta.guia.user.user.get_full_name|default:sesion.ruta.guia.user.user.username }}
-            </p>
+            <div class="session-countdown" id="session-countdown" aria-live="polite">
+                <span class="material-icons-round">timer</span>
+                <span>Tiempo restante</span>
+                <strong id="session-countdown-time">01:00:00</strong>
+            </div>
 
-            <h6 class="text-muted fw-bold text-uppercase mb-0" style="letter-spacing: 1px; font-size: 0.8rem;">Itinerario del Tour</h6>
-            
+            {% if es_guia %}
+            <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
+                <span class="material-icons-round">play_arrow</span>
+                {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
+            </button>
+            {% endif %}
+
             <div class="timeline">
                 {% for parada in paradas %}
-                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}">
-                    <h6 class="mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">{{ parada.nombre }}</h6>
-                    <p class="text-muted small mb-0">Parada {{ parada.orden }} del recorrido</p>
+                <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}"
+                    data-parada-id="{{ parada.id }}">
+                    <div class="timeline-item-main">
+                        <h6 class="timeline-stop-name mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
+                            style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
+                            {{ parada.nombre }}
+                        </h6>
+                        <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
+                            Parada {{ parada.orden }} del recorrido
+                        </p>
+
+                        <div class="curiosidad-timeline-container" id="curiosidad-timeline-{{ parada.id }}"
+                            style="display: none; margin-top: 10px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 6px;">
+                            <img id="curiosidad-timeline-img-{{ parada.id }}" alt="Imagen de la curiosidad"
+                                style="width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <span id="curiosidad-timeline-tipo-{{ parada.id }}"
+                                style="font-size: 0.7rem; color: #4338ca; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px;"></span>
+                            <strong id="curiosidad-timeline-titulo-{{ parada.id }}"
+                                style="font-size: 0.85rem; color: #1e293b; display: block; margin-bottom: 4px;"></strong>
+                            <p id="curiosidad-timeline-texto-{{ parada.id }}"
+                                style="font-size: 0.8rem; color: #475569; margin: 0; line-height: 1.4;"></p>
+                        </div>
+                    </div>
+                    {% if es_guia %}
+                    <button type="button" class="parada-focus-btn" data-parada-id="{{ parada.id }}"
+                        aria-label="Seleccionar parada actual: {{ parada.nombre }}" title="Seleccionar parada actual">
+                        Seleccionar parada actual
+                    </button>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
         </div>
 
-        <!-- Tab: Chat -->
         <div class="tab-content" id="tab-chat">
             <div class="chat-container">
                 <div class="chat-messages" id="chat-messages">
@@ -104,27 +126,43 @@
                     </div>
                 </div>
                 <div class="chat-input-container">
+                    <input type="file" id="chat-image-input" class="chat-image-input"
+                        accept="image/jpeg,image/png,image/webp" hidden>
+                    <button id="chat-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto">
+                        <span class="material-icons-round">image</span>
+                    </button>
                     <input type="text" id="chat-input" class="chat-input" placeholder="Escribe un mensaje...">
                     <button id="chat-send" class="chat-send-btn">
                         <span class="material-icons-round">send</span>
                     </button>
                 </div>
+                <div class="chat-preview-container" id="chat-preview-container"></div>
             </div>
         </div>
-        
+
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script id="paradas-data" type="application/json">{{ paradas_json|safe }}</script>
+{{ geometria_ruta_json|json_script:"geometria-ruta-data" }}
+{{ sesion.ruta.duracion_horas|json_script:"duracion-ruta-horas-data" }}
+
 <script>
     const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
     const sesionId = {{ sesion.id }};
-    const esGuia = {{ es_guia|yesno:"true,false" }};
+    const esGuia = {% if es_guia %}true{% else %} false{% endif %};
+    const sesionEstado = '{{ sesion.estado }}';
+    const duracionRutaHoras = Number(JSON.parse(document.getElementById('duracion-ruta-horas-data').textContent));
+    const sesionFechaInicioEpochMs = Number.parseInt('{{ sesion.fecha_inicio|date:"U" }}', 10) * 1000;
     const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
     const currentUserName = '{{ current_user_name|escapejs }}';
+    const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
+    const startCountdownUrl = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
+    const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
+    const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
+    const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
 </script>
-
-<script src="{% static 'js/mapa_turista.js' %}"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026032301"></script>
 {% endblock %}
