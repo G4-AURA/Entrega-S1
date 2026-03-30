@@ -32,6 +32,7 @@ urlpatterns = [
     path('crear-ruta/', include('creacion.urls')),
     path('api/ubicacion/', tours_views.registrar_ubicacion, name='api_ubicacion'),
     path('tours/', include('tours.urls')),
+    path('billing/', include('billing.urls')),
     path('', include('rutas.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
     path("allowList/", include("allowList.urls")),
