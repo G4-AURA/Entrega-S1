@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.db import transaction
@@ -148,7 +149,7 @@ def _epoch_to_datetime(value):
     try:
         if value is None:
             return None
-        return timezone.datetime.fromtimestamp(int(value), tz=timezone.utc)
+        return timezone.datetime.fromtimestamp(int(value), tz=dt_timezone.utc)
     except (TypeError, ValueError, OSError):
         return None
 
