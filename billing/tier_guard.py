@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import wraps
+import calendar
 import unicodedata
 
 from django.http import JsonResponse
@@ -8,7 +9,7 @@ from django.utils import timezone
 from rutas.models import Guia, Ruta
 from tours.models import SesionTour, TuristaSesion
 
-from .models import TierUsageEvent
+from .models import Subscription, TierUsageEvent
 
 
 ALLOWED_MOODS_FREEMIUM_ORDERED = (
@@ -132,9 +133,77 @@ def tier_guard(check_fn):
     return decorator
 
 
-def _month_start():
-    now = timezone.now()
-    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+def _add_months_preserving_day(dt, months: int):
+    total_month = (dt.month - 1) + int(months)
+    year = dt.year + (total_month // 12)
+    month = (total_month % 12) + 1
+    last_day = calendar.monthrange(year, month)[1]
+    day = min(dt.day, last_day)
+    return dt.replace(year=year, month=month, day=day)
+
+
+def _current_cycle_start(anchor, now):
+    if anchor > now:
+        return now
+
+    months_diff = (now.year - anchor.year) * 12 + (now.month - anchor.month)
+    candidate = _add_months_preserving_day(anchor, months_diff)
+
+    while candidate > now and months_diff > 0:
+        months_diff -= 1
+        candidate = _add_months_preserving_day(anchor, months_diff)
+
+    while True:
+        following = _add_months_preserving_day(candidate, 1)
+        if following <= now:
+            candidate = following
+            continue
+        return candidate
+
+
+def _account_creation_anchor(guia: Guia):
+    try:
+        date_joined = guia.user.user.date_joined
+        if date_joined is not None:
+            return date_joined
+    except Exception:
+        pass
+    return timezone.now()
+
+
+def _premium_success_anchor(guia: Guia):
+    subscription = (
+        Subscription.objects.filter(
+            guia=guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status__in=[
+                Subscription.Status.ACTIVE,
+                Subscription.Status.TRIALING,
+                Subscription.Status.PAST_DUE,
+            ],
+            stripe_subscription_id__isnull=False,
+        )
+        .exclude(stripe_subscription_id='')
+        .order_by('-updated_at', '-id')
+        .first()
+    )
+    if subscription is None:
+        return None
+    return subscription.current_period_start or subscription.created_at
+
+
+def get_usage_cycle_window(guia: Guia, now=None):
+    current_now = now or timezone.now()
+    tier = _tier_of(guia)
+
+    if tier == Guia.Suscripcion.PREMIUM:
+        anchor = _premium_success_anchor(guia) or _account_creation_anchor(guia)
+    else:
+        anchor = _account_creation_anchor(guia)
+
+    cycle_start = _current_cycle_start(anchor, current_now)
+    cycle_end = _add_months_preserving_day(cycle_start, 1)
+    return cycle_start, cycle_end, anchor
 
 
 def _tier_of(guia: Guia) -> str:
@@ -261,10 +330,12 @@ def clamp_generated_stops_to_tier(guia: Guia, stops: list[dict] | None) -> tuple
 
 
 def _monthly_usage_count(guia: Guia, action: str) -> int:
+    cycle_start, cycle_end, _anchor = get_usage_cycle_window(guia)
     return TierUsageEvent.objects.filter(
         guia=guia,
         action=action,
-        created_at__gte=_month_start(),
+        created_at__gte=cycle_start,
+        created_at__lt=cycle_end,
     ).count()
 
 

@@ -30,6 +30,7 @@ from billing.tier_guard import (
     ensure_route_stop_add_allowed,
     get_allowed_moods_for_guia,
     get_session_capacity_limit,
+    get_usage_cycle_window,
     normalize_mood_values,
     tier_error_response,
 )
@@ -45,6 +46,7 @@ PLAN_LIMITS = {
         '1 ruta manual simultánea',
         '1 ruta IA simultánea',
         '3 generaciones IA al mes',
+        '9 sustituciones IA al mes (máx. 3 por ruta IA)',
         'Hasta 15 turistas por sesión',
         '5 paradas por ruta',
     ],
@@ -52,6 +54,7 @@ PLAN_LIMITS = {
         'Hasta 10 rutas manuales simultáneas',
         'Hasta 10 rutas IA simultáneas',
         '10 generaciones IA al mes',
+        '30 sustituciones IA al mes (sin límite por ruta)',
         'Hasta 50 turistas por sesión',
         '15 paradas por ruta',
     ],
@@ -173,7 +176,7 @@ def _calcular_usos_plan(guia):
     sustituciones_ruta_limit = reglas.get('max_sustituciones_ia_ruta')
     curiosidades_limit = reglas.get('max_rutas_curiosidades')
 
-    inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    inicio_ciclo, fin_ciclo, _ancla_ciclo = get_usage_cycle_window(guia)
 
     sesiones_activas = (
         SesionTour.objects.filter(
@@ -208,7 +211,8 @@ def _calcular_usos_plan(guia):
     generaciones_mes = TierUsageEvent.objects.filter(
         guia=guia,
         action=TierUsageEvent.Action.IA_ROUTE_GENERATION,
-        created_at__gte=inicio_mes,
+        created_at__gte=inicio_ciclo,
+        created_at__lt=fin_ciclo,
     ).count()
     generaciones_restantes = (
         max(generaciones_limit - generaciones_mes, 0)
@@ -219,7 +223,8 @@ def _calcular_usos_plan(guia):
     sustituciones_mes_qs = TierUsageEvent.objects.filter(
         guia=guia,
         action=TierUsageEvent.Action.IA_STOP_REPLACEMENT,
-        created_at__gte=inicio_mes,
+        created_at__gte=inicio_ciclo,
+        created_at__lt=fin_ciclo,
     )
     sustituciones_mes = sustituciones_mes_qs.count()
     sustituciones_mes_restantes = (
@@ -290,7 +295,8 @@ def _calcular_usos_plan(guia):
             'limite': generaciones_limit,
             'consumidas': generaciones_mes,
             'detalle': (
-                f'Usadas este mes: {generaciones_mes} de {generaciones_limit}.'
+                f'Usadas en el ciclo actual: {generaciones_mes} de {generaciones_limit}. '
+                f'Inicio del ciclo: {timezone.localtime(inicio_ciclo).strftime("%d/%m/%Y %H:%M")}.'
             ),
         },
         {
@@ -300,14 +306,16 @@ def _calcular_usos_plan(guia):
             'consumidas': sustituciones_mes,
             'detalle': (
                 (
-                    f"Mes: {sustituciones_mes}/{sustituciones_mes_limit}. "
+                    f"Ciclo: {sustituciones_mes}/{sustituciones_mes_limit}. "
                     f"Ruta más usada: {sustituciones_ruta_consumidas}/{sustituciones_ruta_limit} "
-                    f"en «{(sustituciones_ruta_top or {}).get('ruta__titulo', 'sin ruta')}»."
+                    f"en «{(sustituciones_ruta_top or {}).get('ruta__titulo', 'sin ruta')}». "
+                    f'Inicio del ciclo: {timezone.localtime(inicio_ciclo).strftime("%d/%m/%Y %H:%M")}.'
                 )
                 if sustituciones_ruta_limit is not None
                 else (
-                    f"Mes: {sustituciones_mes}/{sustituciones_mes_limit}. "
-                    'Por ruta: ilimitado en Premium.'
+                    f"Ciclo: {sustituciones_mes}/{sustituciones_mes_limit}. "
+                    'Por ruta: ilimitado en Premium. '
+                    f'Inicio del ciclo: {timezone.localtime(inicio_ciclo).strftime("%d/%m/%Y %H:%M")}.'
                 )
             ),
         },

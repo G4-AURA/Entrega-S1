@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+from datetime import timezone as dt_timezone
 
 from django.test import SimpleTestCase
+from django.utils import timezone
 
 from rutas.models import Guia, Ruta
 
@@ -11,6 +13,7 @@ from billing.tier_guard import (
     ensure_route_stop_count_allowed,
     ensure_moods_allowed,
     ensure_premium_for_quedada,
+    get_usage_cycle_window,
     tier_guard,
     tier_error_response,
 )
@@ -121,3 +124,17 @@ class TierGuardServiceTest(SimpleTestCase):
 
         response = _view(None)
         self.assertEqual(response.status_code, 403)
+
+    def test_usage_cycle_window_freemium_anclado_a_date_joined(self):
+        joined_at = timezone.datetime(2026, 3, 17, 15, 30, tzinfo=dt_timezone.utc)
+        now = timezone.datetime(2026, 4, 20, 10, 0, tzinfo=dt_timezone.utc)
+        guia = SimpleNamespace(
+            tipo_suscripcion=Guia.Suscripcion.FREEMIUM,
+            user=SimpleNamespace(user=SimpleNamespace(date_joined=joined_at)),
+        )
+
+        cycle_start, cycle_end, anchor = get_usage_cycle_window(guia, now=now)
+
+        self.assertEqual(anchor, joined_at)
+        self.assertEqual(cycle_start, timezone.datetime(2026, 4, 17, 15, 30, tzinfo=dt_timezone.utc))
+        self.assertEqual(cycle_end, timezone.datetime(2026, 5, 17, 15, 30, tzinfo=dt_timezone.utc))

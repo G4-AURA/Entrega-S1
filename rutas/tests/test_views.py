@@ -107,8 +107,9 @@ class RutasViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Sesión más ocupada: 2/15 turistas')
         self.assertContains(response, 'Ruta con más paradas: 2/5')
-        self.assertContains(response, 'Usadas este mes: 1 de 3.')
-        self.assertContains(response, 'Mes: 1/9. Ruta más usada: 1/3')
+        self.assertContains(response, 'Usadas en el ciclo actual: 1 de 3.')
+        self.assertContains(response, 'Ciclo: 1/9. Ruta más usada: 1/3')
+        self.assertContains(response, 'Inicio del ciclo:')
         self.assertNotContains(response, 'N/D')
 
     @override_settings(STRIPE_ENABLED=True)
