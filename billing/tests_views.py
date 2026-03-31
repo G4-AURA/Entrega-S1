@@ -1,11 +1,12 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from billing.services import StripeAPIError
 from billing.views import create_checkout_session_view
+from billing.views import schedule_downgrade_view
 from rutas.models import Guia
 
 
@@ -127,3 +128,222 @@ class BillingCheckoutSessionViewTest(SimpleTestCase):
         body = self._json(response)
         self.assertEqual(response.status_code, 502)
         self.assertEqual(body.get('code'), 'BILLING_STRIPE_ERROR')
+
+
+class BillingDowngradeViewTest(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _request(self):
+        return self.factory.post('/billing/schedule-downgrade/', data='{}', content_type='application/json')
+
+    def _json(self, response):
+        return json.loads(response.content.decode('utf-8'))
+
+    def _auth_user(self):
+        return SimpleNamespace(
+            id=201,
+            email='premium@example.com',
+            is_authenticated=True,
+        )
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_rechaza_anonimo(self):
+        request = self._request()
+        request.user = SimpleNamespace(is_authenticated=False)
+
+        response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 401)
+
+    @override_settings(STRIPE_ENABLED=False)
+    def test_rechaza_si_stripe_esta_deshabilitado(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 503)
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_rechaza_si_ya_es_freemium(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.FREEMIUM)
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock):
+            response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 409)
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_rechaza_sin_suscripcion_cancelable(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=None):
+            response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 409)
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_devuelve_ok_si_ya_estaba_programada(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        subscription_mock = SimpleNamespace(
+            stripe_subscription_id='sub_test_already_scheduled',
+            cancel_at_period_end=True,
+            current_period_end=None,
+        )
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=subscription_mock):
+            response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 200)
+        body = self._json(response)
+        self.assertEqual(body.get('status'), 'OK')
+
+    @override_settings(
+        STRIPE_ENABLED=True,
+        STRIPE_SECRET_KEY='sk_test_123',
+    )
+    def test_error_de_stripe_devuelve_502(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        subscription_mock = SimpleNamespace(
+            stripe_subscription_id='sub_test_123',
+            cancel_at_period_end=False,
+            status='active',
+            current_period_end=None,
+            canceled_at=None,
+            metadata={},
+            save=MagicMock(),
+        )
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=subscription_mock), \
+             patch(
+                 'billing.views.schedule_subscription_cancel_at_period_end',
+                 side_effect=StripeAPIError('Stripe temporalmente no disponible'),
+             ):
+            response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 502)
+
+    @override_settings(
+        STRIPE_ENABLED=True,
+        STRIPE_SECRET_KEY='sk_test_123',
+    )
+    def test_programa_baja_con_exito(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        subscription_mock = SimpleNamespace(
+            stripe_subscription_id='sub_test_123',
+            cancel_at_period_end=False,
+            status='active',
+            current_period_end=None,
+            canceled_at=None,
+            metadata={},
+            save=MagicMock(),
+        )
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=subscription_mock), \
+             patch(
+                 'billing.views.schedule_subscription_cancel_at_period_end',
+                 return_value={
+                     'id': 'sub_test_123',
+                     'status': 'active',
+                     'cancel_at_period_end': True,
+                     'current_period_end': 1714500000,
+                     'canceled_at': None,
+                 },
+             ):
+            response = schedule_downgrade_view(request)
+
+        body = self._json(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body.get('status'), 'OK')
+        self.assertTrue(subscription_mock.cancel_at_period_end)
+        subscription_mock.save.assert_called_once()
+
+    @override_settings(
+        STRIPE_ENABLED=True,
+        STRIPE_SECRET_KEY='sk_test_123',
+    )
+    def test_programa_baja_con_fallback_cancel_at(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        subscription_mock = SimpleNamespace(
+            stripe_subscription_id='sub_test_456',
+            cancel_at_period_end=False,
+            status='active',
+            current_period_end=None,
+            canceled_at=None,
+            metadata={},
+            save=MagicMock(),
+        )
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=subscription_mock), \
+             patch(
+                 'billing.views.schedule_subscription_cancel_at_period_end',
+                 return_value={
+                     'id': 'sub_test_456',
+                     'status': 'active',
+                     'cancel_at_period_end': True,
+                     'current_period_end': None,
+                     'cancel_at': 1714600000,
+                     'canceled_at': None,
+                 },
+             ):
+            response = schedule_downgrade_view(request)
+
+        body = self._json(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body.get('status'), 'OK')
+        self.assertIsNotNone(subscription_mock.current_period_end)
+
+    @override_settings(
+        STRIPE_ENABLED=True,
+        STRIPE_SECRET_KEY='sk_test_123',
+    )
+    def test_ya_programada_refresca_period_end_si_falta(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        subscription_mock = SimpleNamespace(
+            stripe_subscription_id='sub_test_789',
+            cancel_at_period_end=True,
+            status='active',
+            current_period_end=None,
+            canceled_at=None,
+            metadata={},
+            save=MagicMock(),
+        )
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=subscription_mock), \
+             patch(
+                 'billing.views.fetch_subscription_snapshot',
+                 return_value={
+                     'id': 'sub_test_789',
+                     'status': 'active',
+                     'cancel_at_period_end': True,
+                     'current_period_end': None,
+                     'cancel_at': 1714700000,
+                     'canceled_at': None,
+                 },
+             ):
+            response = schedule_downgrade_view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(subscription_mock.current_period_end)
+        subscription_mock.save.assert_called_once()

@@ -54,9 +54,25 @@
                 {% if user.is_authenticated %}
                 <div class="d-md-none w-100 mt-3">
                     <div class="d-flex flex-column gap-2">
+                        {% if user.is_superuser %}
                         <span class="aura-user-badge">
-                            Guía&nbsp;<strong>{{ user.username }}</strong>
+                            Admin&nbsp;<strong>{{ user.username }}</strong>
                         </span>
+                        {% else %}
+                        <div class="dropdown">
+                            <button class="btn-user-menu dropdown-toggle w-100"
+                                    type="button"
+                                    id="mobileUserMenu"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false">
+                                Guía&nbsp;<strong>{{ user.username }}</strong>
+                            </button>
+                            <ul class="dropdown-menu aura-user-menu w-100" aria-labelledby="mobileUserMenu">
+                                <li><a class="dropdown-item" href="{% url 'perfil-editar' %}">Editar perfil</a></li>
+                                <li><a class="dropdown-item" href="{% url 'plan' %}">Ver plan</a></li>
+                            </ul>
+                        </div>
+                        {% endif %}
                         <form method="post" action="{% url 'logout' %}" class="m-0 mobile-logout">
                             {% csrf_token %}
                             <button type="submit" class="btn-logout">Cerrar sesión</button>
@@ -67,9 +83,25 @@
 
                 {% if user.is_authenticated %}
                 <div class="d-none d-md-flex align-items-center gap-2">
+                    {% if user.is_superuser %}
                     <span class="aura-user-badge d-none d-md-inline-flex">
-                        Guía&nbsp;<strong>{{ user.username }}</strong>
+                        Admin&nbsp;<strong>{{ user.username }}</strong>
                     </span>
+                    {% else %}
+                    <div class="dropdown">
+                        <button class="btn-user-menu dropdown-toggle"
+                                type="button"
+                                id="desktopUserMenu"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                            Guía&nbsp;<strong>{{ user.username }}</strong>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end aura-user-menu" aria-labelledby="desktopUserMenu">
+                            <li><a class="dropdown-item" href="{% url 'perfil-editar' %}">Editar perfil</a></li>
+                            <li><a class="dropdown-item" href="{% url 'plan' %}">Ver plan</a></li>
+                        </ul>
+                    </div>
+                    {% endif %}
                     <form method="post" action="{% url 'logout' %}" class="m-0">
                         {% csrf_token %}
                         <button type="submit" class="btn-logout">Cerrar sesión</button>

@@ -11,6 +11,11 @@ urlpatterns = [
         name='create_checkout_session',
     ),
     path(
+        'schedule-downgrade/',
+        views.schedule_downgrade_view,
+        name='schedule_downgrade',
+    ),
+    path(
         'webhook',
         views.stripe_webhook_view,
         name='stripe_webhook',

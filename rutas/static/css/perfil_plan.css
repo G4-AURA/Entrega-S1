@@ -1,0 +1,160 @@
+.profile-wrapper,
+.plan-wrapper {
+    max-width: 980px;
+    margin: 1.25rem auto 3rem;
+}
+
+.profile-header {
+    margin-bottom: 1.35rem;
+}
+
+.profile-title {
+    margin: 0 0 0.35rem;
+    font-size: 2rem;
+}
+
+.profile-subtitle {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.profile-alert {
+    border-radius: var(--radius-md);
+    margin-bottom: 1rem;
+}
+
+.profile-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+}
+
+.profile-card,
+.profile-side-card,
+.plan-main-card,
+.plan-limits-card {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    padding: 1.15rem;
+}
+
+.profile-card-title {
+    font-size: 1.1rem;
+    margin: 0 0 0.85rem;
+}
+
+.field-error {
+    color: #b91c1c;
+    font-size: 0.78rem;
+    margin-top: 0.25rem;
+}
+
+.profile-side-label {
+    margin: 0.65rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.profile-side-value {
+    margin: 0.12rem 0 0.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.plan-main-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem 1rem;
+}
+
+.plan-tier {
+    margin: 0.1rem 0 0;
+    font-size: 1.6rem;
+}
+
+.plan-value {
+    margin: 0.15rem 0 0;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.plan-limits-grid {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.plan-usage-grid {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.plan-usage-card {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    padding: 0.9rem;
+}
+
+.plan-usage-card-muted {
+    background: var(--bg-light);
+}
+
+.plan-usage-title {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.plan-usage-value {
+    margin: 0.3rem 0 0.15rem;
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.plan-usage-meta {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.77rem;
+}
+
+.plan-limits-title {
+    margin: 0 0 0.7rem;
+    font-size: 1.05rem;
+}
+
+.plan-limits-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: var(--text-secondary);
+}
+
+.plan-limits-list li {
+    margin-bottom: 0.35rem;
+}
+
+.plan-cta-row {
+    margin-top: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 991.98px) {
+    .profile-layout,
+    .plan-limits-grid,
+    .plan-main-grid,
+    .plan-usage-grid {
+        grid-template-columns: 1fr;
+    }
+}

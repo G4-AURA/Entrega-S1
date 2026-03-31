@@ -1,9 +1,13 @@
-from django.test import TestCase, Client
+from datetime import timedelta
+
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
+from billing.models import Subscription
 from unittest.mock import patch, Mock
+from django.utils import timezone
 
 class RutasViewsTest(TestCase):
     def setUp(self):
@@ -50,6 +54,161 @@ class RutasViewsTest(TestCase):
         response = self.client.get(reverse('catalogo'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'rutas/catalogo.html')
+
+    def test_catalogo_view_muestra_estado_plan(self):
+        response = self.client.get(reverse('catalogo'))
+        self.assertContains(response, 'Plan actual')
+        self.assertContains(response, self.guia.tipo_suscripcion)
+
+    def test_navbar_dropdown_muestra_enlaces_perfil_y_plan(self):
+        response = self.client.get(reverse('catalogo'))
+        self.assertContains(response, reverse('perfil-editar'))
+        self.assertContains(response, reverse('plan'))
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_freemium_muestra_cta_upgrade(self):
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'rutas/plan.html')
+        self.assertContains(response, 'Plan actual')
+        self.assertContains(response, 'Pasar a Premium')
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_premium_no_muestra_cta_upgrade(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ya estás en Premium')
+        self.assertNotContains(response, 'id="btn-upgrade-plan"')
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_premium_muestra_cta_downgrade_si_hay_suscripcion_activa(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_test_123',
+            current_period_end=timezone.now(),
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Volver a Freemium al final del periodo')
+        self.assertContains(response, 'Próxima renovación')
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_prioriza_suscripcion_activa_frente_a_incomplete_reciente(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        renewal_dt = timezone.now() + timedelta(days=25)
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_active_123',
+            current_period_end=renewal_dt,
+        )
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.INCOMPLETE,
+            stripe_subscription_id='',
+            current_period_end=None,
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Volver a Freemium al final del periodo')
+        self.assertContains(
+            response,
+            timezone.localtime(renewal_dt).strftime('%d/%m/%Y %H:%M'),
+        )
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_oculta_datos_tecnicos_stripe(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_secret_id_123',
+            current_period_end=timezone.now(),
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Suscripción Stripe')
+        self.assertNotContains(response, 'sub_secret_id_123')
+
+    @override_settings(STRIPE_ENABLED=True, STRIPE_SECRET_KEY='sk_test_123')
+    @patch('rutas.views.fetch_subscription_snapshot')
+    def test_plan_view_refresca_periodo_desde_stripe_si_falta(self, mock_fetch_subscription):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_refresh_123',
+            cancel_at_period_end=True,
+            current_period_end=None,
+        )
+        mock_fetch_subscription.return_value = {
+            'id': 'sub_refresh_123',
+            'status': 'active',
+            'cancel_at_period_end': True,
+            'current_period_end': None,
+            'cancel_at': 1777590764,
+            'canceled_at': None,
+        }
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fin del periodo actual')
+        mock_fetch_subscription.assert_called_once()
+
+    def test_editar_perfil_view_get(self):
+        response = self.client.get(reverse('perfil-editar'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'rutas/perfil_editar.html')
+        self.assertContains(response, 'Editar perfil')
+        self.assertContains(response, self.user.username)
+
+    def test_editar_perfil_view_post_actualiza_datos(self):
+        url = reverse('perfil-editar')
+        response = self.client.post(url, {
+            'first_name': 'Max',
+            'last_name': 'Corti',
+            'email': 'max@example.com',
+        })
+        self.assertRedirects(response, f"{url}?updated=1")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Max')
+        self.assertEqual(self.user.last_name, 'Corti')
+        self.assertEqual(self.user.email, 'max@example.com')
+
+    def test_editar_perfil_view_email_duplicado(self):
+        user2 = User.objects.create_user(
+            username='otro_usuario',
+            password='password',
+            email='existente@example.com',
+        )
+        AuthUser.objects.create(user=user2)
+        Guia.objects.create(user=user2.auth_profile)
+
+        response = self.client.post(reverse('perfil-editar'), {
+            'first_name': 'Nombre',
+            'last_name': 'Apellido',
+            'email': 'existente@example.com',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ya existe una cuenta con este correo electrónico.')
 
     # 3. Eliminar Ruta
     def test_eliminar_ruta_view_success(self):

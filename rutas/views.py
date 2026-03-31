@@ -8,16 +8,59 @@ Roles:
 
 S2.1-32: endpoint AJAX para recalcular bajo demanda.
 """
+from datetime import timezone as dt_timezone
+
+from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from billing.models import Subscription
+from billing.services import StripeAPIError, fetch_subscription_snapshot
 from creacion import services as creacion_services
+from .forms import EditarPerfilForm
 from . import services
-from .models import Parada, Ruta
+from .models import Guia, Parada, Ruta
 MAX_RUTAS_PAGE_SIZE = 9
+
+PLAN_LIMITS = {
+    Guia.Suscripcion.FREEMIUM: [
+        '1 ruta simultánea en catálogo',
+        '3 generaciones IA al mes',
+        'Hasta 15 turistas por sesión',
+        '5 paradas por ruta',
+    ],
+    Guia.Suscripcion.PREMIUM: [
+        'Hasta 10 rutas simultáneas en catálogo',
+        '10 generaciones IA al mes',
+        'Hasta 50 turistas por sesión',
+        '15 paradas por ruta',
+    ],
+}
+
+PLAN_RULES = {
+    Guia.Suscripcion.FREEMIUM: {
+        'manual_routes_limit': 1,
+        'ia_routes_limit': 1,
+        'max_personas_por_sesion': 15,
+        'max_paradas_por_ruta': 5,
+        'max_generaciones_ia_mes': 3,
+        'max_sustituciones_ia_mes': 9,
+        'max_rutas_curiosidades': 3,
+    },
+    Guia.Suscripcion.PREMIUM: {
+        'manual_routes_limit': 10,
+        'ia_routes_limit': 10,
+        'max_personas_por_sesion': 50,
+        'max_paradas_por_ruta': 15,
+        'max_generaciones_ia_mes': 10,
+        'max_sustituciones_ia_mes': 30,
+        'max_rutas_curiosidades': None,  # ilimitado
+    },
+}
 
 
 def _render_ruta_no_autorizada(request):
@@ -48,6 +91,217 @@ def es_guia(user):
             if user.auth_profile.guia is not None:
                 return True
     raise PermissionDenied("Acceso denegado: área exclusiva para guías.")
+
+
+def _obtener_guia_usuario(user):
+    if not hasattr(user, 'auth_profile'):
+        return None
+    if not hasattr(user.auth_profile, 'guia'):
+        return None
+    return user.auth_profile.guia
+
+
+def _obtener_suscripcion_actual(guia):
+    if guia is None:
+        return None
+    subscriptions = Subscription.objects.filter(guia=guia)
+
+    if guia.tipo_suscripcion == Guia.Suscripcion.PREMIUM:
+        activa = (
+            subscriptions.filter(
+                tier=Guia.Suscripcion.PREMIUM,
+                status__in=[
+                    Subscription.Status.ACTIVE,
+                    Subscription.Status.TRIALING,
+                    Subscription.Status.PAST_DUE,
+                ],
+                stripe_subscription_id__isnull=False,
+            )
+            .exclude(stripe_subscription_id='')
+            .order_by('-updated_at', '-id')
+            .first()
+        )
+        if activa is not None:
+            return activa
+
+        premium = subscriptions.filter(
+            tier=Guia.Suscripcion.PREMIUM,
+        ).order_by('-updated_at', '-id').first()
+        if premium is not None:
+            return premium
+
+    return subscriptions.order_by('-updated_at', '-id').first()
+
+
+def _calcular_usos_plan(guia):
+    reglas = PLAN_RULES.get(guia.tipo_suscripcion, {})
+    rutas_qs = Ruta.objects.filter(guia=guia)
+    rutas_manual = rutas_qs.filter(es_generada_ia=False).count()
+    rutas_ia = rutas_qs.filter(es_generada_ia=True).count()
+
+    manual_limit = reglas.get('manual_routes_limit')
+    ia_limit = reglas.get('ia_routes_limit')
+
+    return [
+        {
+            'nombre': 'Rutas manuales simultáneas',
+            'restantes': max((manual_limit or 0) - rutas_manual, 0),
+            'limite': manual_limit,
+            'consumidas': rutas_manual,
+            'detalle': 'Calculado en tiempo real con tus rutas actuales.',
+        },
+        {
+            'nombre': 'Rutas IA simultáneas',
+            'restantes': max((ia_limit or 0) - rutas_ia, 0),
+            'limite': ia_limit,
+            'consumidas': rutas_ia,
+            'detalle': 'Calculado en tiempo real con tus rutas IA actuales.',
+        },
+        {
+            'nombre': 'Capacidad por sesión',
+            'restantes': reglas.get('max_personas_por_sesion'),
+            'limite': reglas.get('max_personas_por_sesion'),
+            'consumidas': 0,
+            'detalle': 'Plazas máximas permitidas por sesión activa.',
+        },
+        {
+            'nombre': 'Paradas por ruta',
+            'restantes': reglas.get('max_paradas_por_ruta'),
+            'limite': reglas.get('max_paradas_por_ruta'),
+            'consumidas': 0,
+            'detalle': 'Límite máximo de paradas por ruta.',
+        },
+        {
+            'nombre': 'Generaciones IA al mes',
+            'restantes': None,
+            'limite': reglas.get('max_generaciones_ia_mes'),
+            'consumidas': None,
+            'detalle': (
+                'Pendiente de instrumentación por guía. '
+                'El límite aplicado por plan es '
+                f"{reglas.get('max_generaciones_ia_mes')} al mes."
+            ),
+        },
+        {
+            'nombre': 'Sustituciones IA (mes/ruta)',
+            'restantes': None,
+            'limite': reglas.get('max_sustituciones_ia_mes'),
+            'consumidas': None,
+            'detalle': (
+                'Pendiente de instrumentación por guía/ruta. '
+                'Límite de referencia del plan: '
+                f"{reglas.get('max_sustituciones_ia_mes')} al mes."
+            ),
+        },
+        {
+            'nombre': 'Rutas con curiosidades manuales',
+            'restantes': None,
+            'limite': reglas.get('max_rutas_curiosidades'),
+            'consumidas': None,
+            'detalle': (
+                'Pendiente de instrumentación. '
+                'Freemium permite hasta 3 rutas y Premium es ilimitado.'
+            ),
+        },
+    ]
+
+
+def _estado_plan_humano(guia, subscription):
+    if guia.tipo_suscripcion == Guia.Suscripcion.FREEMIUM:
+        return 'Freemium activo'
+
+    if subscription and subscription.cancel_at_period_end:
+        return 'Premium activo (baja programada)'
+
+    return 'Premium activo'
+
+
+def _periodo_plan(guia, subscription):
+    if guia.tipo_suscripcion == Guia.Suscripcion.FREEMIUM:
+        return ('Próxima renovación', None)
+
+    if subscription and subscription.current_period_end:
+        fecha = timezone.localtime(subscription.current_period_end)
+        if subscription.cancel_at_period_end:
+            return ('Fin del periodo actual', fecha)
+        return ('Próxima renovación', fecha)
+
+    return ('Próxima renovación', None)
+
+
+def _resolver_period_end_epoch(payload: dict) -> int | None:
+    item_period_end = None
+    items = ((payload.get('items') or {}).get('data') or [])
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            maybe_epoch = item.get('current_period_end')
+            if maybe_epoch is not None:
+                item_period_end = int(maybe_epoch)
+                break
+        except (TypeError, ValueError):
+            continue
+
+    for candidate in (payload.get('current_period_end'), payload.get('cancel_at'), item_period_end):
+        try:
+            if candidate is None:
+                continue
+            return int(candidate)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _refrescar_periodo_desde_stripe_si_falta(subscription):
+    if subscription is None:
+        return subscription
+    if subscription.current_period_end is not None:
+        return subscription
+    if not getattr(settings, 'STRIPE_ENABLED', False):
+        return subscription
+    if not subscription.stripe_subscription_id:
+        return subscription
+
+    try:
+        snapshot = fetch_subscription_snapshot(
+            secret_key=getattr(settings, 'STRIPE_SECRET_KEY', ''),
+            stripe_subscription_id=subscription.stripe_subscription_id,
+        )
+    except StripeAPIError:
+        return subscription
+    except Exception:
+        return subscription
+
+    period_end_epoch = _resolver_period_end_epoch(snapshot)
+    period_end_dt = None
+    try:
+        if period_end_epoch is not None:
+            period_end_dt = timezone.datetime.fromtimestamp(period_end_epoch, tz=dt_timezone.utc)
+    except (TypeError, ValueError, OSError):
+        period_end_dt = None
+
+    updated_fields = []
+    if period_end_dt is not None:
+        subscription.current_period_end = period_end_dt
+        updated_fields.append('current_period_end')
+
+    cancel_at_period_end = bool(snapshot.get('cancel_at_period_end'))
+    if subscription.cancel_at_period_end != cancel_at_period_end:
+        subscription.cancel_at_period_end = cancel_at_period_end
+        updated_fields.append('cancel_at_period_end')
+
+    snapshot_status = str(snapshot.get('status') or '').strip()
+    valid_statuses = {choice[0] for choice in Subscription.Status.choices}
+    if snapshot_status and snapshot_status in valid_statuses and subscription.status != snapshot_status:
+        subscription.status = snapshot_status
+        updated_fields.append('status')
+
+    if updated_fields:
+        updated_fields.append('updated_at')
+        subscription.save(update_fields=updated_fields)
+
+    return subscription
 
 
 # ================================================
@@ -92,7 +346,91 @@ def rutas_catalogo(request):
 @user_passes_test(es_guia)
 def catalogo_view(request):
     """Renderiza la página del catálogo de rutas."""
-    return render(request, 'rutas/catalogo.html')
+    guia = _obtener_guia_usuario(request.user)
+    context = {
+        'guia': guia,
+        'es_freemium': (
+            guia is not None and guia.tipo_suscripcion == Guia.Suscripcion.FREEMIUM
+        ),
+    }
+    return render(request, 'rutas/catalogo.html', context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@user_passes_test(es_guia)
+def editar_perfil_view(request):
+    guia = _obtener_guia_usuario(request.user)
+    if guia is None:
+        raise PermissionDenied('No se encontró un perfil de guía para este usuario.')
+
+    if request.method == "POST":
+        form = EditarPerfilForm(request.POST, instance=request.user)
+        if form.is_valid():
+            form.save()
+            return redirect(f"{request.path}?updated=1")
+    else:
+        form = EditarPerfilForm(instance=request.user)
+
+    context = {
+        'form': form,
+        'guia': guia,
+        'updated': request.GET.get("updated") == "1",
+    }
+    return render(request, 'rutas/perfil_editar.html', context)
+
+
+@require_GET
+@login_required
+@user_passes_test(es_guia)
+def plan_view(request):
+    guia = _obtener_guia_usuario(request.user)
+    if guia is None:
+        raise PermissionDenied('No se encontró un perfil de guía para este usuario.')
+
+    subscription = _obtener_suscripcion_actual(guia)
+    subscription = _refrescar_periodo_desde_stripe_si_falta(subscription)
+    es_freemium = guia.tipo_suscripcion == Guia.Suscripcion.FREEMIUM
+    checkout_enabled = bool(getattr(settings, 'STRIPE_ENABLED', False))
+    billing_state = (request.GET.get('billing') or '').strip()
+    downgrade_state = (request.GET.get('downgrade') or '').strip()
+    periodo_label, periodo_fecha = _periodo_plan(guia, subscription)
+
+    mostrar_cta_downgrade = (
+        not es_freemium
+        and checkout_enabled
+        and subscription is not None
+        and bool(subscription.stripe_subscription_id)
+        and not subscription.cancel_at_period_end
+        and subscription.status in {
+            Subscription.Status.ACTIVE,
+            Subscription.Status.TRIALING,
+            Subscription.Status.PAST_DUE,
+        }
+    )
+    downgrade_programado = bool(
+        subscription is not None and subscription.cancel_at_period_end
+    )
+
+    context = {
+        'guia': guia,
+        'subscription': subscription,
+        'es_freemium': es_freemium,
+        'checkout_enabled': checkout_enabled,
+        'mostrar_cta_upgrade': es_freemium and checkout_enabled,
+        'mostrar_cta_downgrade': mostrar_cta_downgrade,
+        'downgrade_programado': downgrade_programado,
+        'estado_plan': _estado_plan_humano(guia, subscription),
+        'periodo_label': periodo_label,
+        'periodo_fecha': periodo_fecha,
+        'plan_usage_items': _calcular_usos_plan(guia),
+        'plan_limits_actual': PLAN_LIMITS.get(guia.tipo_suscripcion, []),
+        'plan_limits_premium': PLAN_LIMITS.get(Guia.Suscripcion.PREMIUM, []),
+        'billing_success': billing_state == 'success',
+        'billing_cancel': billing_state == 'cancel',
+        'downgrade_scheduled': downgrade_state == 'scheduled',
+    }
+    return render(request, 'rutas/plan.html', context)
 
 
 # ================================================
@@ -341,4 +679,3 @@ def obtener_curiosidad_parada_api(request, parada_id):
         },
         json_dumps_params={"ensure_ascii": False},
     )
-
