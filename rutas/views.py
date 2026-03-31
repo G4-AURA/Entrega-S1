@@ -14,12 +14,13 @@ from urllib.parse import quote_plus, unquote_plus
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from billing.models import Subscription
+from billing.models import Subscription, TierUsageEvent
 from billing.services import StripeAPIError, fetch_subscription_snapshot
 from billing.tier_guard import (
     TierRuleViolation,
@@ -33,6 +34,7 @@ from billing.tier_guard import (
     tier_error_response,
 )
 from creacion import services as creacion_services
+from tours.models import SesionTour
 from .forms import EditarPerfilForm
 from . import services
 from .models import Guia, Parada, Ruta
@@ -40,13 +42,15 @@ MAX_RUTAS_PAGE_SIZE = 9
 
 PLAN_LIMITS = {
     Guia.Suscripcion.FREEMIUM: [
-        '1 ruta simultánea en catálogo',
+        '1 ruta manual simultánea',
+        '1 ruta IA simultánea',
         '3 generaciones IA al mes',
         'Hasta 15 turistas por sesión',
         '5 paradas por ruta',
     ],
     Guia.Suscripcion.PREMIUM: [
-        'Hasta 10 rutas simultáneas en catálogo',
+        'Hasta 10 rutas manuales simultáneas',
+        'Hasta 10 rutas IA simultáneas',
         '10 generaciones IA al mes',
         'Hasta 50 turistas por sesión',
         '15 paradas por ruta',
@@ -61,6 +65,7 @@ PLAN_RULES = {
         'max_paradas_por_ruta': 5,
         'max_generaciones_ia_mes': 3,
         'max_sustituciones_ia_mes': 9,
+        'max_sustituciones_ia_ruta': 3,
         'max_rutas_curiosidades': 3,
     },
     Guia.Suscripcion.PREMIUM: {
@@ -70,6 +75,7 @@ PLAN_RULES = {
         'max_paradas_por_ruta': 15,
         'max_generaciones_ia_mes': 10,
         'max_sustituciones_ia_mes': 30,
+        'max_sustituciones_ia_ruta': None,
         'max_rutas_curiosidades': None,  # ilimitado
     },
 }
@@ -160,6 +166,84 @@ def _calcular_usos_plan(guia):
 
     manual_limit = reglas.get('manual_routes_limit')
     ia_limit = reglas.get('ia_routes_limit')
+    personas_limit = reglas.get('max_personas_por_sesion')
+    paradas_limit = reglas.get('max_paradas_por_ruta')
+    generaciones_limit = reglas.get('max_generaciones_ia_mes')
+    sustituciones_mes_limit = reglas.get('max_sustituciones_ia_mes')
+    sustituciones_ruta_limit = reglas.get('max_sustituciones_ia_ruta')
+    curiosidades_limit = reglas.get('max_rutas_curiosidades')
+
+    inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    sesiones_activas = (
+        SesionTour.objects.filter(
+            ruta__guia=guia,
+            estado__in=[SesionTour.PENDIENTE, SesionTour.EN_CURSO],
+        )
+        .annotate(
+            turistas_activos=Count(
+                'turistasesion',
+                filter=Q(turistasesion__activo=True),
+                distinct=True,
+            )
+        )
+        .order_by('-turistas_activos', 'id')
+    )
+    sesion_mas_ocupada = sesiones_activas.first()
+    capacidad_consumida = int(getattr(sesion_mas_ocupada, 'turistas_activos', 0) or 0)
+    capacidad_restante = (
+        max(personas_limit - capacidad_consumida, 0)
+        if personas_limit is not None
+        else None
+    )
+
+    ruta_mas_cargada = rutas_qs.annotate(total_paradas=Count('paradas')).order_by('-total_paradas', 'id').first()
+    paradas_consumidas = int(getattr(ruta_mas_cargada, 'total_paradas', 0) or 0)
+    paradas_restantes = (
+        max(paradas_limit - paradas_consumidas, 0)
+        if paradas_limit is not None
+        else None
+    )
+
+    generaciones_mes = TierUsageEvent.objects.filter(
+        guia=guia,
+        action=TierUsageEvent.Action.IA_ROUTE_GENERATION,
+        created_at__gte=inicio_mes,
+    ).count()
+    generaciones_restantes = (
+        max(generaciones_limit - generaciones_mes, 0)
+        if generaciones_limit is not None
+        else None
+    )
+
+    sustituciones_mes_qs = TierUsageEvent.objects.filter(
+        guia=guia,
+        action=TierUsageEvent.Action.IA_STOP_REPLACEMENT,
+        created_at__gte=inicio_mes,
+    )
+    sustituciones_mes = sustituciones_mes_qs.count()
+    sustituciones_mes_restantes = (
+        max(sustituciones_mes_limit - sustituciones_mes, 0)
+        if sustituciones_mes_limit is not None
+        else None
+    )
+
+    sustituciones_ruta_top = (
+        sustituciones_mes_qs
+        .filter(ruta__isnull=False)
+        .values('ruta_id', 'ruta__titulo')
+        .annotate(total=Count('id'))
+        .order_by('-total', 'ruta_id')
+        .first()
+    )
+    sustituciones_ruta_consumidas = int((sustituciones_ruta_top or {}).get('total') or 0)
+
+    rutas_con_curiosidad = rutas_qs.filter(paradas__curiosidad__isnull=False).distinct().count()
+    curiosidades_restantes = (
+        max(curiosidades_limit - rutas_con_curiosidad, 0)
+        if curiosidades_limit is not None
+        else 0
+    )
 
     return [
         {
@@ -178,48 +262,62 @@ def _calcular_usos_plan(guia):
         },
         {
             'nombre': 'Capacidad por sesión',
-            'restantes': reglas.get('max_personas_por_sesion'),
-            'limite': reglas.get('max_personas_por_sesion'),
-            'consumidas': 0,
-            'detalle': 'Plazas máximas permitidas por sesión activa.',
+            'restantes': capacidad_restante,
+            'limite': personas_limit,
+            'consumidas': capacidad_consumida,
+            'detalle': (
+                f"Sesión más ocupada: {capacidad_consumida}/{personas_limit} turistas "
+                f"({getattr(sesion_mas_ocupada, 'codigo_acceso', 'sin sesiones activas')})."
+                if sesion_mas_ocupada and personas_limit is not None
+                else 'No hay sesiones activas; capacidad completa disponible.'
+            ),
         },
         {
             'nombre': 'Paradas por ruta',
-            'restantes': reglas.get('max_paradas_por_ruta'),
-            'limite': reglas.get('max_paradas_por_ruta'),
-            'consumidas': 0,
-            'detalle': 'Límite máximo de paradas por ruta.',
+            'restantes': paradas_restantes,
+            'limite': paradas_limit,
+            'consumidas': paradas_consumidas,
+            'detalle': (
+                f"Ruta con más paradas: {paradas_consumidas}/{paradas_limit} "
+                f"en «{ruta_mas_cargada.titulo}»."
+                if ruta_mas_cargada and paradas_limit is not None
+                else 'Aún no tienes rutas; límite completo disponible.'
+            ),
         },
         {
             'nombre': 'Generaciones IA al mes',
-            'restantes': None,
-            'limite': reglas.get('max_generaciones_ia_mes'),
-            'consumidas': None,
+            'restantes': generaciones_restantes,
+            'limite': generaciones_limit,
+            'consumidas': generaciones_mes,
             'detalle': (
-                'Pendiente de instrumentación por guía. '
-                'El límite aplicado por plan es '
-                f"{reglas.get('max_generaciones_ia_mes')} al mes."
+                f'Usadas este mes: {generaciones_mes} de {generaciones_limit}.'
             ),
         },
         {
             'nombre': 'Sustituciones IA (mes/ruta)',
-            'restantes': None,
-            'limite': reglas.get('max_sustituciones_ia_mes'),
-            'consumidas': None,
+            'restantes': sustituciones_mes_restantes,
+            'limite': sustituciones_mes_limit,
+            'consumidas': sustituciones_mes,
             'detalle': (
-                'Pendiente de instrumentación por guía/ruta. '
-                'Límite de referencia del plan: '
-                f"{reglas.get('max_sustituciones_ia_mes')} al mes."
+                (
+                    f"Mes: {sustituciones_mes}/{sustituciones_mes_limit}. "
+                    f"Ruta más usada: {sustituciones_ruta_consumidas}/{sustituciones_ruta_limit} "
+                    f"en «{(sustituciones_ruta_top or {}).get('ruta__titulo', 'sin ruta')}»."
+                )
+                if sustituciones_ruta_limit is not None
+                else (
+                    f"Mes: {sustituciones_mes}/{sustituciones_mes_limit}. "
+                    'Por ruta: ilimitado en Premium.'
+                )
             ),
         },
         {
             'nombre': 'Rutas con curiosidades manuales',
-            'restantes': None,
-            'limite': reglas.get('max_rutas_curiosidades'),
-            'consumidas': None,
+            'restantes': curiosidades_restantes,
+            'limite': curiosidades_limit,
+            'consumidas': rutas_con_curiosidad,
             'detalle': (
-                'Pendiente de instrumentación. '
-                'Freemium permite hasta 3 rutas y Premium es ilimitado.'
+                f'Rutas con curiosidades en uso: {rutas_con_curiosidad}.'
             ),
         },
     ]

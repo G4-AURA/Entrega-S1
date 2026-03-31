@@ -5,9 +5,10 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
-from billing.models import Subscription
+from billing.models import Subscription, TierUsageEvent
 from unittest.mock import patch, Mock
 from django.utils import timezone
+from tours.models import SesionTour, Turista, TuristaSesion
 
 class RutasViewsTest(TestCase):
     def setUp(self):
@@ -72,6 +73,43 @@ class RutasViewsTest(TestCase):
         self.assertTemplateUsed(response, 'rutas/plan.html')
         self.assertContains(response, 'Plan actual')
         self.assertContains(response, 'Pasar a Premium')
+
+    def test_plan_view_freemium_muestra_consumos_reales(self):
+        Parada.objects.create(
+            orden=2,
+            nombre="Parada 2",
+            coordenadas=Point(1, 1),
+            ruta=self.ruta,
+        )
+
+        sesion = SesionTour.objects.create(
+            codigo_acceso='ABC123',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+        turista_1 = Turista.objects.create(alias='T1')
+        turista_2 = Turista.objects.create(alias='T2')
+        TuristaSesion.objects.create(turista=turista_1, sesion_tour=sesion, activo=True)
+        TuristaSesion.objects.create(turista=turista_2, sesion_tour=sesion, activo=True)
+
+        TierUsageEvent.objects.create(
+            guia=self.guia,
+            action=TierUsageEvent.Action.IA_ROUTE_GENERATION,
+        )
+        TierUsageEvent.objects.create(
+            guia=self.guia,
+            ruta=self.ruta,
+            action=TierUsageEvent.Action.IA_STOP_REPLACEMENT,
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sesión más ocupada: 2/15 turistas')
+        self.assertContains(response, 'Ruta con más paradas: 2/5')
+        self.assertContains(response, 'Usadas este mes: 1 de 3.')
+        self.assertContains(response, 'Mes: 1/9. Ruta más usada: 1/3')
+        self.assertNotContains(response, 'N/D')
 
     @override_settings(STRIPE_ENABLED=True)
     def test_plan_view_premium_no_muestra_cta_upgrade(self):
