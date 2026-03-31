@@ -100,3 +100,39 @@ class WebhookEvent(models.Model):
 
     def __str__(self) -> str:
         return f'{self.event_type} ({self.event_id})'
+
+
+class TierUsageEvent(models.Model):
+    class Action(models.TextChoices):
+        IA_ROUTE_GENERATION = 'ia_route_generation', 'IA Route Generation'
+        IA_STOP_REPLACEMENT = 'ia_stop_replacement', 'IA Stop Replacement'
+
+    guia = models.ForeignKey(
+        Guia,
+        on_delete=models.CASCADE,
+        related_name='tier_usage_events',
+    )
+    ruta = models.ForeignKey(
+        'rutas.Ruta',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='tier_usage_events',
+    )
+    action = models.CharField(
+        max_length=64,
+        choices=Action.choices,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'billing_tier_usage_event'
+        verbose_name = 'Tier Usage Event'
+        verbose_name_plural = 'Tier Usage Events'
+        indexes = [
+            models.Index(fields=['guia', 'action', 'created_at']),
+            models.Index(fields=['guia', 'ruta', 'action', 'created_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.guia_id} | {self.action} | {self.created_at.isoformat()}'

@@ -32,7 +32,17 @@
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="personas" class="form-label">Número de Personas</label>
-                    <input type="number" id="personas" name="personas" class="form-control form-control-lg" min="1" max="100" step="1" placeholder="Ej: 4" required>
+                    <input
+                        type="number"
+                        id="personas"
+                        name="personas"
+                        class="form-control form-control-lg"
+                        min="1"
+                        max="{{ tier_max_personas }}"
+                        step="1"
+                        placeholder="Ej: 4"
+                        required
+                    >
                 </div>
                <div class="col-12 col-md-6">
                     <label class="form-label" for="exigencia">Exigencia</label>
@@ -49,42 +59,12 @@
                 <div class="col-12">
                     <label class="form-label">Tipo de Itinerario (selecciona uno o varios)</label>
                     <div class="mood-buttons">
+                        {% for value, label in mood_choices_disponibles %}
                         <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="misterio-leyendas">
-                            <span>Misterio y Leyendas</span>
+                            <input type="checkbox" name="mood" value="{{ value }}">
+                            <span>{{ label }}</span>
                         </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="local">
-                            <span>Local</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="cine-series">
-                            <span>Cine y Series</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="religioso-espiritual">
-                            <span>Religioso y Espiritual</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="arquitectura-diseno">
-                            <span>Arquitectura y Diseño</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="historia">
-                            <span>Historia</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="gastronomia">
-                            <span>Gastronomía</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="naturaleza">
-                            <span>Naturaleza</span>
-                        </label>
-                        <label class="mood-btn">
-                            <input type="checkbox" name="mood" value="ocio-cultural">
-                            <span>Ocio/Cultural</span>
-                        </label>
+                        {% endfor %}
                     </div>
                 </div>
 
@@ -170,6 +150,10 @@
 {
     "csrfToken": "{{ csrf_token }}",
     "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN }}",
+    "limits": {
+        "personasMax": {{ tier_max_personas }},
+        "paradasMax": {{ tier_max_stops }}
+    },
     "urls": {
         "generar": "{% url 'creacion:generar_ruta_ia' %}",
         "confirmar": "{% url 'creacion:confirmar_ruta_ia' %}",

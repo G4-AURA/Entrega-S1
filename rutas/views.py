@@ -9,6 +9,7 @@ Roles:
 S2.1-32: endpoint AJAX para recalcular bajo demanda.
 """
 from datetime import timezone as dt_timezone
+from urllib.parse import quote_plus, unquote_plus
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -20,6 +21,17 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from billing.models import Subscription
 from billing.services import StripeAPIError, fetch_subscription_snapshot
+from billing.tier_guard import (
+    TierRuleViolation,
+    ensure_curiosity_route_allowed,
+    ensure_moods_allowed,
+    ensure_route_people_count_allowed,
+    ensure_route_stop_add_allowed,
+    get_allowed_moods_for_guia,
+    get_session_capacity_limit,
+    normalize_mood_values,
+    tier_error_response,
+)
 from creacion import services as creacion_services
 from .forms import EditarPerfilForm
 from . import services
@@ -72,6 +84,13 @@ def _render_ruta_no_autorizada(request):
             "show_contact_hint": False,
         },
         status=403,
+    )
+
+
+def _redirect_con_error_tier(path: str, exc: TierRuleViolation):
+    encoded_message = quote_plus(exc.message)
+    return redirect(
+        f"{path}?tier_code={exc.code}&tier_status={exc.http_status}&tier_message={encoded_message}"
     )
 
 
@@ -487,9 +506,12 @@ def ruta_detalle_view(request, ruta_id):
         if form_type == "meta":
             try:
                 services.actualizar_duracion_ruta(ruta, request.POST.get("duracion_horas"))
+                ensure_route_people_count_allowed(ruta.guia, request.POST.get("num_personas"))
                 services.actualizar_personas_ruta(ruta, request.POST.get("num_personas"))
                 services.actualizar_exigencia_ruta(ruta, request.POST.get("nivel_exigencia"))
                 return redirect(f"{request.path}?meta_updated=1")
+            except TierRuleViolation as exc:
+                return _redirect_con_error_tier(request.path, exc)
             except ValueError:
                 return redirect(f"{request.path}?meta_error=1")
 
@@ -518,6 +540,11 @@ def ruta_detalle_view(request, ruta_id):
 
         # ── Añadir parada ─────────────────────────────────────────────────────
         if form_type == "stop_add":
+            try:
+                ensure_route_stop_add_allowed(ruta)
+            except TierRuleViolation as exc:
+                return _redirect_con_error_tier(request.path, exc)
+
             try:
                 services.añadir_parada(
                     ruta,
@@ -553,7 +580,13 @@ def ruta_detalle_view(request, ruta_id):
 
         # ── Etiquetas mood (sin efecto en la geometría) ───────────────────────
         if form_type == "mood":
-            services.actualizar_moods(ruta, request.POST.getlist("mood"))
+            selected_moods = request.POST.getlist("mood")
+            try:
+                ensure_moods_allowed(ruta.guia, selected_moods)
+            except TierRuleViolation as exc:
+                return _redirect_con_error_tier(request.path, exc)
+
+            services.actualizar_moods(ruta, selected_moods)
             return redirect(f"{request.path}?mood_updated=1")
 
         return redirect(request.path)
@@ -562,6 +595,13 @@ def ruta_detalle_view(request, ruta_id):
     ruta.refresh_from_db()
     paradas = sorted(ruta.paradas.all(), key=lambda p: p.orden)
     paradas_json = services.obtener_paradas_json(paradas)
+
+    mood_choices_disponibles = get_allowed_moods_for_guia(ruta.guia)
+    mood_choices_disponibles_set = set(mood_choices_disponibles)
+    moods_actuales_norm, _unknown_moods = normalize_mood_values(ruta.mood or [])
+    moods_actuales_visibles = [m for m in (ruta.mood or []) if m in mood_choices_disponibles_set]
+    if not moods_actuales_visibles and moods_actuales_norm:
+        moods_actuales_visibles = [m for m in moods_actuales_norm if m in mood_choices_disponibles_set]
 
     context = {
         "ruta": ruta,
@@ -572,7 +612,9 @@ def ruta_detalle_view(request, ruta_id):
         # Métricas totales para el panel (S2.1-29)
         "distancia_total_km": ruta.distancia_total_km,
         "duracion_total_min": ruta.duracion_total_min,
-        "mood_choices": Ruta.Mood.choices,
+        "mood_choices": [(v, l) for v, l in Ruta.Mood.choices if v in mood_choices_disponibles_set],
+        "moods_actuales_visibles": moods_actuales_visibles,
+        "tier_max_personas": get_session_capacity_limit(ruta.guia),
         "mood_updated":   request.GET.get("mood_updated")   == "1",
         "title_updated":  request.GET.get("title_updated")  == "1",
         "title_error":    request.GET.get("title_error")    == "1",
@@ -583,6 +625,9 @@ def ruta_detalle_view(request, ruta_id):
         "stop_added":     request.GET.get("stop_added")     == "1",
         "stop_reordered": request.GET.get("stop_reordered") == "1",
         "stop_error":     request.GET.get("stop_error")     == "1",
+        "tier_code": request.GET.get("tier_code"),
+        "tier_status": request.GET.get("tier_status"),
+        "tier_message": unquote_plus(request.GET.get("tier_message", "")),
         "exigencia_choices": Ruta.Exigencia.choices,
         "ia_checkpoint_contexto": creacion_services.obtener_contexto_checkpoint_por_ruta(ruta.id),
     }
@@ -645,6 +690,11 @@ def obtener_curiosidad_parada_api(request, parada_id):
             id=parada_id,
             ruta__guia__user__user=request.user,
         )
+
+    try:
+        ensure_curiosity_route_allowed(parada.ruta)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     ciudad = (request.GET.get("ciudad") or "Sevilla").strip() or "Sevilla"
 

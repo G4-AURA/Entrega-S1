@@ -114,7 +114,7 @@
                 </div>
                 <div class="col-12 col-md-3">
                     <label class="form-label">Número de personas</label>
-                    <input type="number" min="1" max="50" name="num_personas"
+                    <input type="number" min="1" max="{{ tier_max_personas }}" name="num_personas"
                            class="form-control" value="{{ ruta.num_personas }}" required>
                 </div>
                 <div class="col-12 col-md-3">
@@ -153,8 +153,8 @@
                 <button type="button" class="btn-edit" id="btn-editar-etiquetas">Editar</button>
             </div>
             <div id="etiquetas-lectura" class="mb-3">
-                {% if ruta.mood %}
-                    {% for mood in ruta.mood %}<span class="badge text-bg-light border me-1">{{ mood }}</span>{% endfor %}
+                {% if moods_actuales_visibles %}
+                    {% for mood in moods_actuales_visibles %}<span class="badge text-bg-light border me-1">{{ mood }}</span>{% endfor %}
                 {% else %}
                     <span class="text-muted small">Sin etiquetas</span>
                 {% endif %}
@@ -247,6 +247,7 @@
             {% if stop_updated %}<div class="alert alert-success py-2">Parada actualizada.</div>{% endif %}
             {% if stop_deleted %}<div class="alert alert-success py-2">Parada eliminada.</div>{% endif %}
             {% if stop_error %}<div class="alert alert-danger py-2">Error al modificar la parada.</div>{% endif %}
+            {% if tier_message %}<div class="alert alert-warning py-2">{{ tier_message }} ({{ tier_code }})</div>{% endif %}
 
             <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
                 {% for parada in paradas %}

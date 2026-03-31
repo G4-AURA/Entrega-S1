@@ -278,13 +278,24 @@ class RutasViewsTest(TestCase):
         response = self.client.post(url, {
             'form_type': 'meta',
             'duracion_horas': '1.2',
-            'num_personas': '18',
+            'num_personas': '15',
             'nivel_exigencia': 'Alta'
         })
         self.assertRedirects(response, f"{url}?meta_updated=1")
         self.ruta.refresh_from_db()
-        self.assertEqual(self.ruta.num_personas, 18)
+        self.assertEqual(self.ruta.num_personas, 15)
         self.assertEqual(self.ruta.nivel_exigencia, 'Alta')
+
+    def test_ruta_detalle_post_meta_bloquea_capacidad_freemium(self):
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'meta',
+            'duracion_horas': '2.0',
+            'num_personas': '16',
+            'nivel_exigencia': 'Media'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('tier_code=TIER_CAPACITY_REACHED', response.url)
 
     def test_ruta_detalle_post_stop_add_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
