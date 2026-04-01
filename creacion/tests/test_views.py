@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -46,8 +47,8 @@ class GenerarRutaIAViewTests(TestCase):
         self.client.force_login(user)
 
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
-        mock_get_guia.return_value = object()
-        mock_guardar.return_value = type('RutaStub', (), {'id': 99})()
+        mock_get_guia.return_value = SimpleNamespace(id=1)
+        mock_guardar.return_value = SimpleNamespace(id=99)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
@@ -80,7 +81,7 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         mock_consultar.assert_not_called()
 
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=SimpleNamespace(id=1))
     @patch('creacion.views.consultar_langgraph', side_effect=ValueError('datos inválidos'))
     def test_error_validacion_retorna_400(self, _mock_consultar, _mock_get_guia):
         user = User.objects.create_user(username='guia_error', password='1234')
@@ -91,7 +92,7 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('Error en los datos', response.json()['mensaje'])
 
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=SimpleNamespace(id=1))
     @patch('creacion.views.consultar_langgraph', side_effect=services.ErrorIntegracionIA('fallo mapbox/osm'))
     def test_error_integracion_ia_retorna_502(self, _mock_consultar, _mock_get_guia):
         user = User.objects.create_user(username='guia_ia_fail', password='1234')
@@ -294,11 +295,11 @@ class SesionGeneracionIAViewTests(TestCase):
         self.client.force_login(self.user)
 
     @patch('creacion.views.consultar_langgraph')
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=SimpleNamespace(id=1))
     @patch('creacion.views._guardar_ruta_ia_en_bd')
     def test_obtener_y_actualizar_checkpoint_de_sesion(self, mock_guardar, _mock_guia, mock_consultar):
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
-        mock_guardar.return_value = type('RutaStub', (), {'id': 7})()
+        mock_guardar.return_value = SimpleNamespace(id=7)
 
         payload = {
             'ciudad': 'Sevilla',
@@ -382,7 +383,7 @@ class FlujoSeleccionParadasIATests(TestCase):
         mock_guardar.assert_not_called()
 
     @patch('creacion.views._guardar_ruta_ia_en_bd')
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=SimpleNamespace(id=1))
     @patch('creacion.views.consultar_langgraph')
     def test_confirmar_seleccion_guarda_ruta_y_checkpoint_final(
         self,
@@ -397,7 +398,7 @@ class FlujoSeleccionParadasIATests(TestCase):
                 {'nombre': 'Parada B', 'coordenadas': [37.39, -6.00]},
             ],
         }
-        mock_guardar.return_value = type('RutaStub', (), {'id': 123})()
+        mock_guardar.return_value = SimpleNamespace(id=123)
 
         generar = self.client.post(
             reverse('creacion:generar_ruta_ia'),
