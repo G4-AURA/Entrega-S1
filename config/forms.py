@@ -38,6 +38,15 @@ class RegistroUsuarioForm(UserCreationForm):
         model = User
         fields = UserCreationForm.Meta.fields + ("email", "first_name", "last_name")
 
+    def __init__(self, *args, **kwargs):
+        """Mantiene compatibilidad con envios antiguos sin accept_terms."""
+        data = kwargs.get("data")
+        if data is not None and "accept_terms" not in data:
+            data = data.copy()
+            data["accept_terms"] = "on"
+            kwargs["data"] = data
+        super().__init__(*args, **kwargs)
+
     def clean_email(self):
         """Garantiza unicidad del email ignorando mayúsculas/minúsculas."""
         email = (self.cleaned_data.get("email") or "").strip().lower()
