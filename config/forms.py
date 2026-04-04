@@ -40,11 +40,18 @@ class RegistroUsuarioForm(UserCreationForm):
 
     def __init__(self, *args, **kwargs):
         """Mantiene compatibilidad con envios antiguos sin accept_terms."""
-        data = kwargs.get("data")
+        # Django permite pasar data como primer argumento posicional o como kwargs.
+        args = list(args)
+        data = args[0] if args else kwargs.get("data")
+
         if data is not None and "accept_terms" not in data:
             data = data.copy()
             data["accept_terms"] = "on"
-            kwargs["data"] = data
+            if args:
+                args[0] = data
+            else:
+                kwargs["data"] = data
+
         super().__init__(*args, **kwargs)
 
     def clean_email(self):
