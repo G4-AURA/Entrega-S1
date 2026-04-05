@@ -251,6 +251,26 @@ class CrearSesionTests(TestCase):
         # Verificar que sesión fue creada
         self.assertTrue(SesionTour.objects.filter(ruta=self.ruta).exists())
 
+    def test_crear_sesion_idempotencia_redirige_si_existente(self):
+        """Verifica que redirige a sesión activa si ya existe y no crea duplicados"""
+        sesion_existente = SesionTour.objects.create(
+            codigo_acceso='EXIST1',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+        self.client.force_login(self.guia_user)
+        
+        response = self.client.get(
+            reverse('tours:crear_sesion'),
+            {'ruta_id': self.ruta.id},
+        )
+        
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('tours:guia_sesion', args=[sesion_existente.id]), response.url)
+        # Verificar que NO se crearon nuevas sesiones (sólo debería existir la original)
+        self.assertEqual(SesionTour.objects.filter(ruta=self.ruta).count(), 1)
+
 
 class IniciarTourTests(TestCase):
     """Tests para vista iniciar_tour"""

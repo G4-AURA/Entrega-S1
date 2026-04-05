@@ -283,7 +283,7 @@ def crear_sesion(request):
     sesion_activa = SesionTour.objects.filter(
         ruta=ruta,
         estado__in=[SesionTour.PENDIENTE, SesionTour.EN_CURSO]
-    ).first()
+    ).order_by("-id").first()
 
     if sesion_activa:
         return redirect("tours:guia_sesion", sesion_id=sesion_activa.id)
