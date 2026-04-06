@@ -647,7 +647,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
 
         with self.settings(GEMINI_API_KEY='test-key'):
             servicio = ServicioCuriosidadesIA()
-            with self.assertRaisesMessage(Exception, "Error al comunicarse con la API de IA: API Caída"):
+            with self.assertRaisesMessage(Exception, "API Caída"):
                 servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
 
     @patch('rutas.services.requests.get')

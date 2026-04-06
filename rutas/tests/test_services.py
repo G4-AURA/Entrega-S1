@@ -194,7 +194,7 @@ class RutasServicesValidationTest(TestCase):
         """Prueba que si falla el acceso al guía (ej. AttributeError en proxy), el bucle continúa."""
         from unittest.mock import PropertyMock
         with patch.object(Ruta, 'guia', new_callable=PropertyMock) as mock_guia:
-             mock_guia.side_effect = Exception("Fallo acceso guía")
+             mock_guia.side_effect = AttributeError("Fallo acceso guía")
              res = obtener_datos_catalogo_paginado(self.user, 10, 1, None)
              # El listado debe salir procesando los datos comunes sin petar
              self.assertEqual(res['total_items'], 1)
@@ -242,8 +242,9 @@ class RutasServicesGraphHopperTest(TestCase):
     @patch('rutas.graphhopper.calcular_ruta')
     def test_recalcular_ruta_graphhopper_unexpected_error(self, mock_calc):
         mock_calc.side_effect = Exception("Inesperado")
-        res = recalcular_ruta_graphhopper(self.ruta)
-        self.assertFalse(res)
+        
+        with self.assertRaisesMessage(Exception, "Inesperado"):
+            recalcular_ruta_graphhopper(self.ruta)
 
     def test_recalcular_ruta_graphhopper_less_than_two_paradas(self):
         self.parada2.delete() # Dejar solo 1
