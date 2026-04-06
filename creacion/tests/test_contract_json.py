@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -13,7 +14,7 @@ class CrearRutaContractJsonTests(TestCase):
         self.client.force_login(self.guia)
 
     @patch('creacion.views._guardar_ruta_ia_en_bd')
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario', return_value=SimpleNamespace(id=1))
     @patch('creacion.views.consultar_langgraph')
     def test_generar_ruta_ia_respuesta_ok_contiene_campos_minimos(
         self, mock_consultar, _mock_get_guia, mock_guardar
@@ -26,7 +27,7 @@ class CrearRutaContractJsonTests(TestCase):
             'mood': ['historia'],
         }
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
-        mock_guardar.return_value = type('RutaStub', (), {'id': 11})()
+        mock_guardar.return_value = SimpleNamespace(id=11)
 
         response = self.client.post(
             reverse('creacion:generar_ruta_ia'),
