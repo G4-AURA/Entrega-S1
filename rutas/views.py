@@ -14,6 +14,7 @@ from urllib.parse import quote_plus, unquote_plus
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -611,10 +612,13 @@ def ruta_detalle_view(request, ruta_id):
         # ── Metadatos numéricos (sin efecto en la geometría) ─────────────────
         if form_type == "meta":
             try:
-                services.actualizar_duracion_ruta(ruta, request.POST.get("duracion_horas"))
-                ensure_route_people_count_allowed(ruta.guia, request.POST.get("num_personas"))
-                services.actualizar_personas_ruta(ruta, request.POST.get("num_personas"))
-                services.actualizar_exigencia_ruta(ruta, request.POST.get("nivel_exigencia"))
+                # Validamos y aplicamos cambios de forma atómica para evitar
+                # actualizaciones parciales cuando falla una regla de tier.
+                with transaction.atomic():
+                    services.actualizar_duracion_ruta(ruta, request.POST.get("duracion_horas"))
+                    services.actualizar_personas_ruta(ruta, request.POST.get("num_personas"))
+                    ensure_route_people_count_allowed(ruta.guia, ruta.num_personas)
+                    services.actualizar_exigencia_ruta(ruta, request.POST.get("nivel_exigencia"))
                 return redirect(f"{request.path}?meta_updated=1")
             except TierRuleViolation as exc:
                 return _redirect_con_error_tier(request.path, exc)
