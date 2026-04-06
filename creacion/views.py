@@ -7,9 +7,27 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from billing.tier_guard import (
+    TierRuleViolation,
+    apply_payload_tier_rules,
+    clamp_generated_stops_to_tier,
+    ensure_ai_generation_allowed,
+    ensure_ai_route_confirmation_allowed,
+    ensure_ai_stop_replacement_allowed,
+    ensure_manual_routes_quota_available,
+    ensure_moods_allowed,
+    ensure_route_people_count_allowed,
+    ensure_route_stop_count_allowed,
+    get_allowed_moods_for_guia,
+    get_max_stops_per_route_limit,
+    get_session_capacity_limit,
+    record_ai_generation_usage,
+    record_ai_stop_replacement_usage,
+    tier_error_response,
+)
 from creacion import services
 from creacion.services import consultar_langgraph
-from rutas.models import Ruta
+from rutas.models import Guia, Ruta
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +40,30 @@ def _obtener_guia_para_usuario(user):
     if hasattr(user, 'turista'):
         return None
     return services.obtener_guia_para_usuario(user)
+
+
+def _obtener_guia_para_contexto(user):
+    if not getattr(user, 'is_authenticated', False):
+        return None
+    if hasattr(user, 'turista'):
+        return None
+    auth_profile = getattr(user, 'auth_profile', None)
+    return getattr(auth_profile, 'guia', None)
+
+
+def _build_tier_ui_context(guia):
+    allowed_moods = get_allowed_moods_for_guia(guia)
+    allowed_moods_set = set(allowed_moods)
+    mood_choices_disponibles = [
+        (value, label) for value, label in Ruta.Mood.choices if value in allowed_moods_set
+    ]
+    return {
+        'guia': guia,
+        'es_freemium': bool(guia and guia.tipo_suscripcion == Guia.Suscripcion.FREEMIUM),
+        'tier_max_personas': get_session_capacity_limit(guia),
+        'tier_max_stops': get_max_stops_per_route_limit(guia),
+        'mood_choices_disponibles': mood_choices_disponibles,
+    }
 
 
 def _guardar_ruta_ia_en_bd(guia, payload, ruta_generada):
@@ -39,12 +81,14 @@ def seleccion_tipo_ruta(request):
 
 def creacion_manual(request):
     """Vista para la creación manual de rutas."""
-    return render(request, 'creacion_manual.html')
+    guia = _obtener_guia_para_contexto(request.user)
+    return render(request, 'creacion_manual.html', _build_tier_ui_context(guia))
 
 
 def generar_ruta(request):
     """Vista para la generación con IA de rutas."""
-    return render(request, './creacion/personalizacion.html')
+    guia = _obtener_guia_para_contexto(request.user)
+    return render(request, './creacion/personalizacion.html', _build_tier_ui_context(guia))
 
 
 @csrf_exempt
@@ -65,16 +109,69 @@ def generar_ruta_ia(request):
         return JsonResponse({'status': 'ERROR', 'mensaje': 'El cuerpo de la petición no es JSON válido.'}, status=400)
 
     try:
+        guia = _obtener_guia_para_usuario(request.user)
+        if not guia:
+            return JsonResponse(
+                {'status': 'ERROR', 'mensaje': 'No se pudo encontrar o crear un perfil de guía para este usuario.'},
+                status=500,
+            )
+
+        try:
+            ensure_ai_generation_allowed(guia)
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
+
+        datos, tier_warnings = apply_payload_tier_rules(guia, datos)
+        mood_input = datos.get('mood')
+        if isinstance(mood_input, str):
+            mood_input = [mood_input]
+        if not isinstance(mood_input, list):
+            mood_input = []
+
+        try:
+            ensure_moods_allowed(guia, mood_input)
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
+
         modo_seleccion = bool(datos.get('modo_seleccion'))
         payload = services.normalizar_payload_ia(datos)
+        try:
+            ensure_route_people_count_allowed(guia, payload.get('personas'))
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
+
         sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload)
 
         ruta_generada = consultar_langgraph(payload)
+        if not isinstance(ruta_generada, dict):
+            raise services.ErrorValidacionRuta('La IA devolvió un formato de ruta no válido.')
+
+        stops_limited, stop_warning = clamp_generated_stops_to_tier(
+            guia,
+            ruta_generada.get('paradas'),
+        )
+        if stop_warning:
+            tier_warnings = [*tier_warnings, stop_warning]
+            ruta_generada = dict(ruta_generada)
+            ruta_generada['paradas'] = stops_limited
+
+        try:
+            ensure_route_people_count_allowed(
+                guia,
+                ruta_generada.get('num_personas') or payload.get('personas'),
+            )
+            ensure_moods_allowed(
+                guia,
+                ruta_generada.get('mood') or payload.get('mood') or [],
+            )
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
+
         estado_propuesta = services.avanzar_checkpoint_sesion_generacion(
             request,
             sesion_generacion['session_id'],
             checkpoint='ruta_generada',
-            paradas_propuestas=ruta_generada.get('paradas') if isinstance(ruta_generada, dict) else [],
+            paradas_propuestas=ruta_generada.get('paradas') or [],
             datos_extra={
                 'ruta_generada_base': {
                     'titulo': ruta_generada.get('titulo'),
@@ -100,6 +197,7 @@ def generar_ruta_ia(request):
             )
 
         if modo_seleccion:
+            record_ai_generation_usage(guia)
             return JsonResponse(
                 {
                     'status': 'OK',
@@ -110,16 +208,26 @@ def generar_ruta_ia(request):
                         **ruta_generada,
                         'paradas': estado_propuesta.get('paradas_propuestas') or [],
                     },
+                    'warnings': tier_warnings,
                 },
                 status=200,
             )
 
-        guia = _obtener_guia_para_usuario(request.user)
-        if not guia:
-            return JsonResponse(
-                {'status': 'ERROR', 'mensaje': 'No se pudo encontrar o crear un perfil de guía para este usuario.'},
-                status=500,
+        try:
+            ensure_route_stop_count_allowed(
+                guia,
+                len((ruta_generada or {}).get('paradas') or []),
             )
+            ensure_route_people_count_allowed(
+                guia,
+                ruta_generada.get('num_personas') or payload.get('personas'),
+            )
+            ensure_moods_allowed(
+                guia,
+                ruta_generada.get('mood') or payload.get('mood') or [],
+            )
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
 
         ruta_guardada = _guardar_ruta_ia_en_bd(guia=guia, payload=payload, ruta_generada=ruta_generada)
         estado_actualizado = services.avanzar_checkpoint_sesion_generacion(
@@ -128,6 +236,7 @@ def generar_ruta_ia(request):
             checkpoint='ruta_guardada',
             datos_extra={'ruta_id': ruta_guardada.id},
         )
+        record_ai_generation_usage(guia)
 
         ruta_generada['checkpoint_contexto'] = {
             'restricciones_usuario': estado_actualizado.get('restricciones_usuario') or [],
@@ -155,6 +264,8 @@ def generar_ruta_ia(request):
         if advertencias:
             response_data['advertencias'] = advertencias
             response_data['datos']['advertencias'] = advertencias
+        if tier_warnings:
+            response_data['warnings'] = tier_warnings
 
         return JsonResponse(response_data, status=200)
     except (services.ErrorValidacionRuta, ValueError) as exc:
@@ -261,6 +372,14 @@ def confirmar_ruta_ia(request):
             {'status': 'ERROR', 'mensaje': 'No se pudo encontrar o crear un perfil de guía para este usuario.'},
             status=500,
         )
+
+    try:
+        ensure_ai_route_confirmation_allowed(guia)
+        ensure_route_stop_count_allowed(guia, len(paradas_seleccionadas))
+        ensure_route_people_count_allowed(guia, payload_guardado.get('personas'))
+        ensure_moods_allowed(guia, ruta_generada_final.get('mood') or [])
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     try:
         ruta_guardada = _guardar_ruta_ia_en_bd(guia=guia, payload=payload_guardado, ruta_generada=ruta_generada_final)
@@ -395,6 +514,15 @@ def guardar_ruta_manual(request):
         if not guia:
             return JsonResponse({'status': 'ERROR', 'mensaje': 'Perfil de guía no encontrado.'}, status=500)
 
+        try:
+            ensure_manual_routes_quota_available(guia)
+            ensure_route_stop_count_allowed(guia, len(payload.get('paradas') or []))
+            ensure_route_people_count_allowed(guia, payload.get('num_personas'))
+            selected_moods = payload.get('mood') if isinstance(payload.get('mood'), list) else []
+            ensure_moods_allowed(guia, selected_moods)
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
+
         ruta = services.guardar_ruta_manual(guia=guia, payload=payload)
         return JsonResponse(
             {'status': 'OK', 'mensaje': 'Ruta guardada correctamente.', 'ruta_id': ruta.id},
@@ -432,6 +560,11 @@ def generar_paradas_ia(request, ruta_id):
             },
             status=400,
         )
+
+    try:
+        ensure_ai_stop_replacement_allowed(guia, ruta)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     try:
         body = json.loads(request.body.decode('utf-8') or '{}')
@@ -480,6 +613,7 @@ def generar_paradas_ia(request, ruta_id):
             status=200,
         )
 
+    record_ai_stop_replacement_usage(guia, ruta)
     return JsonResponse({'status': 'OK', 'datos': resultado}, status=200)
 
 

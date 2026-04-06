@@ -6,18 +6,22 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from rutas.models import AuthUser, Guia
+
 
 class CrearRutaContractJsonTests(TestCase):
     def setUp(self):
         self.client = Client()
-        self.guia = User.objects.create_user(username='guia_contract', password='1234')
-        self.client.force_login(self.guia)
+        self.user = User.objects.create_user(username='guia_contract', password='1234')
+        self.auth_profile = AuthUser.objects.create(user=self.user)
+        self.guia = Guia.objects.create(user=self.auth_profile)
+        self.client.force_login(self.user)
 
     @patch('creacion.views._guardar_ruta_ia_en_bd')
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=SimpleNamespace(id=1))
+    @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph')
     def test_generar_ruta_ia_respuesta_ok_contiene_campos_minimos(
-        self, mock_consultar, _mock_get_guia, mock_guardar
+        self, mock_consultar, mock_get_guia, mock_guardar
     ):
         payload = {
             'ciudad': 'Sevilla',
@@ -27,6 +31,7 @@ class CrearRutaContractJsonTests(TestCase):
             'mood': ['historia'],
         }
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
+        mock_get_guia.return_value = self.guia
         mock_guardar.return_value = SimpleNamespace(id=11)
 
         response = self.client.post(

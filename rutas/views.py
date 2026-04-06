@@ -9,18 +9,34 @@ Roles:
 S2.1-32: endpoint AJAX para recalcular bajo demanda.
 """
 from datetime import timezone as dt_timezone
+from urllib.parse import quote_plus, unquote_plus
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from billing.models import Subscription
+from billing.models import Subscription, TierUsageEvent
 from billing.services import StripeAPIError, fetch_subscription_snapshot
+from billing.tier_guard import (
+    TierRuleViolation,
+    ensure_curiosity_route_allowed,
+    ensure_moods_allowed,
+    ensure_route_people_count_allowed,
+    ensure_route_stop_add_allowed,
+    get_allowed_moods_for_guia,
+    get_session_capacity_limit,
+    get_usage_cycle_window,
+    normalize_mood_values,
+    tier_error_response,
+)
 from creacion import services as creacion_services
+from tours.models import SesionTour
 from .forms import EditarPerfilForm
 from . import services
 from .models import Guia, Parada, Ruta
@@ -28,14 +44,18 @@ MAX_RUTAS_PAGE_SIZE = 9
 
 PLAN_LIMITS = {
     Guia.Suscripcion.FREEMIUM: [
-        '1 ruta simultánea en catálogo',
+        '1 ruta manual simultánea',
+        '1 ruta IA simultánea',
         '3 generaciones IA al mes',
+        '9 sustituciones IA al mes (máx. 3 por ruta IA)',
         'Hasta 15 turistas por sesión',
         '5 paradas por ruta',
     ],
     Guia.Suscripcion.PREMIUM: [
-        'Hasta 10 rutas simultáneas en catálogo',
+        'Hasta 10 rutas manuales simultáneas',
+        'Hasta 10 rutas IA simultáneas',
         '10 generaciones IA al mes',
+        '30 sustituciones IA al mes (sin límite por ruta)',
         'Hasta 50 turistas por sesión',
         '15 paradas por ruta',
     ],
@@ -49,6 +69,7 @@ PLAN_RULES = {
         'max_paradas_por_ruta': 5,
         'max_generaciones_ia_mes': 3,
         'max_sustituciones_ia_mes': 9,
+        'max_sustituciones_ia_ruta': 3,
         'max_rutas_curiosidades': 3,
     },
     Guia.Suscripcion.PREMIUM: {
@@ -58,6 +79,7 @@ PLAN_RULES = {
         'max_paradas_por_ruta': 15,
         'max_generaciones_ia_mes': 10,
         'max_sustituciones_ia_mes': 30,
+        'max_sustituciones_ia_ruta': None,
         'max_rutas_curiosidades': None,  # ilimitado
     },
 }
@@ -72,6 +94,13 @@ def _render_ruta_no_autorizada(request):
             "show_contact_hint": False,
         },
         status=403,
+    )
+
+
+def _redirect_con_error_tier(path: str, exc: TierRuleViolation):
+    encoded_message = quote_plus(exc.message)
+    return redirect(
+        f"{path}?tier_code={exc.code}&tier_status={exc.http_status}&tier_message={encoded_message}"
     )
 
 
@@ -141,6 +170,86 @@ def _calcular_usos_plan(guia):
 
     manual_limit = reglas.get('manual_routes_limit')
     ia_limit = reglas.get('ia_routes_limit')
+    personas_limit = reglas.get('max_personas_por_sesion')
+    paradas_limit = reglas.get('max_paradas_por_ruta')
+    generaciones_limit = reglas.get('max_generaciones_ia_mes')
+    sustituciones_mes_limit = reglas.get('max_sustituciones_ia_mes')
+    sustituciones_ruta_limit = reglas.get('max_sustituciones_ia_ruta')
+    curiosidades_limit = reglas.get('max_rutas_curiosidades')
+
+    inicio_ciclo, fin_ciclo, _ancla_ciclo = get_usage_cycle_window(guia)
+
+    sesiones_activas = (
+        SesionTour.objects.filter(
+            ruta__guia=guia,
+            estado__in=[SesionTour.PENDIENTE, SesionTour.EN_CURSO],
+        )
+        .annotate(
+            turistas_activos=Count(
+                'turistasesion',
+                filter=Q(turistasesion__activo=True),
+                distinct=True,
+            )
+        )
+        .order_by('-turistas_activos', 'id')
+    )
+    sesion_mas_ocupada = sesiones_activas.first()
+    capacidad_consumida = int(getattr(sesion_mas_ocupada, 'turistas_activos', 0) or 0)
+    capacidad_restante = (
+        max(personas_limit - capacidad_consumida, 0)
+        if personas_limit is not None
+        else None
+    )
+
+    ruta_mas_cargada = rutas_qs.annotate(total_paradas=Count('paradas')).order_by('-total_paradas', 'id').first()
+    paradas_consumidas = int(getattr(ruta_mas_cargada, 'total_paradas', 0) or 0)
+    paradas_restantes = (
+        max(paradas_limit - paradas_consumidas, 0)
+        if paradas_limit is not None
+        else None
+    )
+
+    generaciones_mes = TierUsageEvent.objects.filter(
+        guia=guia,
+        action=TierUsageEvent.Action.IA_ROUTE_GENERATION,
+        created_at__gte=inicio_ciclo,
+        created_at__lt=fin_ciclo,
+    ).count()
+    generaciones_restantes = (
+        max(generaciones_limit - generaciones_mes, 0)
+        if generaciones_limit is not None
+        else None
+    )
+
+    sustituciones_mes_qs = TierUsageEvent.objects.filter(
+        guia=guia,
+        action=TierUsageEvent.Action.IA_STOP_REPLACEMENT,
+        created_at__gte=inicio_ciclo,
+        created_at__lt=fin_ciclo,
+    )
+    sustituciones_mes = sustituciones_mes_qs.count()
+    sustituciones_mes_restantes = (
+        max(sustituciones_mes_limit - sustituciones_mes, 0)
+        if sustituciones_mes_limit is not None
+        else None
+    )
+
+    sustituciones_ruta_top = (
+        sustituciones_mes_qs
+        .filter(ruta__isnull=False)
+        .values('ruta_id', 'ruta__titulo')
+        .annotate(total=Count('id'))
+        .order_by('-total', 'ruta_id')
+        .first()
+    )
+    sustituciones_ruta_consumidas = int((sustituciones_ruta_top or {}).get('total') or 0)
+
+    rutas_con_curiosidad = rutas_qs.filter(paradas__curiosidad__isnull=False).distinct().count()
+    curiosidades_restantes = (
+        max(curiosidades_limit - rutas_con_curiosidad, 0)
+        if curiosidades_limit is not None
+        else 0
+    )
 
     return [
         {
@@ -159,48 +268,65 @@ def _calcular_usos_plan(guia):
         },
         {
             'nombre': 'Capacidad por sesión',
-            'restantes': reglas.get('max_personas_por_sesion'),
-            'limite': reglas.get('max_personas_por_sesion'),
-            'consumidas': 0,
-            'detalle': 'Plazas máximas permitidas por sesión activa.',
+            'restantes': capacidad_restante,
+            'limite': personas_limit,
+            'consumidas': capacidad_consumida,
+            'detalle': (
+                f"Sesión más ocupada: {capacidad_consumida}/{personas_limit} turistas "
+                f"({getattr(sesion_mas_ocupada, 'codigo_acceso', 'sin sesiones activas')})."
+                if sesion_mas_ocupada and personas_limit is not None
+                else 'No hay sesiones activas; capacidad completa disponible.'
+            ),
         },
         {
             'nombre': 'Paradas por ruta',
-            'restantes': reglas.get('max_paradas_por_ruta'),
-            'limite': reglas.get('max_paradas_por_ruta'),
-            'consumidas': 0,
-            'detalle': 'Límite máximo de paradas por ruta.',
+            'restantes': paradas_restantes,
+            'limite': paradas_limit,
+            'consumidas': paradas_consumidas,
+            'detalle': (
+                f"Ruta con más paradas: {paradas_consumidas}/{paradas_limit} "
+                f"en «{ruta_mas_cargada.titulo}»."
+                if ruta_mas_cargada and paradas_limit is not None
+                else 'Aún no tienes rutas; límite completo disponible.'
+            ),
         },
         {
             'nombre': 'Generaciones IA al mes',
-            'restantes': None,
-            'limite': reglas.get('max_generaciones_ia_mes'),
-            'consumidas': None,
+            'restantes': generaciones_restantes,
+            'limite': generaciones_limit,
+            'consumidas': generaciones_mes,
             'detalle': (
-                'Pendiente de instrumentación por guía. '
-                'El límite aplicado por plan es '
-                f"{reglas.get('max_generaciones_ia_mes')} al mes."
+                f'Usadas en el ciclo actual: {generaciones_mes} de {generaciones_limit}. '
+                f'Inicio del ciclo: {timezone.localtime(inicio_ciclo).strftime("%d/%m/%Y %H:%M")}.'
             ),
         },
         {
             'nombre': 'Sustituciones IA (mes/ruta)',
-            'restantes': None,
-            'limite': reglas.get('max_sustituciones_ia_mes'),
-            'consumidas': None,
+            'restantes': sustituciones_mes_restantes,
+            'limite': sustituciones_mes_limit,
+            'consumidas': sustituciones_mes,
             'detalle': (
-                'Pendiente de instrumentación por guía/ruta. '
-                'Límite de referencia del plan: '
-                f"{reglas.get('max_sustituciones_ia_mes')} al mes."
+                (
+                    f"Ciclo: {sustituciones_mes}/{sustituciones_mes_limit}. "
+                    f"Ruta más usada: {sustituciones_ruta_consumidas}/{sustituciones_ruta_limit} "
+                    f"en «{(sustituciones_ruta_top or {}).get('ruta__titulo', 'sin ruta')}». "
+                    f'Inicio del ciclo: {timezone.localtime(inicio_ciclo).strftime("%d/%m/%Y %H:%M")}.'
+                )
+                if sustituciones_ruta_limit is not None
+                else (
+                    f"Ciclo: {sustituciones_mes}/{sustituciones_mes_limit}. "
+                    'Por ruta: ilimitado en Premium. '
+                    f'Inicio del ciclo: {timezone.localtime(inicio_ciclo).strftime("%d/%m/%Y %H:%M")}.'
+                )
             ),
         },
         {
             'nombre': 'Rutas con curiosidades manuales',
-            'restantes': None,
-            'limite': reglas.get('max_rutas_curiosidades'),
-            'consumidas': None,
+            'restantes': curiosidades_restantes,
+            'limite': curiosidades_limit,
+            'consumidas': rutas_con_curiosidad,
             'detalle': (
-                'Pendiente de instrumentación. '
-                'Freemium permite hasta 3 rutas y Premium es ilimitado.'
+                f'Rutas con curiosidades en uso: {rutas_con_curiosidad}.'
             ),
         },
     ]
@@ -486,10 +612,16 @@ def ruta_detalle_view(request, ruta_id):
         # ── Metadatos numéricos (sin efecto en la geometría) ─────────────────
         if form_type == "meta":
             try:
-                services.actualizar_duracion_ruta(ruta, request.POST.get("duracion_horas"))
-                services.actualizar_personas_ruta(ruta, request.POST.get("num_personas"))
-                services.actualizar_exigencia_ruta(ruta, request.POST.get("nivel_exigencia"))
+                # Validamos y aplicamos cambios de forma atómica para evitar
+                # actualizaciones parciales cuando falla una regla de tier.
+                with transaction.atomic():
+                    services.actualizar_duracion_ruta(ruta, request.POST.get("duracion_horas"))
+                    services.actualizar_personas_ruta(ruta, request.POST.get("num_personas"))
+                    ensure_route_people_count_allowed(ruta.guia, ruta.num_personas)
+                    services.actualizar_exigencia_ruta(ruta, request.POST.get("nivel_exigencia"))
                 return redirect(f"{request.path}?meta_updated=1")
+            except TierRuleViolation as exc:
+                return _redirect_con_error_tier(request.path, exc)
             except ValueError:
                 return redirect(f"{request.path}?meta_error=1")
 
@@ -518,6 +650,11 @@ def ruta_detalle_view(request, ruta_id):
 
         # ── Añadir parada ─────────────────────────────────────────────────────
         if form_type == "stop_add":
+            try:
+                ensure_route_stop_add_allowed(ruta)
+            except TierRuleViolation as exc:
+                return _redirect_con_error_tier(request.path, exc)
+
             try:
                 services.añadir_parada(
                     ruta,
@@ -553,7 +690,13 @@ def ruta_detalle_view(request, ruta_id):
 
         # ── Etiquetas mood (sin efecto en la geometría) ───────────────────────
         if form_type == "mood":
-            services.actualizar_moods(ruta, request.POST.getlist("mood"))
+            selected_moods = request.POST.getlist("mood")
+            try:
+                ensure_moods_allowed(ruta.guia, selected_moods)
+            except TierRuleViolation as exc:
+                return _redirect_con_error_tier(request.path, exc)
+
+            services.actualizar_moods(ruta, selected_moods)
             return redirect(f"{request.path}?mood_updated=1")
 
         return redirect(request.path)
@@ -562,6 +705,13 @@ def ruta_detalle_view(request, ruta_id):
     ruta.refresh_from_db()
     paradas = sorted(ruta.paradas.all(), key=lambda p: p.orden)
     paradas_json = services.obtener_paradas_json(paradas)
+
+    mood_choices_disponibles = get_allowed_moods_for_guia(ruta.guia)
+    mood_choices_disponibles_set = set(mood_choices_disponibles)
+    moods_actuales_norm, _unknown_moods = normalize_mood_values(ruta.mood or [])
+    moods_actuales_visibles = [m for m in (ruta.mood or []) if m in mood_choices_disponibles_set]
+    if not moods_actuales_visibles and moods_actuales_norm:
+        moods_actuales_visibles = [m for m in moods_actuales_norm if m in mood_choices_disponibles_set]
 
     context = {
         "ruta": ruta,
@@ -572,7 +722,9 @@ def ruta_detalle_view(request, ruta_id):
         # Métricas totales para el panel (S2.1-29)
         "distancia_total_km": ruta.distancia_total_km,
         "duracion_total_min": ruta.duracion_total_min,
-        "mood_choices": Ruta.Mood.choices,
+        "mood_choices": [(v, l) for v, l in Ruta.Mood.choices if v in mood_choices_disponibles_set],
+        "moods_actuales_visibles": moods_actuales_visibles,
+        "tier_max_personas": get_session_capacity_limit(ruta.guia),
         "mood_updated":   request.GET.get("mood_updated")   == "1",
         "title_updated":  request.GET.get("title_updated")  == "1",
         "title_error":    request.GET.get("title_error")    == "1",
@@ -583,6 +735,9 @@ def ruta_detalle_view(request, ruta_id):
         "stop_added":     request.GET.get("stop_added")     == "1",
         "stop_reordered": request.GET.get("stop_reordered") == "1",
         "stop_error":     request.GET.get("stop_error")     == "1",
+        "tier_code": request.GET.get("tier_code"),
+        "tier_status": request.GET.get("tier_status"),
+        "tier_message": unquote_plus(request.GET.get("tier_message", "")),
         "exigencia_choices": Ruta.Exigencia.choices,
         "ia_checkpoint_contexto": creacion_services.obtener_contexto_checkpoint_por_ruta(ruta.id),
     }
@@ -645,6 +800,11 @@ def obtener_curiosidad_parada_api(request, parada_id):
             id=parada_id,
             ruta__guia__user__user=request.user,
         )
+
+    try:
+        ensure_curiosity_route_allowed(parada.ruta)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     ciudad = (request.GET.get("ciudad") or "Sevilla").strip() or "Sevilla"
 

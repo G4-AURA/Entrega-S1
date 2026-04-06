@@ -5,9 +5,10 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
-from billing.models import Subscription
+from billing.models import Subscription, TierUsageEvent
 from unittest.mock import patch, Mock
 from django.utils import timezone
+from tours.models import SesionTour, Turista, TuristaSesion
 
 class RutasViewsTest(TestCase):
     def setUp(self):
@@ -72,6 +73,44 @@ class RutasViewsTest(TestCase):
         self.assertTemplateUsed(response, 'rutas/plan.html')
         self.assertContains(response, 'Plan actual')
         self.assertContains(response, 'Pasar a Premium')
+
+    def test_plan_view_freemium_muestra_consumos_reales(self):
+        Parada.objects.create(
+            orden=2,
+            nombre="Parada 2",
+            coordenadas=Point(1, 1),
+            ruta=self.ruta,
+        )
+
+        sesion = SesionTour.objects.create(
+            codigo_acceso='ABC123',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+        turista_1 = Turista.objects.create(alias='T1')
+        turista_2 = Turista.objects.create(alias='T2')
+        TuristaSesion.objects.create(turista=turista_1, sesion_tour=sesion, activo=True)
+        TuristaSesion.objects.create(turista=turista_2, sesion_tour=sesion, activo=True)
+
+        TierUsageEvent.objects.create(
+            guia=self.guia,
+            action=TierUsageEvent.Action.IA_ROUTE_GENERATION,
+        )
+        TierUsageEvent.objects.create(
+            guia=self.guia,
+            ruta=self.ruta,
+            action=TierUsageEvent.Action.IA_STOP_REPLACEMENT,
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sesión más ocupada: 2/15 turistas')
+        self.assertContains(response, 'Ruta con más paradas: 2/5')
+        self.assertContains(response, 'Usadas en el ciclo actual: 1 de 3.')
+        self.assertContains(response, 'Ciclo: 1/9. Ruta más usada: 1/3')
+        self.assertContains(response, 'Inicio del ciclo:')
+        self.assertNotContains(response, 'N/D')
 
     @override_settings(STRIPE_ENABLED=True)
     def test_plan_view_premium_no_muestra_cta_upgrade(self):
@@ -278,13 +317,24 @@ class RutasViewsTest(TestCase):
         response = self.client.post(url, {
             'form_type': 'meta',
             'duracion_horas': '1.2',
-            'num_personas': '18',
+            'num_personas': '15',
             'nivel_exigencia': 'Alta'
         })
         self.assertRedirects(response, f"{url}?meta_updated=1")
         self.ruta.refresh_from_db()
-        self.assertEqual(self.ruta.num_personas, 18)
+        self.assertEqual(self.ruta.num_personas, 15)
         self.assertEqual(self.ruta.nivel_exigencia, 'Alta')
+
+    def test_ruta_detalle_post_meta_bloquea_capacidad_freemium(self):
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'meta',
+            'duracion_horas': '2.0',
+            'num_personas': '16',
+            'nivel_exigencia': 'Media'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('tier_code=TIER_CAPACITY_REACHED', response.url)
 
     def test_ruta_detalle_post_stop_add_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
