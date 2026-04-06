@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'creacion',
     'rutas',
     'allowList',
+    'billing',
 ]
 
 MIDDLEWARE = [
