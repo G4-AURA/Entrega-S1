@@ -595,8 +595,10 @@ class ServicioCuriosidadesIA:
 
         except json.JSONDecodeError:
             raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
-        except Exception as e:
-            raise Exception(f"Error al comunicarse con la API de IA: {str(e)}")
+        except (requests.RequestException, TimeoutError, ConnectionError) as e:
+            raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
+        except (AttributeError, KeyError) as e:
+            raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """
@@ -653,7 +655,9 @@ class ServicioCuriosidadesIA:
                 exc,
             )
             return None
-        except ValueError:
+        
+        # Solo json.JSONDecodeError es esperado
+        except json.JSONDecodeError:
             logger.warning(
                 "Curiosidades IA: respuesta JSON inválida de Wikimedia para '%s'",
                 consulta,

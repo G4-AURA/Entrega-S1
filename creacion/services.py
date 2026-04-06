@@ -464,7 +464,7 @@ def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
                 return resultado
 
         return []
-    except Exception as exc:
+    except (ImportError, LookupError) as exc:
         logger.warning('Error al consultar la allowlist de POIs: %s', exc)
         return []
 
@@ -1351,7 +1351,7 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
                 )
     except ErrorValidacionRuta:
         raise
-    except (DatabaseError, IntegrityError, TypeError, ValueError) as exc:
+    except (DatabaseError, IntegrityError, TypeError, ValueError, AttributeError) as exc:
         raise ErrorPersistenciaRuta('No se pudo guardar la ruta generada en la base de datos.') from exc
     ruta_generada['id'] = ruta.id
     ruta_generada['nivel_exigencia'] = exigencia_normalizada
@@ -1379,7 +1379,8 @@ def obtener_contexto_checkpoint_por_ruta(ruta_id):
         return contexto_vacio
     try:
         historiales = Historial_ia.objects.order_by('-momento')[:200]
-    except DatabaseError:
+    except (DatabaseError, AttributeError, TypeError) as exc:
+        logger.warning('Error obteniendo contexto de checkpoint para ruta %s: %s', ruta_id, exc)
         return contexto_vacio
     for historial in historiales:
         respuesta = historial.respuesta if isinstance(historial.respuesta, dict) else {}

@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import time
-
+import json
 import requests
 
 
@@ -74,7 +74,7 @@ def _fetch_upcoming_invoice_period_end(
 
     try:
         payload = response.json()
-    except ValueError:
+    except json.JSONDecodeError:
         payload = {}
 
     if response.status_code >= 400 or not isinstance(payload, dict):
