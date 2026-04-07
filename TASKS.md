@@ -13,3 +13,6 @@
 	Evidencia: .\\env\\Scripts\\python.exe manage.py test allowList.tests_integration -v 2
 - [x] Issue 146: pruebas de integración de recalculo GraphHopper completadas (envío de coordenadas, recepción de geometría y persistencia de navegación) en rutas/tests/test_graphhopper_integration.py.
 	Evidencia: .\\env\\Scripts\\python.exe manage.py test rutas.tests.test_graphhopper_integration -v 2
+- [x] Validación de regresión ampliada del backend ejecutada tras cerrar las 3 issues.
+	Evidencia: .\\env\\Scripts\\python.exe manage.py test tours.tests.test_live_curiosidades allowList.tests_integration rutas.tests.test_graphhopper_integration -v 2
+	Evidencia: .\\env\\Scripts\\python.exe manage.py test -v 1  (751 OK, 4 skipped)
