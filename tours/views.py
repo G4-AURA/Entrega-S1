@@ -29,6 +29,7 @@ from billing.tier_guard import (
     ensure_session_creation_allowed,
     tier_error_response,
 )
+from rutas import services as rutas_services
 from rutas.models import Curiosidad, Ruta
 
 from . import services
@@ -675,9 +676,13 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
     if not parada:
         return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
 
-    curiosidad = Curiosidad.objects.filter(parada=parada).first()
-    if not curiosidad:
-        return JsonResponse({"error": "No hay curiosidad asociada a esta parada."}, status=404)
+    try:
+        curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
+            parada=parada,
+            ciudad="Sevilla",
+        )
+    except Exception:
+        return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
 
     return JsonResponse(
         {

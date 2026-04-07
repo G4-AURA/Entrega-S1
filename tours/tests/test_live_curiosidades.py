@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.test import Client, TestCase
@@ -109,7 +111,15 @@ class LiveCuriosidadesEndpointTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"], "La parada no pertenece a la ruta de la sesión.")
 
-    def test_404_si_parada_sin_curiosidad(self):
+    @patch("rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia")
+    def test_genera_curiosidad_si_parada_sin_curiosidad(self, mock_generar_curiosidad):
+        mock_generar_curiosidad.return_value = {
+            "titulo": "Leyenda de la torre",
+            "texto": "Cuenta la tradición que los mercaderes anunciaban su llegada con campanas.",
+            "tipo": Curiosidad.TipoCuriosidad.HISTORIA,
+            "imagen_url": "https://example.com/torre.jpg",
+        }
+
         parada_sin_curiosidad = Parada.objects.create(
             ruta=self.ruta,
             orden=2,
@@ -122,5 +132,15 @@ class LiveCuriosidadesEndpointTests(TestCase):
             reverse("tours:obtener_curiosidad_parada", args=[self.sesion.id, parada_sin_curiosidad.id])
         )
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json()["error"], "No hay curiosidad asociada a esta parada.")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(set(payload.keys()), {"status", "parada", "curiosidad"})
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["parada"]["id"], parada_sin_curiosidad.id)
+
+        curiosidad_bd = Curiosidad.objects.get(parada=parada_sin_curiosidad)
+        self.assertEqual(payload["curiosidad"]["id"], curiosidad_bd.id)
+        self.assertEqual(payload["curiosidad"]["titulo"], "Leyenda de la torre")
+        self.assertEqual(payload["curiosidad"]["tipo"], Curiosidad.TipoCuriosidad.HISTORIA)
+        self.assertEqual(payload["curiosidad"]["ciudad"], "Sevilla")
+        mock_generar_curiosidad.assert_called_once()

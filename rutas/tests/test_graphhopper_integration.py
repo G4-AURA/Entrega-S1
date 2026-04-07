@@ -65,6 +65,17 @@ class GraphHopperRecalculoIntegrationTests(TestCase):
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 200)
 
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        self.assertTrue(call_args.args[0].endswith("/route"))
+        self.assertIn("json", call_args.kwargs)
+        self.assertEqual(
+            call_args.kwargs["json"]["points"],
+            [[-5.9920, 37.3860], [-5.9900, 37.3870]],
+        )
+        self.assertIn("params", call_args.kwargs)
+        self.assertIn("key", call_args.kwargs["params"])
+
         payload = response.json()
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["distancia_total_km"], "1.2")
