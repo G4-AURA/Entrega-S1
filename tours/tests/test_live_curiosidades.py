@@ -83,8 +83,11 @@ class LiveCuriosidadesEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertEqual(set(payload.keys()), {"status", "parada", "curiosidad"})
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["parada"]["id"], self.parada_1.id)
+        self.assertIn("nombre", payload["parada"])
+        self.assertIn("orden", payload["parada"])
         self.assertEqual(payload["curiosidad"]["id"], self.curiosidad.id)
         self.assertEqual(payload["curiosidad"]["titulo"], "Una puerta escondida")
 
@@ -95,6 +98,7 @@ class LiveCuriosidadesEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"], "Acceso denegado.")
 
     def test_rechaza_parada_fuera_de_ruta(self):
         client = self._client_turista()
@@ -103,6 +107,7 @@ class LiveCuriosidadesEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "La parada no pertenece a la ruta de la sesión.")
 
     def test_404_si_parada_sin_curiosidad(self):
         parada_sin_curiosidad = Parada.objects.create(
@@ -118,3 +123,4 @@ class LiveCuriosidadesEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "No hay curiosidad asociada a esta parada.")
