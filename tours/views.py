@@ -934,22 +934,9 @@ def obtener_mensajes(request, sesion_id):
         return JsonResponse({"error": "El parámetro limite debe estar entre 1 y 200."}, status=400)
  
     # ── Construir queryset base ────────────────────────────────────────────
-    es_guia_request = request.user.is_authenticated and services.es_guia_de_sesion(request.user, sesion)
- 
-    if es_guia_request:
-        # El guía ve TODO: mensajes públicos y todos los privados de su sesión
-        qs = MensajeChat.objects.filter(sesion_tour=sesion, es_privado=False)
-    else:
-        # El turista ve solo mensajes públicos
-        turista = services.obtener_turista_request(request)
-        qs = MensajeChat.objects.filter(sesion_tour=sesion, es_privado=False)
-        # Añadir sus mensajes privados si está identificado
-        if turista:
-            qs = MensajeChat.objects.filter(sesion_tour=sesion).filter(
-                Q(es_privado=False)
-                | Q(turista=turista, es_privado=True)
-                | Q(destinatario_turista=turista, es_privado=True)
-            )
+    # El chat grupal SOLO debe devolver mensajes públicos para todos.
+    # Los mensajes privados tienen su propio endpoint (mensajes_privados_hilo).
+    qs = MensajeChat.objects.filter(sesion_tour=sesion, es_privado=False)
  
     if desde_str:
         parsed = parse_datetime(desde_str)

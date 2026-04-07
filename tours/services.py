@@ -272,6 +272,8 @@ def crear_mensaje(
     nombre_remitente: str,
     texto: str,
     imagen=None,
+    es_privado: bool = False,
+    destinatario_turista: Optional[Turista] = None,
 ) -> MensajeChat:
     return MensajeChat.objects.create(
         sesion_tour=sesion,
@@ -280,6 +282,8 @@ def crear_mensaje(
         nombre_remitente=nombre_remitente,
         texto=texto,
         imagen=imagen,
+        es_privado=es_privado,
+        destinatario_turista=destinatario_turista,
     )
 
 
