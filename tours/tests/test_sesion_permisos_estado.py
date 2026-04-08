@@ -101,11 +101,11 @@ class SesionPermisosEstadoTests(TestCase):
         response_repetido = client_owner.post(reverse("tours:cerrar_acceso", args=[self.sesion_activa.id]))
         self.assertEqual(response_repetido.status_code, 409)
 
-    def test_join_tour_by_code_solo_permite_sesiones_activas(self):
+    def test_join_tour_by_code_permite_pendiente_y_activa_pero_no_finalizada(self):
         client = Client()
 
         response_pendiente = client.get(reverse("tours:join_tour_by_code", args=[self.sesion_pendiente.codigo_acceso]))
-        self.assertEqual(response_pendiente.status_code, 409)
+        self.assertEqual(response_pendiente.status_code, 302)
 
         response_finalizada = client.get(reverse("tours:join_tour_by_code", args=[self.sesion_finalizada.codigo_acceso]))
         self.assertEqual(response_finalizada.status_code, 410)

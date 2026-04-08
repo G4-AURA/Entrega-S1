@@ -114,7 +114,7 @@
                 </div>
                 <div class="col-12 col-md-3">
                     <label class="form-label">Número de personas</label>
-                    <input type="number" min="1" max="50" name="num_personas"
+                    <input type="number" min="1" max="{{ tier_max_personas }}" name="num_personas"
                            class="form-control" value="{{ ruta.num_personas }}" required>
                 </div>
                 <div class="col-12 col-md-3">
@@ -153,8 +153,8 @@
                 <button type="button" class="btn-edit" id="btn-editar-etiquetas">Editar</button>
             </div>
             <div id="etiquetas-lectura" class="mb-3">
-                {% if ruta.mood %}
-                    {% for mood in ruta.mood %}<span class="badge text-bg-light border me-1">{{ mood }}</span>{% endfor %}
+                {% if moods_actuales_visibles %}
+                    {% for mood in moods_actuales_visibles %}<span class="badge text-bg-light border me-1">{{ mood }}</span>{% endfor %}
                 {% else %}
                     <span class="text-muted small">Sin etiquetas</span>
                 {% endif %}
@@ -247,6 +247,7 @@
             {% if stop_updated %}<div class="alert alert-success py-2">Parada actualizada.</div>{% endif %}
             {% if stop_deleted %}<div class="alert alert-success py-2">Parada eliminada.</div>{% endif %}
             {% if stop_error %}<div class="alert alert-danger py-2">Error al modificar la parada.</div>{% endif %}
+            {% if tier_message %}<div class="alert alert-warning py-2">{{ tier_message }} ({{ tier_code }})</div>{% endif %}
 
             <div id="lista-paradas" class="list-group list-paradas-container shadow-sm">
                 {% for parada in paradas %}
@@ -286,11 +287,13 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm btn-editar-parada"
                                 data-parada-id="{{ parada.id }}">Editar</button>
+                        {% if ruta.es_generada_ia %}
                         <button type="button"
                                 class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
                                 data-parada-id="{{ parada.id }}">
                             ✨ IA
                         </button>
+                        {% endif %}
                         <form method="post" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
@@ -301,14 +304,16 @@
                         </form>
                     </div>
 
-                    <div class="ia-suggestions-panel ia-suggestions-inline d-none"
-                         id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <strong class="small">Sugerencias IA para esta parada</strong>
-                            <span id="estado-sugerencias-ia-{{ parada.id }}" class="ia-suggestion-meta"></span>
+                    {% if ruta.es_generada_ia %}
+                        <div class="ia-suggestions-panel ia-suggestions-inline d-none"
+                             id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <strong class="small">Sugerencias IA para esta parada</strong>
+                                <span id="estado-sugerencias-ia-{{ parada.id }}" class="ia-suggestion-meta"></span>
+                            </div>
+                            <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
                         </div>
-                        <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
-                    </div>
+                    {% endif %}
 
                     <form method="post" class="parada-edit-form d-none"
                           id="form-editar-parada-{{ parada.id }}">
@@ -739,6 +744,31 @@ function agregarSugerenciaComoNuevaParada(candidato) {
     else form.submit();
 }
 
+function reemplazarParadaConSugerencia(paradaId, candidato) {
+    const form = document.getElementById(`form-editar-parada-${paradaId}`);
+    if (!form) return;
+
+    const nameInput = form.querySelector('input[name="nombre"]');
+    const latInput = form.querySelector('input[name="lat"]');
+    const lonInput = form.querySelector('input[name="lon"]');
+    const descInput = form.querySelector('input[name="descripcion"]');
+
+    const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
+    const lat = Number(coords[0]);
+    const lon = Number(coords[1]);
+    if (!nameInput || !latInput || !lonInput || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return;
+    }
+
+    nameInput.value = candidato?.nombre || nameInput.value;
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lon.toFixed(6);
+    if (descInput) descInput.value = candidato?.descripcion || '';
+
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+}
+
 async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
     const { panel, estado, lista } = getPanelSugerenciasParada(paradaId);
     if (!panel || !estado || !lista || !triggerButton) return;
@@ -768,7 +798,9 @@ async function cargarSugerenciasIAParaParada(paradaId, triggerButton) {
         }
 
         const candidatos = payload.datos?.candidatos || [];
-        estado.textContent = `${candidatos.length} sugerencias generadas`;
+        estado.textContent = candidatos.length
+            ? `${candidatos.length} sugerencias generadas`
+            : (payload?.mensaje || 'No se recibieron sugerencias válidas.');
         renderSugerenciasIAEnParada(paradaId, candidatos);
     } catch (_error) {
         estado.textContent = 'Error de red';
@@ -816,25 +848,16 @@ document.addEventListener('click', async (event) => {
     const candidateIndex = Number(usarBtn.dataset.candidateIndex);
     const candidatos = sugerenciasCachePorParada.get(String(paradaId)) || [];
     const candidato = candidatos[candidateIndex];
-    const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
-    const lat = coords[0];
-    const lon = coords[1];
-
     const confirmacion = await confirmarAccion({
-        title: 'Añadir sugerencia IA',
-        message: 'Esta sugerencia se añadirá como nueva parada al itinerario. ¿Quieres continuar?',
-        confirmText: 'Añadir parada',
+        title: 'Reemplazar parada con IA',
+        message: 'La parada actual será reemplazada por esta sugerencia. ¿Quieres continuar?',
+        confirmText: 'Reemplazar parada',
         cancelText: 'Cancelar',
         type: 'info',
     });
     if (!confirmacion) return;
 
-    agregarSugerenciaComoNuevaParada({
-        nombre: candidato?.nombre || '',
-        lat,
-        lon,
-        descripcion: candidato?.descripcion || '',
-    });
+    reemplazarParadaConSugerencia(paradaId, candidato);
 });
 
 mapa.on('click', (event) => {

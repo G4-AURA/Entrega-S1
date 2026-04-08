@@ -308,6 +308,31 @@ class GenerarCandidatosParadasIATests(TestCase):
             ['Archivo de Indias', 'Giralda'],
         )
 
+    def test_fallback_relajado_devuelve_sugerencias_si_falla_validacion_externa(self):
+        respuesta_ia = [
+            {
+                'nombre': 'Archivo de Indias',
+                'coordenadas': [37.3850, -5.9930],
+                'categoria': 'historia',
+                'nivel_confianza': 0.91,
+                'justificacion': 'Complementa el recorrido histórico.',
+            }
+        ]
+
+        with self.settings(GEMINI_API_KEY='test-key'):
+            with patch('creacion.services.llamar_gemini_bypass', return_value=respuesta_ia), \
+                patch.object(services.MapboxGeocodingClient, 'buscar_lugares', return_value=[]), \
+                patch.object(services.OSMGeocodingClient, 'buscar_lugares', return_value=[]), \
+                patch.object(services.OSMGeocodingClient, 'buscar_geometria_lineal_cercana', return_value=[]):
+                resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
+
+        self.assertEqual(len(resultado['candidatos']), 1)
+        self.assertEqual(resultado['candidatos'][0]['nombre'], 'Archivo de Indias')
+        self.assertEqual(
+            resultado['candidatos'][0]['fuente_validacion'],
+            'ia_relajada_sin_validacion_externa',
+        )
+
 
 class SesionGeneracionCheckpointTests(TestCase):
     def setUp(self):

@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AURA - Mi Plan{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/perfil_plan.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="plan-wrapper">
+    <header class="profile-header">
+        <h1 class="profile-title">Mi plan</h1>
+        <p class="profile-subtitle">Gestiona tu suscripción, fechas de periodo y consumo de límites del plan.</p>
+    </header>
+
+    {% if billing_success %}
+    <div class="alert alert-success profile-alert" role="alert">
+        Pago completado. Stripe enviará la confirmación y el plan se sincronizará automáticamente.
+    </div>
+    {% endif %}
+
+    {% if billing_cancel %}
+    <div class="alert alert-warning profile-alert" role="alert">
+        El checkout se canceló. Puedes intentarlo de nuevo cuando quieras.
+    </div>
+    {% endif %}
+
+    {% if downgrade_scheduled %}
+    <div class="alert alert-success profile-alert" role="alert">
+        Baja programada correctamente. Tu cuenta seguirá en Premium hasta el final del periodo actual.
+    </div>
+    {% endif %}
+
+    <article class="plan-main-card">
+        <div class="plan-main-grid">
+            <div>
+                <p class="profile-side-label">Plan actual</p>
+                <h2 class="plan-tier">{{ guia.tipo_suscripcion }}</h2>
+            </div>
+            <div>
+                <p class="profile-side-label">Estado del plan</p>
+                <p class="plan-value">{{ estado_plan }}</p>
+            </div>
+            <div>
+                <p class="profile-side-label">{{ periodo_label }}</p>
+                {% if periodo_fecha %}
+                <p class="plan-value">{{ periodo_fecha|date:"d/m/Y H:i" }} UTC</p>
+                {% else %}
+                <p class="plan-value">No disponible</p>
+                {% endif %}
+            </div>
+            <div>
+                <p class="profile-side-label">Cambios de plan</p>
+                {% if es_freemium %}
+                <p class="plan-value">Puedes mejorar a Premium en cualquier momento.</p>
+                {% elif downgrade_programado %}
+                <p class="plan-value">La vuelta a Freemium está programada al cierre del periodo.</p>
+                {% else %}
+                <p class="plan-value">Puedes programar la vuelta a Freemium al final del periodo.</p>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+
+    <section class="plan-usage-grid">
+        {% for item in plan_usage_items %}
+        <article class="plan-usage-card {% if item.restantes is None %}plan-usage-card-muted{% endif %}">
+            <p class="plan-usage-title">{{ item.nombre }}</p>
+            {% if item.restantes is None %}
+            <p class="plan-usage-value">N/D</p>
+            <p class="plan-usage-meta">{{ item.detalle }}</p>
+            {% else %}
+            <p class="plan-usage-value">
+                {% if item.limite is None %}
+                Ilimitado
+                {% else %}
+                {{ item.restantes }}
+                {% endif %}
+            </p>
+            {% if item.limite is not None %}
+            <p class="plan-usage-meta">Restantes de {{ item.limite }}</p>
+            {% endif %}
+            <p class="plan-usage-meta">{{ item.detalle }}</p>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </section>
+
+    <div class="plan-limits-grid">
+        <article class="plan-limits-card">
+            <h3 class="plan-limits-title">Límites de tu plan</h3>
+            <ul class="plan-limits-list">
+                {% for item in plan_limits_actual %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </article>
+
+        <article class="plan-limits-card">
+            <h3 class="plan-limits-title">Qué incluye Premium</h3>
+            <ul class="plan-limits-list">
+                {% for item in plan_limits_premium %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </article>
+    </div>
+
+    <div id="plan-feedback" class="alert d-none profile-alert" role="alert"></div>
+    <div id="upgrade-error" class="alert alert-danger d-none profile-alert" role="alert"></div>
+
+    <div class="plan-cta-row">
+        <a href="{% url 'perfil-editar' %}" class="btn btn-outline-primary">Editar perfil</a>
+        {% if mostrar_cta_upgrade %}
+        <button type="button"
+                id="btn-upgrade-plan"
+                class="btn btn-brand"
+                data-endpoint="/billing/create-checkout-session/">
+            Pasar a Premium
+        </button>
+        {% elif mostrar_cta_downgrade %}
+        <button type="button"
+                id="btn-downgrade-plan"
+                class="btn btn-danger"
+                data-endpoint="/billing/schedule-downgrade/">
+            Volver a Freemium al final del periodo
+        </button>
+        {% elif downgrade_programado %}
+        <button type="button" class="btn btn-secondary" disabled>Baja a Freemium ya programada</button>
+        {% elif es_freemium and not checkout_enabled %}
+        <button type="button" class="btn btn-secondary" disabled>Stripe no disponible en este entorno</button>
+        {% else %}
+        <button type="button" class="btn btn-success" disabled>Ya estás en Premium</button>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/plan.js' %}"></script>
+{% endblock %}

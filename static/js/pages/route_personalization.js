@@ -1,5 +1,6 @@
 (function () {
     const config = JSON.parse(document.getElementById('personalizacion-config').textContent);
+    const PERSONAS_MAX_PLAN = Number(config?.limits?.personasMax) || 50;
 
     const form = document.getElementById('form-personalizacion-ruta');
     const boton = document.getElementById('btn-generar-ruta');
@@ -277,6 +278,7 @@
 
     function validarPayloadPersonalizacion(payload) {
         const duracion = Number(payload?.duracion);
+        const personas = Number(payload?.personas);
         if (!Number.isFinite(duracion)) {
             throw new Error('La duración debe ser un número válido.');
         }
@@ -286,8 +288,15 @@
         if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
             throw new Error('La duración debe indicarse en bloques de 0.5 horas.');
         }
+        if (!Number.isInteger(personas)) {
+            throw new Error('El número de personas debe ser un entero válido.');
+        }
+        if (personas < 1 || personas > PERSONAS_MAX_PLAN) {
+            throw new Error(`El número de personas debe estar entre 1 y ${PERSONAS_MAX_PLAN}.`);
+        }
 
         payload.duracion = duracion;
+        payload.personas = personas;
         return payload;
     }
 

@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import re
 import logging
 import requests
 import uuid
@@ -425,18 +426,44 @@ def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
         categorias_relevantes.update(_MOOD_A_CATEGORIAS_OSM.get(str(mood).strip().lower(), []))
 
     try:
-        qs = POI.objects.filter(ciudad__icontains=ciudad.strip())
+        ciudad_limpia = str(ciudad or '').strip()
+
+        def _serializar_qs(qs):
+            return [
+                {
+                    'nombre': poi.nombre,
+                    'coords': [poi.lat, poi.lon],
+                    'categoria': poi.get_categoria_display(),
+                }
+                for poi in qs
+            ]
+
+        qs = POI.objects.all()
+        if ciudad_limpia:
+            qs = qs.filter(ciudad__icontains=ciudad_limpia)
         if categorias_relevantes:
             qs = qs.filter(categoria__in=categorias_relevantes)
-        qs = qs.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT]
-        return [
-            {
-                'nombre': poi.nombre,
-                'coords': [poi.lat, poi.lon],
-                'categoria': poi.get_categoria_display(),
-            }
-            for poi in qs
-        ]
+
+        resultado = _serializar_qs(qs.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT])
+        if resultado:
+            return resultado
+
+        # Si la ciudad inferida no coincide con la allowlist, relajar filtro de ciudad.
+        if ciudad_limpia:
+            qs_relajado = POI.objects.all()
+            if categorias_relevantes:
+                qs_relajado = qs_relajado.filter(categoria__in=categorias_relevantes)
+            resultado = _serializar_qs(
+                qs_relajado.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT]
+            )
+            if resultado:
+                logger.warning(
+                    'Allowlist sin resultados para ciudad="%s"; se usa fallback sin filtro de ciudad.',
+                    ciudad_limpia,
+                )
+                return resultado
+
+        return []
     except Exception as exc:
         logger.warning('Error al consultar la allowlist de POIs: %s', exc)
         return []
@@ -751,6 +778,112 @@ def _construir_prompt_candidatos_paradas(
     """
 
 
+def _inferir_ciudad_contexto_desde_ruta(ruta: Ruta) -> str:
+    """
+    Intenta inferir la ciudad de la ruta con señales locales (sin llamadas externas).
+    Prioridad:
+    1) Ciudad de la curiosidad asociada a una parada.
+    2) Patrones comunes en el título: "de X", "por X", "en X".
+    3) Fallback conservador.
+    """
+    primera_parada = ruta.paradas.order_by('orden').select_related('curiosidad').first()
+    if primera_parada and hasattr(primera_parada, 'curiosidad'):
+        ciudad_curiosidad = str((primera_parada.curiosidad.ciudad or '')).strip()
+        if ciudad_curiosidad:
+            return ciudad_curiosidad
+
+    titulo = str(ruta.titulo or '').strip()
+    match = re.search(r'\b(?:de|por|en)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s-]{1,80})', titulo)
+    if match:
+        ciudad_titulo = re.split(r'\s+(?:con|para|y)\s+', match.group(1), maxsplit=1)[0].strip(' ,.-')
+        if ciudad_titulo:
+            return ciudad_titulo
+
+    return 'Sin ciudad'
+
+
+def _extraer_lista_desde_respuesta_ia(respuesta) -> list[dict]:
+    """
+    Normaliza respuestas habituales del LLM a una lista de candidatos.
+    Acepta:
+    - Lista directa: [...]
+    - Objeto con claves tipo: candidatos/paradas/sugerencias/items/data/results
+    """
+    if isinstance(respuesta, list):
+        return respuesta
+    if not isinstance(respuesta, dict):
+        return []
+
+    for key in ('candidatos', 'paradas', 'sugerencias', 'items', 'data', 'results'):
+        valor = respuesta.get(key)
+        if isinstance(valor, list):
+            return valor
+    return []
+
+
+def _seleccionar_candidatos_relajados(
+    *,
+    candidatos_raw: list[dict],
+    cantidad_objetivo: int,
+    paradas_existentes: list[dict],
+    contexto_geo: dict,
+    id_offset: int = 0,
+    nombres_bloqueados: set[str] | None = None,
+    coords_bloqueadas: set[tuple[float, float]] | None = None,
+) -> tuple[list[dict], set[str], set[tuple[float, float]]]:
+    """
+    Fallback tolerante para sugerencias de edición:
+    acepta candidatos plausibles del LLM sin validación externa estricta cuando
+    los proveedores de geocodificación no están disponibles.
+    """
+    nombres_bloqueados = set(nombres_bloqueados or set())
+    coords_bloqueadas = set(coords_bloqueadas or set())
+
+    for parada in paradas_existentes or []:
+        nombre_base = _normalizar_nombre_para_dedupe(parada.get('nombre'))
+        coords_base = parada.get('coordenadas')
+        if nombre_base:
+            nombres_bloqueados.add(nombre_base)
+        if isinstance(coords_base, list) and len(coords_base) >= 2:
+            coords_bloqueadas.add(_clave_coordenadas_para_dedupe(coords_base))
+
+    aceptadas: list[dict] = []
+    for raw in candidatos_raw or []:
+        if len(aceptadas) >= cantidad_objetivo:
+            break
+
+        normalizado = _normalizar_candidato_parada(raw, id_offset + len(aceptadas) + 1)
+        if not normalizado:
+            continue
+
+        coords = normalizado.get('coordenadas')
+        if not isinstance(coords, list) or len(coords) < 2:
+            continue
+        if not _esta_en_contexto_geografico(coords, contexto_geo):
+            continue
+
+        nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
+        coords_key = _clave_coordenadas_para_dedupe(coords)
+        if (
+            not nombre_key
+            or nombre_key in nombres_bloqueados
+            or coords_key in coords_bloqueadas
+        ):
+            continue
+
+        normalizado['id_sugerencia'] = id_offset + len(aceptadas) + 1
+        normalizado['fuente_validacion'] = 'ia_relajada_sin_validacion_externa'
+        normalizado['tipo_geometria'] = 'unknown'
+        normalizado['error_m'] = None
+        normalizado['corregida'] = False
+        aceptadas.append(normalizado)
+
+        nombres_bloqueados.add(nombre_key)
+        coords_bloqueadas.add(coords_key)
+
+    return aceptadas, nombres_bloqueados, coords_bloqueadas
+
+
 def _solicitar_candidatos_paradas_ia(
     *,
     cantidad: int,
@@ -777,8 +910,9 @@ def _solicitar_candidatos_paradas_ia(
     except ErrorIntegracionIA:
         respuesta = None
 
-    if isinstance(respuesta, list):
-        return respuesta
+    candidatos_ia = _extraer_lista_desde_respuesta_ia(respuesta)
+    if candidatos_ia:
+        return candidatos_ia
 
     fallback_pois = _construir_pois_fallback_allowlist(
         ciudad=ciudad_contexto,
@@ -1389,7 +1523,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
     if not paradas_existentes:
         raise ErrorValidacionRuta('La ruta no tiene paradas actuales para aportar contexto a la IA.')
     contexto_geo = _calcular_contexto_geografico(paradas_existentes)
-    ciudad_contexto = str(ruta.titulo or '').split(' ')[0] or 'Sin ciudad'
+    ciudad_contexto = _inferir_ciudad_contexto_desde_ruta(ruta)
     preferencias = {
         'duracion_horas': float(ruta.duracion_horas),
         'num_personas': int(ruta.num_personas),
@@ -1435,9 +1569,51 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
             osm_client=osm_client,
         )
     except NoConvergenciaCoordenadasError as exc:
-        raise ErrorIntegracionIA(
-            'No fue posible completar la cantidad solicitada de paradas válidas y no duplicadas para esta ruta.'
-        ) from exc
+        logger.warning(
+            'Validación geográfica estricta sin convergencia para ruta_id=%s: %s. '
+            'Aplicando fallback relajado para edición.',
+            ruta.id,
+            exc,
+        )
+        candidatos = []
+        candidatos_lote, nombres_bloqueados, coords_bloqueadas = _seleccionar_candidatos_relajados(
+            candidatos_raw=respuesta_ia,
+            cantidad_objetivo=cantidad,
+            paradas_existentes=paradas_existentes,
+            contexto_geo=contexto_geo,
+            id_offset=0,
+        )
+        candidatos.extend(candidatos_lote)
+
+        max_intentos_extra = 2
+        intentos = 0
+        while len(candidatos) < cantidad and intentos < max_intentos_extra:
+            restantes = cantidad - len(candidatos)
+            nuevos = _proveedor_candidatos_adicionales(
+                max(1, restantes * 2),
+                nombres_bloqueados,
+                coords_bloqueadas,
+            )
+            if not nuevos:
+                break
+            nuevos_lote, nombres_bloqueados, coords_bloqueadas = _seleccionar_candidatos_relajados(
+                candidatos_raw=nuevos,
+                cantidad_objetivo=restantes,
+                paradas_existentes=[],
+                contexto_geo=contexto_geo,
+                id_offset=len(candidatos),
+                nombres_bloqueados=nombres_bloqueados,
+                coords_bloqueadas=coords_bloqueadas,
+            )
+            if not nuevos_lote:
+                break
+            candidatos.extend(nuevos_lote)
+            intentos += 1
+
+        if not candidatos:
+            raise ErrorIntegracionIA(
+                'No fue posible completar la cantidad solicitada de paradas válidas y no duplicadas para esta ruta.'
+            ) from exc
     return {
         'ruta_id': ruta.id,
         'ciudad': ciudad_contexto,
@@ -1516,7 +1692,8 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
         respuesta_ia = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
     except Exception as exc:
         raise ErrorIntegracionIA('No se pudieron generar paradas adicionales con IA en este momento.') from exc
-    if not isinstance(respuesta_ia, list):
+    candidatos_ia = _extraer_lista_desde_respuesta_ia(respuesta_ia)
+    if not candidatos_ia:
         raise ErrorIntegracionIA('La IA devolvió un formato inválido para las paradas adicionales.')
     nombres_vistos = {
         _normalizar_nombre_para_dedupe(p.get('nombre'))
@@ -1529,7 +1706,7 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
         if isinstance(p.get('coordenadas'), list) and len(p.get('coordenadas')) >= 2
     }
     candidatos = []
-    for idx, candidato in enumerate(respuesta_ia, start=1):
+    for idx, candidato in enumerate(candidatos_ia, start=1):
         normalizado = _normalizar_candidato_parada(candidato, idx)
         if not normalizado:
             continue

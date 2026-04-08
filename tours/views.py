@@ -22,6 +22,14 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from billing.tier_guard import (
+    TierRuleViolation,
+    ensure_chat_mode_allowed,
+    ensure_curiosity_route_allowed,
+    ensure_session_capacity_available,
+    ensure_session_creation_allowed,
+    tier_error_response,
+)
 from rutas.models import Curiosidad, Ruta
 
 from . import services
@@ -161,9 +169,6 @@ def join_tour_by_code(request, codigo):
     if sesion.esta_finalizada:
         return _render_join_error(request, "Esta sesión ya ha finalizado.", status=410)
 
-    if not sesion.esta_activa:
-        return _render_sesion_no_activa_para_union(request)
-
     return redirect("tours:join_tour", token=sesion.token)
 
 
@@ -178,9 +183,6 @@ def join_tour(request, token):
 
     if sesion.esta_finalizada:
         return _render_join_error(request, "Esta sesión ya ha finalizado.", status=410)
-
-    if not sesion.esta_activa:
-        return _render_sesion_no_activa_para_union(request)
 
     if request.method == "GET":
         turista = services.obtener_turista_anonimo(request)
@@ -206,6 +208,32 @@ def join_tour(request, token):
             )
 
         turista_id_cookie = request.session.get("turista_id")
+        union_existente = (
+            TuristaSesion.objects.filter(
+                turista_id=turista_id_cookie,
+                sesion_tour=sesion,
+                activo=True,
+            )
+            .select_related("turista")
+            .first()
+            if turista_id_cookie
+            else None
+        )
+
+        bypass_capacidad = bool(
+            union_existente and union_existente.turista.alias == alias
+        )
+        if not bypass_capacidad:
+            try:
+                ensure_session_capacity_available(sesion)
+            except TierRuleViolation as exc:
+                return render(
+                    request,
+                    "tours/join_tour.html",
+                    {"sesion": sesion, "error": exc.message},
+                    status=exc.http_status,
+                )
+
         turista, error = services.unir_turista_anonimo(sesion, alias, turista_id_cookie)
 
         if error:
@@ -315,6 +343,11 @@ def crear_sesion(request):
 
     if not es_guia:
         return _render_ruta_no_autorizada(request)
+
+    try:
+        ensure_session_creation_allowed(ruta)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     try:
         sesion = SesionTour.objects.create(
@@ -753,6 +786,11 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
     if sesion.estado != SesionTour.EN_CURSO:
         return JsonResponse({"error": "La sesión no está en curso."}, status=409)
 
+    try:
+        ensure_curiosity_route_allowed(sesion.ruta)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
+
     parada = sesion.ruta.paradas.filter(id=parada_id).first()
     if not parada:
         return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
@@ -845,15 +883,18 @@ def obtener_ubicaciones_turistas(request, sesion_id):
 def enviar_mensaje(request, sesion_id):
     """EnvÃ­a un mensaje. Acepta turistas anÃ³nimos (cookie) y el guÃ­a (auth)."""
     imagen = None
+    modo_chat = ""
     if request.content_type and request.content_type.startswith("multipart/form-data"):
         texto = request.POST.get("texto", "").strip()
         imagen = request.FILES.get("imagen")
+        modo_chat = request.POST.get("modo_chat", "").strip()
     else:
         try:
             body = json.loads(request.body or "{}")
         except json.JSONDecodeError:
             return JsonResponse({"error": "JSON invÃ¡lido."}, status=400)
         texto = body.get("texto", "").strip()
+        modo_chat = str(body.get("modo_chat") or "").strip()
 
     if not texto and not imagen:
         return JsonResponse(
@@ -901,6 +942,11 @@ def enviar_mensaje(request, sesion_id):
     )
     if error:
         return JsonResponse({"error": error}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, modo_chat)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     try:
         mensaje = services.crear_mensaje(

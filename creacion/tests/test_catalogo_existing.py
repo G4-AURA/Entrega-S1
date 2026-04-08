@@ -18,7 +18,7 @@ class GeneracionRutaIATestCase(TestCase):
             'duracion': 3,
             'personas': 6,
             'exigencia': 'media',
-            'mood': ['historia', 'gastronomia'],
+            'mood': ['historia'],
         }
         self.ruta_ia = {
             'titulo': 'Ruta IA Sevilla',
@@ -26,7 +26,7 @@ class GeneracionRutaIATestCase(TestCase):
             'duracion_horas': 3,
             'num_personas': 6,
             'nivel_exigencia': 'medio',
-            'mood': ['historia', 'gastronomia'],
+            'mood': ['historia'],
             'paradas': [
                 {
                     'orden': 1,
