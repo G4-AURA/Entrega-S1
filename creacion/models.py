@@ -19,6 +19,7 @@ class Historial_ia(models.Model):
     duracion_scoring = models.FloatField(null=True, blank=True)
     duracion_optimizacion = models.FloatField(null=True, blank=True)
     duracion_total = models.FloatField(null=True, blank=True)
+    metadata = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"Generación {self.id} - {self.estado_tarea} ({self.momento})"

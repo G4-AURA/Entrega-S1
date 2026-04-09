@@ -1050,6 +1050,7 @@ def crear_estado_sesion_generacion(request, payload, checkpoint='payload_normali
             payload.get('restricciones'),
             deseos=payload.get('deseos') or [],
         ),
+        'payload_normalizado': payload,
         'paradas_propuestas': [],
         'paradas_rechazadas': [],
     }
@@ -1087,7 +1088,7 @@ def obtener_estado_sesion_generacion(request, session_id, refresh_ttl=True):
                 ruta_generada = historial.respuesta
                 # Determinamos el siguiente checkpoint basado en si era modo selección o no
                 payload = estado.get('payload_normalizado') or {}
-                if payload.get('modo_seleccion'):
+                if payload.get('modo_seleccion') or historial.metadata.get('modo_seleccion'):
                     estado['checkpoint_actual'] = 'ruta_generada'
                 else:
                     if 'ruta_id' not in estado:
@@ -1236,6 +1237,7 @@ def normalizar_payload_ia(datos):
         'deseos': deseos,
         'restricciones': restricciones,
         'metadata': metadata,
+        'modo_seleccion': bool(datos.get('modo_seleccion')),
     }
 
 
@@ -1404,11 +1406,15 @@ def pre_crear_historial_ia(payload, sesion_id=None):
     antes de comenzar la generación asíncrona.
     """
     try:
+        metadata = {
+            'modo_seleccion': bool(payload.get('modo_seleccion'))
+        }
         return Historial_ia.objects.create(
             prompt=json.dumps(payload),
             sesion_generacion_id=sesion_id,
             estado_tarea='procesando',
-            etapa_actual='iniciando'
+            etapa_actual='iniciando',
+            metadata=metadata
         )
     except DatabaseError:
         raise ErrorPersistenciaRuta('Error de base de datos al inicializar seguimiento.')
