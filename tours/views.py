@@ -1,4 +1,4 @@
-﻿"""
+"""
 tours/views.py
 
 Vistas delgadas: validan HTTP y delegan al mÃ³dulo services.
@@ -313,6 +313,14 @@ def crear_sesion(request):
 
     if not es_guia:
         return _render_ruta_no_autorizada(request)
+
+    sesion_activa = SesionTour.objects.filter(
+        ruta=ruta,
+        estado__in=[SesionTour.PENDIENTE, SesionTour.EN_CURSO]
+    ).order_by("-id").first()
+
+    if sesion_activa:
+        return redirect("tours:guia_sesion", sesion_id=sesion_activa.id)
 
     try:
         ensure_session_creation_allowed(ruta)

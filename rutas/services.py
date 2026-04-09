@@ -19,7 +19,6 @@ from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import IntegrityError
 from django.db.models import Prefetch
-from google import genai
 import requests
 
 from .models import Curiosidad, Parada, Ruta
@@ -438,6 +437,7 @@ class ServicioCuriosidadesIA:
     }
 
     def __init__(self):
+        from google import genai
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
