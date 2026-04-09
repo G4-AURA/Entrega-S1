@@ -1,3 +1,19 @@
+"""
+creacion/langgraph/graph.py
+
+Construye y devuelve el grafo compilado de LangGraph para la generación
+de rutas turísticas.
+
+Flujo lineal (Fase 1):
+    generacion → validacion → scoring → optimizacion → END
+
+Cada nodo tiene una responsabilidad única; el state tipado en
+creacion/langgraph/state.py define el contrato de datos entre ellos.
+
+La función *construir_grafo* se llama una vez por invocación de
+*consultar_langgraph* para obtener un grafo compilado fresco.
+"""
+
 from langgraph.graph import END, StateGraph
 
 from creacion.langgraph.nodes.generacion import nodo_generacion

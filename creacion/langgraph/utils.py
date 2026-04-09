@@ -1,3 +1,15 @@
+"""
+creacion/langgraph/utils.py
+
+Utilidades puras compartidas por los nodos del pipeline LangGraph.
+
+Este módulo NO importa nada de creacion.services para evitar importaciones
+circulares: services.py → graph.py → nodos → utils.py (sin vuelta atrás).
+
+Contiene únicamente funciones sin estado y sin dependencias de Django ORM
+que los nodos necesitan directamente.
+"""
+
 import json
 import logging
 import math
@@ -11,9 +23,18 @@ from creacion.models import Historial_ia
 logger = logging.getLogger(__name__)
 
 
-class ErrorIntegracionIA(Exception):
-    pass
+# ─────────────────────────────────────────────────────────────────────────────
+# Excepción de integración IA
+# services.py es la fuente canónica; esta es un alias de importación segura.
+# ─────────────────────────────────────────────────────────────────────────────
 
+class ErrorIntegracionIA(Exception):
+    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Constantes compartidas
+# ─────────────────────────────────────────────────────────────────────────────
 
 MIN_PARADAS_IA = 5
 MAX_PARADAS_IA = 8
@@ -31,6 +52,10 @@ _KEYWORDS_MOOD = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Gemini
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _leer_int_env(nombre: str, default: int) -> int:
     try:
         return int(os.getenv(nombre, str(default)))
@@ -39,11 +64,18 @@ def _leer_int_env(nombre: str, default: int) -> int:
 
 
 def llamar_gemini(prompt: str) -> list | dict:
+    """
+    Llama a Gemini y devuelve la respuesta parseada como JSON.
+    Lanza ErrorIntegracionIA ante cualquier fallo.
+    """
     api_key = os.getenv('GEMINI_API_KEY')
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}'
+    url = (
+        f'https://generativelanguage.googleapis.com/v1beta/models/'
+        f'gemini-2.5-flash:generateContent?key={api_key}'
+    )
     headers = {'Content-Type': 'application/json'}
     data = {
         'contents': [{'parts': [{'text': prompt}]}],
@@ -58,6 +90,7 @@ def llamar_gemini(prompt: str) -> list | dict:
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
             if response.status_code in http_reintentable and intento < max_reintentos:
+                logger.warning('Gemini status=%s (reintento %s/%s).', response.status_code, intento + 1, max_reintentos)
                 continue
             response.raise_for_status()
             resultado = response.json()
@@ -65,16 +98,19 @@ def llamar_gemini(prompt: str) -> list | dict:
             return json.loads(texto_json)
         except requests.Timeout as exc:
             ultimo_error = exc
-            if intento < max_reintentos: continue
+            if intento < max_reintentos:
+                continue
             raise ErrorIntegracionIA(f'Timeout tras {max_reintentos + 1} intentos.') from exc
         except requests.HTTPError as exc:
             ultimo_error = exc
             status = exc.response.status_code if exc.response is not None else 'desconocido'
-            if status in http_reintentable and intento < max_reintentos: continue
+            if status in http_reintentable and intento < max_reintentos:
+                continue
             raise ErrorIntegracionIA(f'Error HTTP de Gemini (status={status}).') from exc
         except requests.RequestException as exc:
             ultimo_error = exc
-            if intento < max_reintentos: continue
+            if intento < max_reintentos:
+                continue
             raise ErrorIntegracionIA('Error de red al conectar con Gemini.') from exc
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ErrorIntegracionIA('Respuesta no válida de Gemini.') from exc
@@ -83,6 +119,10 @@ def llamar_gemini(prompt: str) -> list | dict:
 
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Normalización de coordenadas y POIs
+# ─────────────────────────────────────────────────────────────────────────────
 
 def normalizar_coordenadas(raw_coordenadas, lat=None, lon=None):
     if isinstance(raw_coordenadas, dict):
@@ -119,6 +159,7 @@ def serializar_parada_ruta_final(poi: dict, orden: int) -> dict:
         'coordenadas': poi.get('coords'),
         'orden': orden,
         'descripcion': descripcion,
+        # Mantener 'desc' por compatibilidad con código existente
         'desc': descripcion,
     }
     for meta_key in ('fuente_validacion', 'tipo_geometria', 'error_m', 'corregida'):
@@ -131,6 +172,10 @@ def normalizar_nombre_para_dedupe(nombre: str) -> str:
     return ' '.join(str(nombre or '').strip().lower().split())
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Cálculo de objetivo de paradas
+# ─────────────────────────────────────────────────────────────────────────────
+
 def calcular_objetivo_paradas_ia(datos: dict) -> int:
     try:
         duracion_horas = float(datos.get('duracion') or 2.0)
@@ -139,6 +184,10 @@ def calcular_objetivo_paradas_ia(datos: dict) -> int:
     estimado = int(round(duracion_horas * 2))
     return max(MIN_PARADAS_IA, min(MAX_PARADAS_IA, estimado))
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OR-Tools: matriz de distancias
+# ─────────────────────────────────────────────────────────────────────────────
 
 def calcular_distancia_euclidiana(coord1, coord2) -> float:
     return math.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2)
@@ -157,6 +206,10 @@ def crear_matriz_datos(pois: list) -> dict:
                 dist_matrix[from_node][to_node] = int(d * 10000)
     return {'distance_matrix': dist_matrix, 'num_vehicles': 1, 'depot': 0}
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Métricas de scoring
+# ─────────────────────────────────────────────────────────────────────────────
 
 def distancia_haversine_km(coord_a, coord_b) -> float:
     lat1, lon1 = coord_a
@@ -212,6 +265,10 @@ def calcular_coherencia_tematica(paradas: list, moods: list) -> float:
     return matches / len(paradas)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Construcción de bloques de prompt
+# ─────────────────────────────────────────────────────────────────────────────
+
 def construir_bloque_metadata(metadata: dict) -> str:
     if not metadata:
         return ''
@@ -254,20 +311,17 @@ def construir_bloque_allowlist(pois: list) -> str:
         lat, lon = poi['coords']
         lineas.append(f'  - {poi["nombre"]} ({poi["categoria"]}) — coords: [{lat}, {lon}]')
     return '\n'.join(lineas)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Telemetría
 # ─────────────────────────────────────────────────────────────────────────────
 
 def medir_tiempo_nodo(funcion_nodo):
-    """
-    Decorador para medir el tiempo de ejecución de un nodo de LangGraph
-    y actualizar el estado de la generación en tiempo real en la BD.
-    """
     def wrapper(state):
         historial_id = state.get('historial_id')
         nombre_nodo = funcion_nodo.__name__.replace('nodo_', '')
         
-        # 1. Registro de entrada a la etapa
         if historial_id:
             from creacion.models import Historial_ia
             from django.utils import timezone
@@ -276,23 +330,18 @@ def medir_tiempo_nodo(funcion_nodo):
                 timestamp_inicio_etapa=timezone.now()
             )
 
-        # 2. Ejecución del nodo
         t0 = time.perf_counter()
         resultado = funcion_nodo(state)
         t1 = time.perf_counter()
-        
         duracion = round(t1 - t0, 3)
         
-        # 3. Guardado local en el estado (LangGraph)
         if 'duraciones' not in state or state['duraciones'] is None:
             state['duraciones'] = {}
         state['duraciones'][nombre_nodo] = duracion
         
-        # 4. Persistencia inmediata de la duración en la BD
         if historial_id:
             from creacion.models import Historial_ia
-            field_name = f'duracion_{nombre_nodo}'
-            update_data = {field_name: duracion}
+            update_data = {f'duracion_{nombre_nodo}': duracion}
             Historial_ia.objects.filter(id=historial_id).update(**update_data)
             
         return resultado

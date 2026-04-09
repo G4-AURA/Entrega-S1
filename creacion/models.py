@@ -6,11 +6,13 @@ class Historial_ia(models.Model):
     respuesta = models.JSONField(blank=True, null=True)
     momento = models.DateTimeField(auto_now_add=True)
 
+    # Tracking de estado y errores
     estado_tarea = models.CharField(max_length=20, default='procesando')
     etapa_actual = models.CharField(max_length=50, default='pendiente')
     timestamp_inicio_etapa = models.DateTimeField(null=True, blank=True)
     mensaje_error = models.TextField(null=True, blank=True)
 
+    # Duraciones por etapa (en segundos)
     duracion_generacion = models.FloatField(null=True, blank=True)
     duracion_validacion = models.FloatField(null=True, blank=True)
     duracion_scoring = models.FloatField(null=True, blank=True)

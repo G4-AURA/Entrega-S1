@@ -1362,6 +1362,10 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
 
 
 def pre_crear_historial_ia(payload):
+    """
+    Crea un registro inicial en Historial_ia para obtener un ID
+    antes de comenzar la generación asíncrona.
+    """
     try:
         return Historial_ia.objects.create(
             prompt=json.dumps(payload),
@@ -1762,6 +1766,18 @@ def _seleccionar_mejor_alternativa(alternativas):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str, historial_id: int = None) -> dict:
+    """
+    Invoca el pipeline completo de 4 nodos (generacion → validacion →
+    scoring → optimizacion) para una variación concreta del prompt.
+
+    Devuelve un dict compatible con _seleccionar_mejor_alternativa:
+        {
+            'ruta':                          dict,
+            'metricas':                      {distancia_total_km, diversidad, coherencia_tematica},
+            'paradas_rechazadas_validacion': list[dict],
+            'duraciones':                    dict (opcional, desde LangGraph state)
+        }
+    """
     payload_variacion = {**payload, '_variacion': variacion}
     grafo = construir_grafo()
     
@@ -1817,6 +1833,7 @@ def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
     ]
     ruta_final['metricas_seleccion'] = mejor.get('metricas')
     
+    # Si tenemos métricas de tiempo de la mejor alternativa, las incluimos
     if 'duraciones' in mejor:
         ruta_final['duraciones_etapas'] = mejor['duraciones']
 
