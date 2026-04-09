@@ -18,9 +18,9 @@ class CrearRutaContractJsonTests(TestCase):
         self.guia = Guia.objects.create(user=self.auth_profile)
         self.client.force_login(self.user)
 
-    @patch('creacion.views._guardar_ruta_ia_en_bd')
+    @patch('creacion.services.guardar_ruta_ia')
     @patch('creacion.views._obtener_guia_para_usuario')
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.tasks.consultar_langgraph')
     def test_generar_ruta_ia_respuesta_ok_contiene_campos_minimos(
         self, mock_consultar, mock_get_guia, mock_guardar
     ):

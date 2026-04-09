@@ -1090,11 +1090,26 @@ def obtener_estado_sesion_generacion(request, session_id, refresh_ttl=True):
                 if payload.get('modo_seleccion'):
                     estado['checkpoint_actual'] = 'ruta_generada'
                 else:
-                    estado['checkpoint_actual'] = 'ruta_guardada'
+                    if 'ruta_id' not in estado:
+                        guia = obtener_guia_para_usuario(request.user)
+                        if guia:
+                            try:
+                                ruta = guardar_ruta_ia(guia=guia, payload=payload, ruta_generada=ruta_generada)
+                                estado['ruta_id'] = ruta.id
+                                estado['paradas_propuestas'] = ruta_generada.get('paradas') or []
+                                estado['checkpoint_actual'] = 'ruta_guardada'
+                            except Exception as exc:
+                                logger.exception("Error al guardar la ruta generada perezosamente:")
+                                estado['checkpoint_actual'] = 'error'
+                                estado['mensaje_error'] = f"Error al guardar la ruta: {str(exc)}"
+                        else:
+                            estado['checkpoint_actual'] = 'error'
+                            estado['mensaje_error'] = 'El usuario autenticado no es un guía válido.'
+                    else:
+                        estado['checkpoint_actual'] = 'ruta_guardada'
                 
-                estado['paradas_propuestas'] = ruta_generada.get('paradas') or []
-                # Si se generó una ruta_id en el proceso (aunque ahora se suele persistir después),
-                # podrías vincularla aquí si el task la guardó.
+                if not estado.get('paradas_propuestas'):
+                    estado['paradas_propuestas'] = ruta_generada.get('paradas') or []
                 
             elif historial and historial.estado_tarea == 'error':
                 estado['checkpoint_actual'] = 'error'

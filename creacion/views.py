@@ -141,7 +141,7 @@ def generar_ruta_ia(request):
         except TierRuleViolation as exc:
             return tier_error_response(exc)
 
-        sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload)
+        sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload, checkpoint='procesando_ia')
         historial = services.pre_crear_historial_ia(payload, sesion_id=sesion_generacion['session_id'])
         tarea_generar_ruta_ia.delay(historial.id, payload, sesion_id=sesion_generacion['session_id'])
 

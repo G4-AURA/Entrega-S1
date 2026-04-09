@@ -861,9 +861,9 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
         self.url_generar = reverse("creacion:generar_ruta_ia")
         self.url_catalogo = reverse("rutas-catalogo")
 
-    @patch("creacion.views._guardar_ruta_ia_en_bd")
+    @patch("creacion.services.guardar_ruta_ia")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_flujo_completo_crea_ruta_y_devuelve_200_con_campos_esperados(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -929,8 +929,8 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    @patch("creacion.views.consultar_langgraph")
-    def test_endpoint_retorna_502_si_langgraph_falla(self, mock_langgraph):
+    @patch("creacion.tasks.consultar_langgraph")
+    def test_endpoint_retorna_202_y_luego_error_en_sesion_si_langgraph_falla(self, mock_langgraph):
         mock_langgraph.side_effect = ErrorIntegracionIA("Gemini caído simulado")
 
         response = self.client.post(
@@ -938,12 +938,20 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
             data=json.dumps(_PAYLOAD_FRONTEND),
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json()["status"], "ERROR")
+        self.assertEqual(response.status_code, 202)
+        session_id = response.json()["sesion_generacion_id"]
 
-    @patch("creacion.views._guardar_ruta_ia_en_bd")
+        # Polling para ver el error
+        response_poll = self.client.get(
+            reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id})
+        )
+        data_poll = response_poll.json()["datos"]
+        self.assertEqual(data_poll["checkpoint_actual"], "error")
+        self.assertIn("Gemini caído simulado", data_poll["mensaje_error"])
+
+    @patch("creacion.services.guardar_ruta_ia")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_catalogo_muestra_ruta_ia_recien_creada(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -1102,9 +1110,9 @@ class SesionGeneracionE2ETest(TestCase):
         self.user, self.guia = _crear_guia("guia_sesion_e2e")
         self.client.force_login(self.user)
 
-    @patch("creacion.views._guardar_ruta_ia_en_bd")
+    @patch("creacion.services.guardar_ruta_ia")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_ciclo_completo_generar_obtener_actualizar_sesion(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -1159,7 +1167,7 @@ class SesionGeneracionE2ETest(TestCase):
         self.assertEqual(len(datos_actualizados["paradas_rechazadas"]), 1)
         self.assertIn("Evitar monumentos muy conocidos", datos_actualizados["restricciones_usuario"])
 
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_sesion_no_encontrada_retorna_404(self, _mock_langgraph):
         response = self.client.get(
             reverse(
@@ -1183,7 +1191,7 @@ class ModoSeleccionE2ETest(TestCase):
         self.user, self.guia = _crear_guia("guia_seleccion_e2e")
         self.client.force_login(self.user)
 
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_modo_seleccion_true_devuelve_propuesta_sin_guardar(self, mock_langgraph):
         mock_langgraph.return_value = _RUTA_GENERADA_COMPLETA
 
@@ -1209,9 +1217,9 @@ class ModoSeleccionE2ETest(TestCase):
         paradas = data_poll["paradas_propuestas"]
         self.assertEqual(len(paradas), 5)
 
-    @patch("creacion.views._guardar_ruta_ia_en_bd")
+    @patch("creacion.services.guardar_ruta_ia")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_confirmar_seleccion_parcial_guarda_solo_paradas_elegidas(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -1231,7 +1239,12 @@ class ModoSeleccionE2ETest(TestCase):
         self.assertEqual(response_gen.status_code, 202)
         session_id = response_gen.json()["sesion_generacion_id"]
 
-        # 2. Confirmar solo las paradas 0, 2, 4 (índices pares)
+        # 2. Polling para sincronizar el resultado (necesario incluso en ALWAYS_EAGER para disparar el lazy sync)
+        self.client.get(
+            reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id})
+        )
+
+        # 3. Confirmar solo las paradas 0, 2, 4 (índices pares)
         response_confirm = self.client.post(
             reverse("creacion:confirmar_ruta_ia"),
             data=json.dumps(
@@ -1258,7 +1271,7 @@ class ModoSeleccionE2ETest(TestCase):
         checkpoint_contexto = data["datos_ruta"].get("checkpoint_contexto", {})
         self.assertEqual(len(checkpoint_contexto.get("paradas_rechazadas", [])), 2)
 
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.tasks.consultar_langgraph")
     def test_confirmar_sin_seleccion_retorna_400(self, mock_langgraph):
         mock_langgraph.return_value = _RUTA_GENERADA_COMPLETA
 
