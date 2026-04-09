@@ -7,7 +7,7 @@ from creacion.services import consultar_langgraph
 logger = logging.getLogger(__name__)
 
 @shared_task
-def tarea_generar_ruta_ia(historial_id, payload):
+def tarea_generar_ruta_ia(historial_id, payload, sesion_id=None):
     t_inicio_total = timezone.now()
     try:
         logger.info("Iniciando tarea Celery para Historial_ia ID: %s", historial_id)
