@@ -862,7 +862,10 @@ class RutaDetalleMetaValidationViewTests(TestCase):
             password='testpass123'
         )
         self.auth_user = AuthUser.objects.create(user=self.user)
-        self.guia = Guia.objects.create(user=self.auth_user)
+        self.guia = Guia.objects.create(
+            user=self.auth_user,
+            tipo_suscripcion=Guia.Suscripcion.PREMIUM,
+        )
         self.ruta = Ruta.objects.create(
             titulo='Ruta Meta',
             descripcion='Ruta para validar edición meta',

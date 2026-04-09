@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url  # <--- NECESARIO PARA NEON (Asegúrate de tenerlo en requirements.txt)
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -66,6 +67,7 @@ INSTALLED_APPS = [
     'creacion',
     'rutas',
     'allowList',
+    'billing',
 ]
 
 MIDDLEWARE = [
@@ -209,6 +211,57 @@ LOGOUT_REDIRECT_URL = '/'
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+
+
+# --- STRIPE (TIERS FREEMIUM/PREMIUM) ---
+STRIPE_ENABLED = os.getenv('STRIPE_ENABLED', 'False').lower() in ('true', '1', 't')
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_PREMIUM_PRICE_ID = os.getenv('STRIPE_PREMIUM_PRICE_ID')
+STRIPE_CHECKOUT_SUCCESS_URL = os.getenv('STRIPE_CHECKOUT_SUCCESS_URL', '')
+STRIPE_CHECKOUT_CANCEL_URL = os.getenv('STRIPE_CHECKOUT_CANCEL_URL', '')
+STRIPE_WEBHOOK_TOLERANCE_SECONDS = int(os.getenv('STRIPE_WEBHOOK_TOLERANCE_SECONDS', '300'))
+
+
+def _validar_configuracion_stripe() -> None:
+    """
+    Valida configuración mínima de Stripe al arrancar.
+    Se aplica solo si STRIPE_ENABLED=True para no bloquear entornos sin pagos.
+    """
+    if not STRIPE_ENABLED:
+        return
+
+    required = {
+        'STRIPE_PUBLISHABLE_KEY': STRIPE_PUBLISHABLE_KEY,
+        'STRIPE_SECRET_KEY': STRIPE_SECRET_KEY,
+        'STRIPE_WEBHOOK_SECRET': STRIPE_WEBHOOK_SECRET,
+        'STRIPE_PREMIUM_PRICE_ID': STRIPE_PREMIUM_PRICE_ID,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise ImproperlyConfigured(
+            f"Stripe está habilitado pero faltan variables: {', '.join(missing)}."
+        )
+
+    prefix_checks = {
+        'STRIPE_PUBLISHABLE_KEY': ('pk_', STRIPE_PUBLISHABLE_KEY),
+        'STRIPE_SECRET_KEY': ('sk_', STRIPE_SECRET_KEY),
+        'STRIPE_WEBHOOK_SECRET': ('whsec_', STRIPE_WEBHOOK_SECRET),
+        'STRIPE_PREMIUM_PRICE_ID': ('price_', STRIPE_PREMIUM_PRICE_ID),
+    }
+    invalid = [
+        f"{name} (debe empezar por '{prefix}')"
+        for name, (prefix, value) in prefix_checks.items()
+        if not value.startswith(prefix)
+    ]
+    if invalid:
+        raise ImproperlyConfigured(
+            "Formato inválido en variables Stripe: " + ", ".join(invalid) + "."
+        )
+
+
+_validar_configuracion_stripe()
 
 
 # --- SEGURIDAD SSL (SOLO PRODUCCIÓN) ---

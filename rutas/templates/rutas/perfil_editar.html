@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AURA - Editar Perfil{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/perfil_plan.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="profile-wrapper">
+    <header class="profile-header">
+        <h1 class="profile-title">Editar perfil</h1>
+        <p class="profile-subtitle">Actualiza tu información para gestionar mejor tus tours.</p>
+    </header>
+
+    {% if updated %}
+    <div class="alert alert-success profile-alert" role="alert">
+        Perfil actualizado correctamente.
+    </div>
+    {% endif %}
+
+    <div class="profile-layout">
+        <article class="profile-card">
+            <h2 class="profile-card-title">Datos de cuenta</h2>
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label for="{{ form.first_name.id_for_label }}" class="form-label">{{ form.first_name.label }}</label>
+                    {{ form.first_name }}
+                    {% for error in form.first_name.errors %}
+                    <div class="field-error">{{ error }}</div>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ form.last_name.id_for_label }}" class="form-label">{{ form.last_name.label }}</label>
+                    {{ form.last_name }}
+                    {% for error in form.last_name.errors %}
+                    <div class="field-error">{{ error }}</div>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ form.email.id_for_label }}" class="form-label">{{ form.email.label }}</label>
+                    {{ form.email }}
+                    {% for error in form.email.errors %}
+                    <div class="field-error">{{ error }}</div>
+                    {% endfor %}
+                </div>
+
+                <button type="submit" class="btn btn-brand">Guardar cambios</button>
+            </form>
+        </article>
+
+        <aside class="profile-side-card">
+            <h2 class="profile-card-title">Tu plan</h2>
+            <p class="profile-side-label">Usuario</p>
+            <p class="profile-side-value">{{ request.user.username }}</p>
+            <p class="profile-side-label">Plan actual</p>
+            <p class="profile-side-value">{{ guia.tipo_suscripcion }}</p>
+            {% if guia.tipo_suscripcion == 'Freemium' %}
+            <a href="{% url 'plan' %}" class="btn btn-brand btn-sm">Pasar a Premium</a>
+            {% else %}
+            <a href="{% url 'plan' %}" class="btn btn-outline-primary btn-sm">Ver plan y facturación</a>
+            {% endif %}
+        </aside>
+    </div>
+</section>
+{% endblock %}

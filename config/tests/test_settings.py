@@ -4,6 +4,7 @@ import sys
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
 
@@ -144,3 +145,37 @@ class SettingsConditionalBranchesTest(SimpleTestCase):
             mod.DATABASES['default']['ENGINE'],
             'django.contrib.gis.db.backends.postgis',
         )
+
+    def test_stripe_habilitado_sin_variables_obligatorias_falla(self):
+        mod = sys.modules['config.settings']
+        with self.assertRaises(ImproperlyConfigured):
+            with patch.dict(os.environ, {
+                'STRIPE_ENABLED': 'True',
+                'STRIPE_PUBLISHABLE_KEY': '',
+                'STRIPE_SECRET_KEY': '',
+                'STRIPE_WEBHOOK_SECRET': '',
+                'STRIPE_PREMIUM_PRICE_ID': '',
+            }, clear=False):
+                importlib.reload(mod)
+
+    def test_stripe_habilitado_con_prefijos_invalidos_falla(self):
+        mod = sys.modules['config.settings']
+        with self.assertRaises(ImproperlyConfigured):
+            with patch.dict(os.environ, {
+                'STRIPE_ENABLED': 'True',
+                'STRIPE_PUBLISHABLE_KEY': 'not_pk',
+                'STRIPE_SECRET_KEY': 'not_sk',
+                'STRIPE_WEBHOOK_SECRET': 'not_whsec',
+                'STRIPE_PREMIUM_PRICE_ID': 'not_price',
+            }, clear=False):
+                importlib.reload(mod)
+
+    def test_stripe_habilitado_con_configuracion_valida_arranca(self):
+        mod = self._reload_with({
+            'STRIPE_ENABLED': 'True',
+            'STRIPE_PUBLISHABLE_KEY': 'pk_test_123',
+            'STRIPE_SECRET_KEY': 'sk_test_123',
+            'STRIPE_WEBHOOK_SECRET': 'whsec_123',
+            'STRIPE_PREMIUM_PRICE_ID': 'price_123',
+        })
+        self.assertTrue(mod.STRIPE_ENABLED)

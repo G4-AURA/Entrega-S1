@@ -15,6 +15,8 @@ from django.contrib.auth.models import User
 from django.conf import settings
 from django.utils import timezone
 
+from rutas.models import Guia
+
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
 
 
@@ -207,6 +209,12 @@ def unir_turista_anonimo(
         if turista_id_cookie and ts_activo.turista.id == turista_id_cookie:
             return ts_activo.turista, None
         return None, f'El alias "{alias}" ya está en uso. Por favor elige otro nombre.'
+
+    tier = getattr(sesion.ruta.guia, 'tipo_suscripcion', Guia.Suscripcion.FREEMIUM)
+    capacidad = 50 if tier == Guia.Suscripcion.PREMIUM else 15
+    activos = TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).count()
+    if activos >= capacidad:
+        return None, f'La sesión alcanzó su capacidad máxima ({capacidad} turistas).'
 
     # Buscar sesión inactiva para reutilizar en vez de duplicar filas
     ts_inactivo = TuristaSesion.objects.filter(
