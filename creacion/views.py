@@ -142,15 +142,15 @@ def generar_ruta_ia(request):
             return tier_error_response(exc)
 
         sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload)
-        historial = services.pre_crear_historial_ia(payload, sesion_id=sesion_generacion.id)
-        tarea_generar_ruta_ia.delay(historial.id, payload, sesion_id=sesion_generacion.id)
+        historial = services.pre_crear_historial_ia(payload, sesion_id=sesion_generacion['session_id'])
+        tarea_generar_ruta_ia.delay(historial.id, payload, sesion_id=sesion_generacion['session_id'])
 
         return JsonResponse(
             {
                 'status': 'OK',
                 'mensaje': 'Generación de ruta iniciada en segundo plano.',
                 'historial_id': historial.id,
-                'sesion_generacion_id': sesion_generacion.id,
+                'sesion_generacion_id': sesion_generacion['session_id'],
                 'checkpoint_actual': 'procesando_ia',
                 'warnings': tier_warnings,
             },
