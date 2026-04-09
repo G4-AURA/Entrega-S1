@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -10,6 +10,7 @@ from rutas.models import Parada, Ruta
 from tours.models import TURISTA
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class GeneracionRutaIATestCase(TestCase):
     def setUp(self):
         self.client = Client()
@@ -54,12 +55,15 @@ class GeneracionRutaIATestCase(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(payload['status'], 'OK')
-        self.assertTrue(payload.get('datos', {}).get('ruta_id'))
+        self.assertEqual(response.status_code, 202)
+        resp_data = response.json()
+        self.assertEqual(resp_data['status'], 'OK')
+        session_id = resp_data['sesion_generacion_id']
+        
+        # Disparar sincronización perezosa (ya que ALWAYS_EAGER terminó la tarea)
+        self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id}))
 
-        ruta = Ruta.objects.get(id=payload['datos']['ruta_id'])
+        ruta = Ruta.objects.latest('id')
         self.assertEqual(ruta.guia.user.user, guia_user)
         self.assertEqual(ruta.titulo, f"Sevilla {timezone.localtime().strftime('%Y-%m-%d')}")
         self.assertTrue(ruta.es_generada_ia)
@@ -84,6 +88,7 @@ class GeneracionRutaIATestCase(TestCase):
         self.assertEqual(Ruta.objects.count(), 0)
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class CatalogoRutasIATestCase(TestCase):
     def test_filtro_solo_ia(self):
         User.objects.create_user(username='guia2', password='1234')
@@ -105,7 +110,7 @@ class CatalogoRutasIATestCase(TestCase):
                     }
                 ],
             }
-            self.client.post(
+            resp = self.client.post(
                 reverse('creacion:generar_ruta_ia'),
                 data=json.dumps({
                     'ciudad': 'Sevilla',
@@ -116,6 +121,9 @@ class CatalogoRutasIATestCase(TestCase):
                 }),
                 content_type='application/json',
             )
+            self.assertEqual(resp.status_code, 202)
+            # Sync session to reflect 'ruta_guardada'
+            self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': resp.json()['sesion_generacion_id']}))
 
         response = self.client.get(reverse('rutas-catalogo') + '?tipo=ia')
         self.assertEqual(response.status_code, 200)
@@ -124,6 +132,7 @@ class CatalogoRutasIATestCase(TestCase):
         self.assertTrue(data[0]['es_generada_ia'])
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class CatalogoRutasUsuarioActualTestCase(TestCase):
     def setUp(self):
         self.client = Client()
@@ -150,7 +159,7 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
         user_2 = User.objects.create_user(username='guia_catalogo_2', password='1234')
 
         self.client.login(username='guia_catalogo_1', password='1234')
-        self.client.post(
+        resp1 = self.client.post(
             reverse('creacion:generar_ruta_ia'),
             data=json.dumps({
                 'ciudad': 'Sevilla',
@@ -161,10 +170,12 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
             }),
             content_type='application/json',
         )
+        self.assertEqual(resp1.status_code, 202)
+        self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': resp1.json()['sesion_generacion_id']}))
         self.client.logout()
 
         self.client.login(username='guia_catalogo_2', password='1234')
-        self.client.post(
+        resp2 = self.client.post(
             reverse('creacion:generar_ruta_ia'),
             data=json.dumps({
                 'ciudad': 'Granada',
@@ -175,6 +186,8 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
             }),
             content_type='application/json',
         )
+        self.assertEqual(resp2.status_code, 202)
+        self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': resp2.json()['sesion_generacion_id']}))
 
         response = self.client.get(reverse('rutas-catalogo'))
         self.assertEqual(response.status_code, 200)

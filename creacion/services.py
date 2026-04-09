@@ -1078,6 +1078,28 @@ def obtener_estado_sesion_generacion(request, session_id, refresh_ttl=True):
     if refresh_ttl:
         estado['actualizado_en'] = ahora_epoch
         estado['expira_en'] = ahora_epoch + SESION_GENERACION_TTL_SECONDS
+        
+        # Sincronización perezosa con el resultado asíncrono (Celery)
+        if estado.get('checkpoint_actual') == 'procesando_ia':
+            historial = Historial_ia.objects.filter(sesion_generacion_id=session_id).order_by('-momento').first()
+            if historial and historial.estado_tarea == 'completado' and historial.respuesta:
+                # La IA terminó. Actualizamos el estado de la sesión para que el polling vea el éxito.
+                ruta_generada = historial.respuesta
+                # Determinamos el siguiente checkpoint basado en si era modo selección o no
+                payload = estado.get('payload_normalizado') or {}
+                if payload.get('modo_seleccion'):
+                    estado['checkpoint_actual'] = 'ruta_generada'
+                else:
+                    estado['checkpoint_actual'] = 'ruta_guardada'
+                
+                estado['paradas_propuestas'] = ruta_generada.get('paradas') or []
+                # Si se generó una ruta_id en el proceso (aunque ahora se suele persistir después),
+                # podrías vincularla aquí si el task la guardó.
+                
+            elif historial and historial.estado_tarea == 'error':
+                estado['checkpoint_actual'] = 'error'
+                estado['mensaje_error'] = historial.mensaje_error
+
         store[str(session_id)] = estado
         request.session[SESION_GENERACION_STORE_KEY] = store
         request.session.modified = True
@@ -1361,7 +1383,7 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
     return ruta
 
 
-def pre_crear_historial_ia(payload):
+def pre_crear_historial_ia(payload, sesion_id=None):
     """
     Crea un registro inicial en Historial_ia para obtener un ID
     antes de comenzar la generación asíncrona.
@@ -1369,6 +1391,7 @@ def pre_crear_historial_ia(payload):
     try:
         return Historial_ia.objects.create(
             prompt=json.dumps(payload),
+            sesion_generacion_id=sesion_id,
             estado_tarea='procesando',
             etapa_actual='iniciando'
         )

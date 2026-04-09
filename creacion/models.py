@@ -5,6 +5,7 @@ class Historial_ia(models.Model):
     prompt = models.TextField(blank=False, null=False)
     respuesta = models.JSONField(blank=True, null=True)
     momento = models.DateTimeField(auto_now_add=True)
+    sesion_generacion_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
 
     # Tracking de estado y errores
     estado_tarea = models.CharField(max_length=20, default='procesando')

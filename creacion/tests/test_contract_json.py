@@ -3,12 +3,13 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from rutas.models import AuthUser, Guia
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class CrearRutaContractJsonTests(TestCase):
     def setUp(self):
         self.client = Client()
@@ -40,12 +41,13 @@ class CrearRutaContractJsonTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertIn('status', data)
         self.assertIn('mensaje', data)
-        self.assertIn('ruta_id', data)
-        self.assertIn('datos_ruta', data)
+        self.assertIn('historial_id', data)
+        self.assertIn('sesion_generacion_id', data)
+        self.assertIn('checkpoint_actual', data)
 
     def test_generar_ruta_ia_error_campos_obligatorios_mensaje_coherente(self):
         response = self.client.post(

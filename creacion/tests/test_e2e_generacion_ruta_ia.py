@@ -30,7 +30,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import LineString, Point
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from creacion import services as creacion_services
@@ -850,6 +850,7 @@ class GraphHopperE2ETest(TestCase):
 # 6. Flujo HTTP completo (vistas Django)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class FlujHttpGeneracionRutaE2ETest(TestCase):
     """Prueba el flujo completo a través de las vistas HTTP."""
 
@@ -885,14 +886,23 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertEqual(data["status"], "OK")
-        self.assertIn("ruta_id", data)
-        self.assertIn("datos_ruta", data)
+        self.assertIn("historial_id", data)
         self.assertIn("sesion_generacion_id", data)
-        self.assertIn("checkpoint_actual", data)
-        self.assertEqual(data["checkpoint_actual"], "ruta_guardada")
+        self.assertEqual(data["checkpoint_actual"], "procesando_ia")
+        
+        # Como estamos en ALWAYS_EAGER, la tarea ya terminó. 
+        # Al consultar la sesión, el "lazy sync" debería actualizarla a ruta_guardada.
+        session_id = data["sesion_generacion_id"]
+        response_poll = self.client.get(
+            reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id})
+        )
+        self.assertEqual(response_poll.status_code, 200)
+        data_poll = response_poll.json()["datos"]
+        self.assertEqual(data_poll["checkpoint_actual"], "ruta_guardada")
+        self.assertIn("paradas_propuestas", data_poll)
 
     def test_endpoint_rechaza_usuario_no_autenticado_con_401(self):
         cliente_anonimo = Client()
@@ -1083,6 +1093,7 @@ class RecalcularRutaAjaxE2ETest(TestCase):
 # 8. Sesión de generación IA — checkpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class SesionGeneracionE2ETest(TestCase):
     """Prueba el ciclo completo de checkpoints de la sesión de generación."""
 
@@ -1109,7 +1120,7 @@ class SesionGeneracionE2ETest(TestCase):
             data=json.dumps(_PAYLOAD_FRONTEND),
             content_type="application/json",
         )
-        self.assertEqual(response_gen.status_code, 200)
+        self.assertEqual(response_gen.status_code, 202)
         session_id = response_gen.json()["sesion_generacion_id"]
         self.assertTrue(session_id)
 
@@ -1163,6 +1174,7 @@ class SesionGeneracionE2ETest(TestCase):
 # 9. Modo selección: propuesta → confirmación parcial
 # ─────────────────────────────────────────────────────────────────────────────
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class ModoSeleccionE2ETest(TestCase):
     """Prueba el flujo modo_seleccion: el guía elige qué paradas guardar."""
 
@@ -1182,14 +1194,19 @@ class ModoSeleccionE2ETest(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
-        self.assertEqual(data["checkpoint_actual"], "ruta_generada")
+        self.assertEqual(data["checkpoint_actual"], "procesando_ia")
         self.assertIn("sesion_generacion_id", data)
-        # No debe contener ruta_id todavía
-        self.assertNotIn("ruta_id", data)
-        # Las paradas propuestas deben estar en datos_ruta
-        paradas = data["datos_ruta"]["paradas"]
+        
+        # Consultamos la sesión para disparar el sync y ver la propuesta
+        session_id = data["sesion_generacion_id"]
+        response_poll = self.client.get(
+            reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id})
+        )
+        data_poll = response_poll.json()["datos"]
+        self.assertEqual(data_poll["checkpoint_actual"], "ruta_generada")
+        paradas = data_poll["paradas_propuestas"]
         self.assertEqual(len(paradas), 5)
 
     @patch("creacion.views._guardar_ruta_ia_en_bd")
@@ -1211,6 +1228,7 @@ class ModoSeleccionE2ETest(TestCase):
             data=json.dumps(payload_seleccion),
             content_type="application/json",
         )
+        self.assertEqual(response_gen.status_code, 202)
         session_id = response_gen.json()["sesion_generacion_id"]
 
         # 2. Confirmar solo las paradas 0, 2, 4 (índices pares)

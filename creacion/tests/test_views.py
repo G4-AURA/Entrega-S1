@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from creacion import services
@@ -23,6 +23,7 @@ def _crear_guia_para_usuario(user, tipo_suscripcion=Guia.Suscripcion.FREEMIUM):
     return guia
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class GenerarRutaIAViewTests(TestCase):
     def setUp(self):
         self.client = Client()
@@ -64,7 +65,7 @@ class GenerarRutaIAViewTests(TestCase):
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         mock_consultar.assert_called_once_with({
             'ciudad': 'Sevilla',
             'duracion': 3.0,
@@ -102,7 +103,7 @@ class GenerarRutaIAViewTests(TestCase):
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 202) # El inicio siempre es 202 si el formato es correcto
         self.assertIn('Error en los datos', response.json()['mensaje'])
 
     @patch('creacion.views._obtener_guia_para_usuario')
@@ -114,7 +115,7 @@ class GenerarRutaIAViewTests(TestCase):
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()['status'], 'ERROR')
 
     @patch(
@@ -131,7 +132,7 @@ class GenerarRutaIAViewTests(TestCase):
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()['status'], 'ERROR')
         self.assertIn('expirado', response.json()['mensaje'].lower())
 
