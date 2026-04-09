@@ -1361,9 +1361,23 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
     return ruta
 
 
-def guardar_historial_ruta_ia(payload, ruta_generada):
+def pre_crear_historial_ia(payload):
     try:
-        Historial_ia.objects.create(prompt=json.dumps(payload), respuesta=ruta_generada)
+        return Historial_ia.objects.create(
+            prompt=json.dumps(payload),
+            estado_tarea='procesando',
+            etapa_actual='iniciando'
+        )
+    except DatabaseError:
+        raise ErrorPersistenciaRuta('Error de base de datos al inicializar seguimiento.')
+
+
+def guardar_historial_ruta_ia(payload, ruta_generada, historial_id=None):
+    try:
+        if historial_id:
+            Historial_ia.objects.filter(id=historial_id).update(respuesta=ruta_generada)
+        else:
+            Historial_ia.objects.create(prompt=json.dumps(payload), respuesta=ruta_generada)
     except DatabaseError:
         logger.exception('No se pudo guardar el historial de IA')
         return (
@@ -1747,21 +1761,15 @@ def _seleccionar_mejor_alternativa(alternativas):
 # Grafo y orquestación
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str) -> dict:
-    """
-    Invoca el pipeline completo de 4 nodos (generacion → validacion →
-    scoring → optimizacion) para una variación concreta del prompt.
-
-    Devuelve un dict compatible con _seleccionar_mejor_alternativa:
-        {
-            'ruta':                          dict,
-            'metricas':                      {distancia_total_km, diversidad, coherencia_tematica},
-            'paradas_rechazadas_validacion': list[dict],
-        }
-    """
+def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str, historial_id: int = None) -> dict:
     payload_variacion = {**payload, '_variacion': variacion}
     grafo = construir_grafo()
-    state_resultado = grafo.invoke({'usuario_input': payload_variacion})
+    
+    state_resultado = grafo.invoke({
+        'usuario_input': payload_variacion,
+        'historial_id': historial_id,
+        'duraciones': {}
+    })
 
     ruta = state_resultado.get('ruta_final') or {}
     metricas = state_resultado.get('metricas_scoring') or {
@@ -1770,15 +1778,17 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str) -> dict:
         'coherencia_tematica': 0.5,
     }
     razones_descarte = state_resultado.get('razones_descarte') or []
+    duraciones = state_resultado.get('duraciones') or {}
 
     return {
         'ruta': ruta,
         'metricas': metricas,
         'paradas_rechazadas_validacion': razones_descarte,
+        'duraciones': duraciones,
     }
 
 
-def consultar_langgraph(prompt_params: dict) -> dict:
+def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
     try:
         num_alternativas = int(prompt_params.get('num_alternativas', 3))
     except (TypeError, ValueError):
@@ -1790,10 +1800,13 @@ def consultar_langgraph(prompt_params: dict) -> dict:
     for idx in range(num_alternativas):
         variacion = _VARIACIONES_ALTERNATIVA[idx % len(_VARIACIONES_ALTERNATIVA)]
         try:
-            alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion)
+            alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion, historial_id=historial_id)
         except ErrorIntegracionIA:
             continue
         alternativas.append(alternativa)
+
+    if not alternativas:
+        raise ErrorIntegracionIA("No se pudo generar ninguna alternativa válida de ruta.")
 
     mejor, evaluadas = _seleccionar_mejor_alternativa(alternativas)
     ruta_final = mejor['ruta']
@@ -1803,4 +1816,8 @@ def consultar_langgraph(prompt_params: dict) -> dict:
         for a in evaluadas
     ]
     ruta_final['metricas_seleccion'] = mejor.get('metricas')
+    
+    if 'duraciones' in mejor:
+        ruta_final['duraciones_etapas'] = mejor['duraciones']
+
     return ruta_final

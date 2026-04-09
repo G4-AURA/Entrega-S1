@@ -18,7 +18,8 @@ from typing import TypedDict
  
  
 class State(TypedDict):
-    # --- Entrada ---
+    historial_id: int
+    duraciones: dict[str, float]
     usuario_input: dict
  
     # --- Generación (nodo 1) ---

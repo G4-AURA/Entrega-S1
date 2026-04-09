@@ -27,6 +27,7 @@ from billing.tier_guard import (
 )
 from creacion import services
 from creacion.services import consultar_langgraph
+from creacion.tasks import tarea_generar_ruta_ia
 from rutas.models import Guia, Ruta
 
 logger = logging.getLogger(__name__)
@@ -140,134 +141,19 @@ def generar_ruta_ia(request):
         except TierRuleViolation as exc:
             return tier_error_response(exc)
 
-        sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload)
+        historial = services.pre_crear_historial_ia(payload)
+        tarea_generar_ruta_ia.delay(historial.id, payload)
 
-        ruta_generada = consultar_langgraph(payload)
-        if not isinstance(ruta_generada, dict):
-            raise services.ErrorValidacionRuta('La IA devolvió un formato de ruta no válido.')
-
-        stops_limited, stop_warning = clamp_generated_stops_to_tier(
-            guia,
-            ruta_generada.get('paradas'),
-        )
-        if stop_warning:
-            tier_warnings = [*tier_warnings, stop_warning]
-            ruta_generada = dict(ruta_generada)
-            ruta_generada['paradas'] = stops_limited
-
-        try:
-            ensure_route_people_count_allowed(
-                guia,
-                ruta_generada.get('num_personas') or payload.get('personas'),
-            )
-            ensure_moods_allowed(
-                guia,
-                ruta_generada.get('mood') or payload.get('mood') or [],
-            )
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
-
-        estado_propuesta = services.avanzar_checkpoint_sesion_generacion(
-            request,
-            sesion_generacion['session_id'],
-            checkpoint='ruta_generada',
-            paradas_propuestas=ruta_generada.get('paradas') or [],
-            datos_extra={
-                'ruta_generada_base': {
-                    'titulo': ruta_generada.get('titulo'),
-                    'descripcion': ruta_generada.get('descripcion'),
-                    'duracion_horas': ruta_generada.get('duracion_horas') or ruta_generada.get('duracion_estimada'),
-                    'num_personas': ruta_generada.get('num_personas'),
-                    'nivel_exigencia': ruta_generada.get('nivel_exigencia') or payload.get('exigencia'),
-                    'mood': ruta_generada.get('mood') or payload.get('mood') or [],
-                }
+        return JsonResponse(
+            {
+                'status': 'OK',
+                'mensaje': 'Generación de ruta iniciada en segundo plano.',
+                'historial_id': historial.id,
+                'status_tarea': 'procesando',
+                'warnings': tier_warnings,
             },
+            status=202,
         )
-
-        for parada_rechazada in ruta_generada.get('paradas_rechazadas_validacion') or []:
-            estado_propuesta = services.avanzar_checkpoint_sesion_generacion(
-                request,
-                sesion_generacion['session_id'],
-                checkpoint='validacion_paradas',
-                parada_rechazada={
-                    'nombre': parada_rechazada.get('nombre'),
-                    'coordenadas': parada_rechazada.get('coordenadas'),
-                },
-                motivo_rechazo=parada_rechazada.get('motivo_rechazo') or 'Parada inválida detectada automáticamente.',
-            )
-
-        if modo_seleccion:
-            record_ai_generation_usage(guia)
-            return JsonResponse(
-                {
-                    'status': 'OK',
-                    'mensaje': 'Ruta propuesta generada. Selecciona las paradas que deseas guardar.',
-                    'sesion_generacion_id': sesion_generacion['session_id'],
-                    'checkpoint_actual': estado_propuesta.get('checkpoint_actual'),
-                    'datos_ruta': {
-                        **ruta_generada,
-                        'paradas': estado_propuesta.get('paradas_propuestas') or [],
-                    },
-                    'warnings': tier_warnings,
-                },
-                status=200,
-            )
-
-        try:
-            ensure_route_stop_count_allowed(
-                guia,
-                len((ruta_generada or {}).get('paradas') or []),
-            )
-            ensure_route_people_count_allowed(
-                guia,
-                ruta_generada.get('num_personas') or payload.get('personas'),
-            )
-            ensure_moods_allowed(
-                guia,
-                ruta_generada.get('mood') or payload.get('mood') or [],
-            )
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
-
-        ruta_guardada = _guardar_ruta_ia_en_bd(guia=guia, payload=payload, ruta_generada=ruta_generada)
-        estado_actualizado = services.avanzar_checkpoint_sesion_generacion(
-            request,
-            sesion_generacion['session_id'],
-            checkpoint='ruta_guardada',
-            datos_extra={'ruta_id': ruta_guardada.id},
-        )
-        record_ai_generation_usage(guia)
-
-        ruta_generada['checkpoint_contexto'] = {
-            'restricciones_usuario': estado_actualizado.get('restricciones_usuario') or [],
-            'paradas_rechazadas': estado_actualizado.get('paradas_rechazadas') or [],
-        }
-
-        advertencias = []
-        advertencia_historial = services.guardar_historial_ruta_ia(payload, ruta_generada)
-        if advertencia_historial:
-            advertencias.append(advertencia_historial)
-
-        response_data = {
-            'status': 'OK',
-            'mensaje': 'Ruta generada, optimizada y guardada correctamente.',
-            'ruta_id': ruta_guardada.id,
-            'sesion_generacion_id': sesion_generacion['session_id'],
-            'checkpoint_actual': estado_actualizado.get('checkpoint_actual'),
-            'datos_ruta': ruta_generada,
-            'datos': {
-                'ruta_id': ruta_guardada.id,
-                'ruta': ruta_generada,
-                'sesion_generacion_id': sesion_generacion['session_id'],
-            },
-        }
-        if advertencias:
-            response_data['advertencias'] = advertencias
-            response_data['datos']['advertencias'] = advertencias
-        if tier_warnings:
-            response_data['warnings'] = tier_warnings
-
-        return JsonResponse(response_data, status=200)
     except (services.ErrorValidacionRuta, ValueError) as exc:
         logger.warning('Error de validación en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': f'Error en los datos: {str(exc)}'}, status=400)
