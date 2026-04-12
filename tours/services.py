@@ -388,8 +388,7 @@ def obtener_mensajes_hilo_privado_guia(
 def iniciar_sesion(sesion: SesionTour) -> None:
     sesion.estado = SesionTour.EN_CURSO
     sesion.fecha_inicio = timezone.now()
-    sesion.codigo_acceso = generar_codigo_unico()
-    sesion.save(update_fields=["estado", "fecha_inicio", "codigo_acceso"])
+    sesion.save(update_fields=["estado", "fecha_inicio"])
     set_route_snapshot(sesion)
 
 

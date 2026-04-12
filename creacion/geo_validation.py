@@ -1,5 +1,6 @@
 import math
 import re
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -16,6 +17,7 @@ UMBRAL_POR_TIPO_GEOMETRIA_M = {
     'unknown': 20.0,
 }
 
+logger = logging.getLogger(__name__)
 
 class NoConvergenciaCoordenadasError(Exception):
     """No se pudo completar una lista de paradas válidas dentro del presupuesto."""
@@ -406,7 +408,12 @@ def completar_lista_paradas_validadas(
         raw = cola.pop(0)
         evaluadas += 1
 
-        candidato = normalizador_candidato(raw, idx_normalizacion)
+        try:
+            candidato = normalizador_candidato(raw, idx_normalizacion)
+        except (TypeError, ValueError, AttributeError) as exc:
+            logger.debug('Candidato descartado por error de normalización: %s', exc)
+            continue
+
         idx_normalizacion += 1
         if not candidato:
             continue
