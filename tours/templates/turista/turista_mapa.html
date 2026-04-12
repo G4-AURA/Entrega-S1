@@ -128,11 +128,11 @@
                 <div class="chat-input-container">
                     <input type="file" id="chat-image-input" class="chat-image-input"
                         accept="image/jpeg,image/png,image/webp" hidden>
-                    <button id="chat-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto">
+                    <button id="chat-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto" {% if sesion.estado != 'en_curso' %}disabled{% endif %}>
                         <span class="material-icons-round">image</span>
                     </button>
-                    <input type="text" id="chat-input" class="chat-input" placeholder="Escribe un mensaje...">
-                    <button id="chat-send" class="chat-send-btn">
+                    <input type="text" id="chat-input" class="chat-input" placeholder="{% if sesion.estado == 'en_curso' %}Escribe un mensaje...{% else %}El chat se habilita al iniciar el tour{% endif %}" {% if sesion.estado != 'en_curso' %}disabled{% endif %}>
+                    <button id="chat-send" class="chat-send-btn" {% if sesion.estado != 'en_curso' %}disabled{% endif %}>
                         <span class="material-icons-round">send</span>
                     </button>
                 </div>
@@ -164,5 +164,5 @@
     const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
     const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
 </script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032301"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026032401"></script>
 {% endblock %}

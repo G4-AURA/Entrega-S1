@@ -570,6 +570,9 @@ function _initSessionCountdown() {
     const applyRemoteState = (data) => {
         if (!data || !data.estado) return;
         sesionEstadoActual = data.estado;
+        document.dispatchEvent(new CustomEvent('sessionStateChanged', {
+            detail: { estado: data.estado },
+        }));
         const remoteStarted = data.estado === 'en_curso';
 
         if (data.parada_actual_id != null) {
@@ -656,6 +659,7 @@ function _initChat() {
     const chatImageBtn = document.getElementById('chat-image-btn');
     const chatImageInput = document.getElementById('chat-image-input');
     const chatPreviewContainer = document.getElementById('chat-preview-container');
+    const chatLockedNote = document.getElementById('chat-locked-note');
     if (!chatMessages || !chatInput || !chatSendBtn || !chatImageBtn || !chatImageInput || !chatPreviewContainer) return;
 
     let lastMessageTime = null;
@@ -670,6 +674,26 @@ function _initChat() {
     const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName
         : (document.body.getAttribute('data-username') || '');
+
+    function syncChatAvailability() {
+        const enabled = _sesionEnCurso();
+
+        chatInput.disabled = !enabled;
+        chatSendBtn.disabled = !enabled;
+        chatImageBtn.disabled = !enabled;
+        chatInput.placeholder = enabled
+            ? 'Escribe un mensaje...'
+            : 'El chat se habilita al iniciar el tour';
+
+        if (!enabled) {
+            clearPreview();
+            chatInput.value = '';
+        }
+
+        if (chatLockedNote) {
+            chatLockedNote.style.display = enabled ? 'none' : 'block';
+        }
+    }
 
     function clearPreview() {
         if (previewObjectUrl) {
@@ -787,11 +811,21 @@ function _initChat() {
         }
         fetch(url)
             .then(r => r.ok ? r.json() : Promise.reject())
-            .then(data => renderMessages(data.mensajes || data))
+            .then(data => {
+                if (data && data.estado_sesion) {
+                    sesionEstadoActual = data.estado_sesion;
+                    document.dispatchEvent(new CustomEvent('sessionStateChanged', {
+                        detail: { estado: data.estado_sesion },
+                    }));
+                }
+                renderMessages(data.mensajes || data);
+            })
             .catch(() => {});
     }
 
     function sendMessage() {
+        if (!_sesionEnCurso()) return;
+
         const texto = chatInput.value.trim();
         if (!texto && !selectedFile) return;
 
@@ -844,6 +878,12 @@ function _initChat() {
 
     fetchMessages();
     setInterval(fetchMessages, 5000);
+
+    document.addEventListener('sessionStateChanged', () => {
+        syncChatAvailability();
+    });
+
+    syncChatAvailability();
 }
 
 
