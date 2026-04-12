@@ -190,6 +190,11 @@ class Curiosidad(models.Model):
     )
     
     imagen_url = models.URLField(max_length=500, null=True, blank=True)
+    imagen_manual = models.ImageField(
+        upload_to='curiosidades_manual/%Y/%m/%d/',
+        null=True,
+        blank=True,
+    )
     fecha_generacion = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -198,3 +203,11 @@ class Curiosidad(models.Model):
 
     def __str__(self):
         return f"{self.titulo} ({self.parada.nombre})"
+
+    @property
+    def manual_url(self):
+        return self.imagen_manual.url if self.imagen_manual else None
+
+    @property
+    def imagen_public_url(self):
+        return self.manual_url or self.imagen_url

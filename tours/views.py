@@ -94,7 +94,8 @@ def _resolver_curiosidad_cercana(sesion: SesionTour, latitud: float, longitud: f
             "texto": curiosidad.texto,
             "tipo": curiosidad.tipo,
             "ciudad": curiosidad.ciudad,
-            "imagen_url": curiosidad.imagen_url,
+            "imagen_url": curiosidad.imagen_public_url,
+            "manual_url": curiosidad.manual_url,
         },
     }
 
@@ -848,7 +849,8 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
                 "texto": curiosidad.texto,
                 "tipo": curiosidad.tipo,
                 "ciudad": curiosidad.ciudad,
-                "imagen_url": curiosidad.imagen_url,
+                "imagen_url": curiosidad.imagen_public_url,
+                "manual_url": curiosidad.manual_url,
             },
         }
     )
