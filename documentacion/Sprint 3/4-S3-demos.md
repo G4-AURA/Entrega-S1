@@ -19,7 +19,7 @@
 **Tipo de documento:** Análisis  
 **Entrega:** S3  
 **Versión:** v1.0  
-**Fecha:** 
+**Fecha:** 15/04/26
 </div>
 
 ---
