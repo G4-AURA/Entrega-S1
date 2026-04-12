@@ -109,6 +109,28 @@ def _render_ruta_no_autorizada(request):
         status=403,
     )
 
+def _serializar_mensaje(mensaje: MensajeChat, guia_user_id: int | None = None) -> dict:
+    """Serialización canónica de un MensajeChat para las respuestas JSON."""
+    def _build_sender_key(m: MensajeChat) -> str:
+        if m.remitente_id:
+            return f"user:{m.remitente_id}"
+        if m.turista_id:
+            return f"tourist:{m.turista_id}"
+        return f"name:{m.nombre_remitente}"
+ 
+    return {
+        "id": mensaje.id,
+        "nombre_remitente": mensaje.nombre_remitente,
+        "remitente_key": _build_sender_key(mensaje),
+        "es_guia": bool(guia_user_id and mensaje.remitente_id == guia_user_id),
+        "texto": mensaje.texto,
+        "imagen_url": mensaje.imagen.url if mensaje.imagen else None,
+        "momento": mensaje.momento.isoformat(),
+        "es_privado": mensaje.es_privado,
+        "destinatario_turista_id": mensaje.destinatario_turista_id,
+        "turista_id": mensaje.turista_id,
+    }
+
 
 def _render_join_error(request, mensaje: str, status: int = 400):
     return render(
@@ -884,42 +906,48 @@ def obtener_ubicaciones_turistas(request, sesion_id):
 
 
 # ===========================================================================
-# CHAT (accesible a turistas anÃ³nimos y al guÃ­a)
+# CHAT COMÚN
 # ===========================================================================
 
 @require_POST
 def enviar_mensaje(request, sesion_id):
-    """EnvÃ­a un mensaje. Acepta turistas anÃ³nimos (cookie) y el guÃ­a (auth)."""
+    """
+    Envía un mensaje. Acepta turistas anónimos (cookie) y el guía (auth).
+ 
+    Parámetros adicionales en JSON / FormData:
+      es_privado            — bool, opcional (default false)
+      destinatario_turista_id — int, requerido si es_privado=true y el remitente es el guía
+    """
     imagen = None
     modo_chat = ""
+    es_privado = False
+    destinatario_turista_id = None
+ 
     if request.content_type and request.content_type.startswith("multipart/form-data"):
         texto = request.POST.get("texto", "").strip()
         imagen = request.FILES.get("imagen")
         modo_chat = request.POST.get("modo_chat", "").strip()
+        es_privado = request.POST.get("es_privado", "").lower() in ("true", "1", "yes")
+        destinatario_turista_id = request.POST.get("destinatario_turista_id") or None
     else:
         try:
             body = json.loads(request.body or "{}")
         except json.JSONDecodeError:
-            return JsonResponse({"error": "JSON invÃ¡lido."}, status=400)
+            return JsonResponse({"error": "JSON inválido."}, status=400)
         texto = body.get("texto", "").strip()
         modo_chat = str(body.get("modo_chat") or "").strip()
-
+        es_privado = bool(body.get("es_privado", False))
+        destinatario_turista_id = body.get("destinatario_turista_id") or None
+ 
+    # Validaciones básicas de contenido
     if not texto and not imagen:
-        return JsonResponse(
-            {"error": "El mensaje no puede estar vacío. Debes enviar texto o una imagen."},
-            status=400,
-        )
-
+        return JsonResponse({"error": "El mensaje no puede estar vacío. Debes enviar texto o una imagen."}, status=400)
     if len(texto) > 5000:
         return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
-
     if imagen:
         allowed_types = {"image/jpeg", "image/png", "image/webp"}
         if imagen.content_type not in allowed_types:
-            return JsonResponse(
-                {"error": "Formato de imagen no permitido. Usa JPEG, PNG o WebP."},
-                status=400,
-            )
+            return JsonResponse({"error": "Formato de imagen no permitido. Usa JPEG, PNG o WebP."}, status=400)
         if imagen.size > 5 * 1024 * 1024:
             return JsonResponse(
                 {"error": "La imagen supera el tamaño máximo de 5MB."},
@@ -944,17 +972,33 @@ def enviar_mensaje(request, sesion_id):
             estado_sesion=sesion.estado,
         )
 
-
     remitente_user, remitente_turista, nombre_remitente, error = services.determinar_remitente(
         request, sesion
     )
     if error:
         return JsonResponse({"error": error}, status=403)
 
-    try:
-        ensure_chat_mode_allowed(sesion, modo_chat)
-    except TierRuleViolation as exc:
-        return tier_error_response(exc)
+    # Validación de tier solo para mensajes públicos
+    if not es_privado:
+        try:
+            ensure_chat_mode_allowed(sesion, modo_chat)
+        except TierRuleViolation as exc:
+            return tier_error_response(exc)
+
+    # Resolución del destinatario privado
+    destinatario_turista = None
+    if es_privado and remitente_user and destinatario_turista_id:
+        # El guía envía a un turista concreto
+        try:
+            destinatario_turista = Turista.objects.get(id=int(destinatario_turista_id))
+            # Verificar que el turista pertenece a esta sesión
+            if not TuristaSesion.objects.filter(turista=destinatario_turista, sesion_tour=sesion).exists():
+                return JsonResponse({"error": "El turista destinatario no pertenece a esta sesión."}, status=400)
+        except (Turista.DoesNotExist, ValueError):
+            return JsonResponse({"error": "El turista destinatario no existe."}, status=400)
+    elif es_privado and remitente_turista:
+        # El turista responde al guía (sin destinatario explícito — el guía es implícito)
+        destinatario_turista = None
 
     try:
         mensaje = services.crear_mensaje(
@@ -964,21 +1008,31 @@ def enviar_mensaje(request, sesion_id):
             nombre_remitente=nombre_remitente,
             texto=texto,
             imagen=imagen,
+            es_privado=es_privado,
+            destinatario_turista=destinatario_turista,
         )
     except Exception:
         logger.exception("Error creando mensaje en sesión %s", sesion.id)
         return _json_internal_error()
+
+    guia_user_id = None
+    try:
+        guia_user_id = sesion.ruta.guia.user.user_id
+    except AttributeError:
+        pass
 
     return JsonResponse(
         {
             "status": "ok",
             "mensaje_id": mensaje.id,
             "id": mensaje.id,
-
             "nombre_remitente": mensaje.nombre_remitente,
             "texto": mensaje.texto,
             "imagen_url": mensaje.imagen.url if mensaje.imagen else None,
             "momento": mensaje.momento.isoformat(),
+            "es_privado": mensaje.es_privado,
+            "destinatario_turista_id": mensaje.destinatario_turista_id,
+            "es_guia": bool(guia_user_id and mensaje.remitente_id == guia_user_id),
         },
         status=201,
     )
@@ -1016,102 +1070,175 @@ def descargar_imagen_mensaje(request, sesion_id, mensaje_id):
 
 @require_GET
 def obtener_mensajes(request, sesion_id):
-    """Devuelve los mensajes de la sesión con filtro opcional por `desde` y `limite`."""
+    """
+    Devuelve los mensajes de la sesión con filtro opcional por `desde` y `limite`.
+
+    Para turistas: solo mensajes públicos + mensajes privados propios.
+    Para el guía:  todos los mensajes (públicos y privados de todos los turistas).
+    """
     sesion, error_response = _get_sesion_or_json_404(sesion_id)
     if error_response:
         return error_response
-
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
-
+ 
     desde_str = request.GET.get("desde")
     limite_str = request.GET.get("limite", "50")
     desde_dt = None
-
+ 
     try:
         limite = int(limite_str)
     except (TypeError, ValueError):
         return JsonResponse({"error": "El parámetro limite debe ser un entero."}, status=400)
-
     if limite < 1 or limite > 200:
         return JsonResponse({"error": "El parámetro limite debe estar entre 1 y 200."}, status=400)
-
-    qs = MensajeChat.objects.filter(sesion_tour=sesion)
-
+ 
+    # ── Construir queryset base ────────────────────────────────────────────
+    # El chat grupal SOLO debe devolver mensajes públicos para todos.
+    # Los mensajes privados tienen su propio endpoint (mensajes_privados_hilo).
+    qs = MensajeChat.objects.filter(sesion_tour=sesion, es_privado=False)
+ 
     if desde_str:
-        parsed_desde_dt = parse_datetime(desde_str)
-        if not parsed_desde_dt:
-            return JsonResponse(
-                {"error": "El parámetro desde debe ser una fecha ISO-8601 válida."},
-                status=400,
-            )
-
-        desde_dt = parsed_desde_dt
-
-        # Evita perder mensajes cuando varios comparten exactamente el mismo timestamp.
-        primer_id_mismo_momento = (
-            qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
-        )
+        parsed = parse_datetime(desde_str)
+        if not parsed:
+            return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        desde_dt = parsed
+        primer_id_mismo_momento = qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
         if primer_id_mismo_momento is None:
             qs = qs.filter(momento__gt=desde_dt)
         else:
-            qs = qs.filter(
-                Q(momento__gt=desde_dt)
-                | (Q(momento=desde_dt) & Q(id__gt=primer_id_mismo_momento))
-            )
-
+            qs = qs.filter(Q(momento__gt=desde_dt) | (Q(momento=desde_dt) & Q(id__gt=primer_id_mismo_momento)))
+ 
     mensajes_qs = qs.order_by("-momento", "-id")[:limite]
     mensajes_ordenados = list(reversed(list(mensajes_qs)))
-
+ 
     guia_user_id = None
     try:
         guia_user_id = sesion.ruta.guia.user.user_id
     except AttributeError:
-        guia_user_id = None
-
-    def _build_sender_key(mensaje: MensajeChat) -> str:
-        if mensaje.remitente_id:
-            return f"user:{mensaje.remitente_id}"
-        if mensaje.turista_id:
-            return f"tourist:{mensaje.turista_id}"
-        return f"name:{mensaje.nombre_remitente}"
-
+        pass
+ 
     mensajes = []
     ultimo_momento_serializado = None
-
+ 
     for m in mensajes_ordenados:
         momento_serializado = m.momento
-
         if desde_dt is not None:
             desde_cmp = desde_dt
-            if timezone.is_naive(momento_serializado) and timezone.is_aware(desde_cmp):
-                desde_cmp = timezone.make_naive(desde_cmp, timezone.get_current_timezone())
-            elif timezone.is_aware(momento_serializado) and timezone.is_naive(desde_cmp):
-                desde_cmp = timezone.make_aware(desde_cmp, timezone.get_current_timezone())
-
+            from django.utils import timezone as tz
+            if tz.is_naive(momento_serializado) and tz.is_aware(desde_cmp):
+                desde_cmp = tz.make_naive(desde_cmp, tz.get_current_timezone())
+            elif tz.is_aware(momento_serializado) and tz.is_naive(desde_cmp):
+                desde_cmp = tz.make_aware(desde_cmp, tz.get_current_timezone())
             if momento_serializado <= desde_cmp:
                 momento_serializado = desde_cmp + timedelta(microseconds=1)
-
+ 
         if ultimo_momento_serializado is not None and momento_serializado <= ultimo_momento_serializado:
             momento_serializado = ultimo_momento_serializado + timedelta(microseconds=1)
-
-        mensajes.append(
-            {
-                "id":               m.id,
-                "nombre_remitente": m.nombre_remitente,
-                "remitente_key":    _build_sender_key(m),
-                "es_guia":          bool(guia_user_id and m.remitente_id == guia_user_id),
-                "texto":            m.texto,
-                "imagen_url":       m.imagen.url if m.imagen else None,
-                "momento":          momento_serializado.isoformat(),
-            }
-        )
+ 
+        def _sender_key(msg):
+            if msg.remitente_id:
+                return f"user:{msg.remitente_id}"
+            if msg.turista_id:
+                return f"tourist:{msg.turista_id}"
+            return f"name:{msg.nombre_remitente}"
+ 
+        mensajes.append({
+            "id": m.id,
+            "nombre_remitente": m.nombre_remitente,
+            "remitente_key": _sender_key(m),
+            "es_guia": bool(guia_user_id and m.remitente_id == guia_user_id),
+            "texto": m.texto,
+            "imagen_url": m.imagen.url if m.imagen else None,
+            "momento": momento_serializado.isoformat(),
+            "es_privado": m.es_privado,
+            "destinatario_turista_id": m.destinatario_turista_id,
+            "turista_id": m.turista_id,
+        })
         ultimo_momento_serializado = momento_serializado
+ 
+    return JsonResponse({
+        "mensajes": mensajes,
+        "total": len(mensajes),
+        "estado_sesion": sesion.estado,
+    })
 
-    return JsonResponse(
-        {
-            "mensajes": mensajes,
-            "total": len(mensajes),
-            "estado_sesion": sesion.estado,
-        }
-    )
+
+# ===========================================================================
+# CHAT PRIVADO
+# ===========================================================================
+ 
+@require_GET
+def bandeja_privada_guia(request, sesion_id):
+    """
+    GET /tours/sesiones/<sesion_id>/chat-privado/bandeja/
+ 
+    Devuelve la lista de turistas activos con el último mensaje del hilo privado.
+    Solo accesible para el guía autenticado.
+    """
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+ 
+    bandeja = services.obtener_bandeja_privada_guia(sesion)
+    return JsonResponse({"bandeja": bandeja})
+ 
+ 
+@require_GET
+def mensajes_privados_hilo(request, sesion_id, turista_id):
+    """
+    GET /tours/sesiones/<sesion_id>/chat-privado/<turista_id>/mensajes/
+ 
+    Devuelve los mensajes del hilo privado entre el guía y el turista indicado.
+    Accesible tanto por el guía autenticado como por el propio turista (cookie).
+ 
+    Parámetros opcionales de query-string:
+      desde  — ISO-8601 datetime
+      limite — int (1-200, default 50)
+    """
+    sesion = get_object_or_404(SesionTour, id=sesion_id)
+    turista = get_object_or_404(Turista, id=turista_id)
+ 
+    # Verificar que el turista pertenece a la sesión
+    if not TuristaSesion.objects.filter(sesion_tour=sesion, turista=turista).exists():
+        return JsonResponse({"error": "El turista no pertenece a esta sesión."}, status=404)
+ 
+    # Control de acceso: guía o el propio turista
+    es_guia_req = request.user.is_authenticated and services.es_guia_de_sesion(request.user, sesion)
+    turista_cookie = services.obtener_turista_request(request)
+    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id
+ 
+    if not es_guia_req and not es_turista_propio:
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+ 
+    desde_str = request.GET.get("desde")
+    limite_str = request.GET.get("limite", "50")
+    desde_dt = None
+ 
+    try:
+        limite = int(limite_str)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "El parámetro limite debe ser un entero."}, status=400)
+    if limite < 1 or limite > 200:
+        return JsonResponse({"error": "El parámetro limite debe estar entre 1 y 200."}, status=400)
+ 
+    if desde_str:
+        desde_dt = parse_datetime(desde_str)
+        if not desde_dt:
+            return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+ 
+    mensajes = services.obtener_mensajes_privados_turista(sesion, turista, desde=desde_dt, limite=limite)
+ 
+    guia_user_id = None
+    try:
+        guia_user_id = sesion.ruta.guia.user.user_id
+    except AttributeError:
+        pass
+ 
+    return JsonResponse({
+        "mensajes": [_serializar_mensaje(m, guia_user_id) for m in mensajes],
+        "total": len(mensajes),
+        "turista_id": turista.id,
+        "turista_alias": turista.alias,
+        "estado_sesion": sesion.estado,
+    })

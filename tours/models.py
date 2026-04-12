@@ -174,15 +174,37 @@ class MensajeChat(models.Model):
     )
     momento = models.DateTimeField(auto_now_add=True)
 
+    # ── Campos de privacidad ─────────────────────────────────────────────────
+    es_privado = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True para mensajes del canal privado Guía ↔ Turista individual.",
+    )
+    destinatario_turista = models.ForeignKey(
+        Turista,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="mensajes_recibidos_privados",
+        help_text="Destinatario cuando el guía envía un mensaje privado a un turista concreto.",
+    )
+
     class Meta:
         db_table = "tours_mensaje_chat"
         ordering = ["momento"]
         verbose_name = "Mensaje de Chat"
         verbose_name_plural = "Mensajes de Chat"
+        indexes = [
+            # Optimiza la consulta de mensajes por sesión y tipo
+            models.Index(fields=["sesion_tour", "es_privado", "momento"]),
+            # Optimiza la bandeja privada del guía (conversaciones por turista)
+            models.Index(fields=["sesion_tour", "turista", "destinatario_turista"]),
+        ]
 
     def __str__(self) -> str:
         hora = self.momento.strftime("%H:%M") if self.momento else "S/F"
-        return f"[{hora}] {self.nombre_remitente}: {self.texto[:30]}"
+        tipo = "[P]" if self.es_privado else "[G]"
+        return f"{tipo} [{hora}] {self.nombre_remitente}: {self.texto[:30]}"
 
 
 # ---------------------------------------------------------------------------

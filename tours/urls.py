@@ -40,4 +40,17 @@ urlpatterns = [
         views.descargar_imagen_mensaje,
         name="descargar_imagen_mensaje",
     ),
+        # ------------------------------------------------------------------
+    # API REST — chat privado (Guía ↔ Turista individual)
+    # ------------------------------------------------------------------
+    path(
+        "sesiones/<int:sesion_id>/chat-privado/bandeja/",
+        views.bandeja_privada_guia,
+        name="bandeja_privada_guia",
+    ),
+    path(
+        "sesiones/<int:sesion_id>/chat-privado/<int:turista_id>/mensajes/",
+        views.mensajes_privados_hilo,
+        name="mensajes_privados_hilo",
+    ),
 ]
