@@ -8,6 +8,9 @@ Roles:
 
 S2.1-32: endpoint AJAX para recalcular bajo demanda.
 """
+import json
+import logging
+
 from datetime import timezone as dt_timezone
 from urllib.parse import quote_plus, unquote_plus
 
@@ -20,6 +23,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
+import requests
 
 from billing.models import Subscription, TierUsageEvent
 from billing.services import StripeAPIError, fetch_subscription_snapshot
@@ -39,7 +43,10 @@ from creacion import services as creacion_services
 from tours.models import SesionTour
 from .forms import EditarPerfilForm
 from . import services
-from .models import Guia, Parada, Ruta
+from .models import Curiosidad, Guia, Parada, Ruta
+
+logger = logging.getLogger(__name__)
+
 MAX_RUTAS_PAGE_SIZE = 9
 
 PLAN_LIMITS = {
@@ -394,9 +401,23 @@ def _refrescar_periodo_desde_stripe_si_falta(subscription):
             secret_key=getattr(settings, 'STRIPE_SECRET_KEY', ''),
             stripe_subscription_id=subscription.stripe_subscription_id,
         )
-    except StripeAPIError:
+    except StripeAPIError as exc:
+        logger.warning(
+            'No se pudo refrescar periodo Stripe para suscripción %s: %s',
+            subscription.stripe_subscription_id, exc,
+        )
         return subscription
-    except Exception:
+    except (requests.RequestException, TimeoutError) as exc:
+        logger.warning(
+            'Error de red al refrescar periodo Stripe para suscripción %s: %s',
+            subscription.stripe_subscription_id, exc,
+        )
+        return subscription
+    except (ValueError, TypeError, OSError) as exc:
+        logger.warning(
+            'Error procesando respuesta Stripe para suscripción %s: %s',
+            subscription.stripe_subscription_id, exc,
+        )
         return subscription
 
     period_end_epoch = _resolver_period_end_epoch(snapshot)
@@ -833,6 +854,110 @@ def obtener_curiosidad_parada_api(request, parada_id):
                 "titulo": curiosidad.titulo,
                 "texto": curiosidad.texto,
                 "tipo": curiosidad.tipo,
+                "imagen_url": curiosidad.imagen_url,
+                "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
+            },
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
+
+
+@login_required
+@require_http_methods(["POST", "PUT"])
+@user_passes_test(es_guia)
+def guardar_curiosidad_parada_api(request, parada_id):
+    """Guarda/actualiza una curiosidad manual por parada."""
+    try:
+        body = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {"status": "error", "mensaje": "JSON inválido."},
+            status=400,
+        )
+
+    texto = (body.get("texto") or "").strip()
+    tipo = (body.get("tipo") or "").strip()
+    if not texto:
+        return JsonResponse(
+            {"status": "error", "mensaje": "El campo 'texto' es obligatorio."},
+            status=400,
+        )
+    if not tipo:
+        return JsonResponse(
+            {"status": "error", "mensaje": "El campo 'tipo' es obligatorio."},
+            status=400,
+        )
+
+    tipos_validos = {choice[0] for choice in Curiosidad.TipoCuriosidad.choices}
+    if tipo not in tipos_validos:
+        return JsonResponse(
+            {
+                "status": "error",
+                "mensaje": "Tipo inválido. Valores permitidos: "
+                + ", ".join(sorted(tipos_validos)),
+            },
+            status=400,
+        )
+
+    parada_qs = Parada.objects.select_related(
+        "ruta", "ruta__guia", "ruta__guia__user", "ruta__guia__user__user"
+    )
+    try:
+        parada = parada_qs.get(id=parada_id)
+    except Parada.DoesNotExist:
+        return JsonResponse(
+            {"status": "error", "mensaje": "Parada no encontrada."},
+            status=404,
+        )
+
+    if not request.user.is_superuser and parada.ruta.guia.user.user != request.user:
+        return JsonResponse(
+            {"status": "error", "mensaje": "No tienes permisos para editar esta parada."},
+            status=403,
+        )
+
+    try:
+        ensure_curiosity_route_allowed(parada.ruta)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
+
+    titulo = (body.get("titulo") or "").strip() or f"Curiosidad: {parada.nombre}"
+    imagen_url = (body.get("imagen_url") or "").strip() or None
+
+    ciudad = (
+        Curiosidad.objects.filter(parada=parada).values_list("ciudad", flat=True).first()
+        or "Sevilla"
+    )
+
+    curiosidad, creada = Curiosidad.objects.get_or_create(
+        parada=parada,
+        defaults={
+            "ciudad": ciudad,
+            "titulo": titulo,
+            "texto": texto,
+            "tipo": tipo,
+            "imagen_url": imagen_url,
+        },
+    )
+
+    if not creada:
+        curiosidad.titulo = titulo
+        curiosidad.texto = texto
+        curiosidad.tipo = tipo
+        curiosidad.imagen_url = imagen_url
+        curiosidad.save(update_fields=["titulo", "texto", "tipo", "imagen_url"])
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "creada": creada,
+            "curiosidad": {
+                "id": curiosidad.id,
+                "parada_id": curiosidad.parada_id,
+                "titulo": curiosidad.titulo,
+                "texto": curiosidad.texto,
+                "tipo": curiosidad.tipo,
+                "ciudad": curiosidad.ciudad,
                 "imagen_url": curiosidad.imagen_url,
                 "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
             },

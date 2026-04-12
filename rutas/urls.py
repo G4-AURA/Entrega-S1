@@ -31,4 +31,9 @@ urlpatterns = [
         views.obtener_curiosidad_parada_api,
         name="parada-curiosidad",
     ),
+    path(
+        "api/paradas/<int:parada_id>/curiosidad/guardar/",
+        views.guardar_curiosidad_parada_api,
+        name="parada-curiosidad-guardar",
+    ),
 ]
