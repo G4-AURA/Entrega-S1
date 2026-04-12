@@ -289,7 +289,8 @@ def crear_mensaje(
 def iniciar_sesion(sesion: SesionTour) -> None:
     sesion.estado = SesionTour.EN_CURSO
     sesion.fecha_inicio = timezone.now()
-    sesion.save(update_fields=["estado", "fecha_inicio"])
+    sesion.codigo_acceso = generar_codigo_unico()
+    sesion.save(update_fields=["estado", "fecha_inicio", "codigo_acceso"])
     set_route_snapshot(sesion)
 
 

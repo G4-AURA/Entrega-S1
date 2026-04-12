@@ -52,7 +52,8 @@ class SesionesServicesUnitTests(TestCase):
     def test_iniciar_sesion_actualiza_estado_fecha_y_codigo(self):
         codigo_original = self.sesion.codigo_acceso
 
-        services.iniciar_sesion(self.sesion)
+        with patch("tours.services.generar_codigo_unico", return_value="UNIT02"):
+            services.iniciar_sesion(self.sesion)
         self.sesion.refresh_from_db()
 
         self.assertEqual(self.sesion.estado, SesionTour.EN_CURSO)
