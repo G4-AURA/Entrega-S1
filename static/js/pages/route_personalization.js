@@ -8,6 +8,9 @@
     const pantallaCarga = document.getElementById('pantalla-carga');
     const loadingStatusTitle = document.getElementById('loading-status-title');
     const loadingStatusDetail = document.getElementById('loading-status-detail');
+    const loadingProgressBar = document.getElementById('loading-progress-bar');
+    const loadingEta = document.getElementById('loading-eta');
+
     const rutaMeta = document.getElementById('ruta-meta');
     const seccionResultados = document.getElementById('seccion-resultados');
     const listaParadas = document.getElementById('lista-paradas');
@@ -59,6 +62,12 @@
         progressStepIndex = 0;
         actualizarMensajeProgreso(steps[progressStepIndex]);
 
+        if (loadingProgressBar) {
+            loadingProgressBar.style.width = '100%';
+            loadingProgressBar.classList.add('progress-bar-striped', 'progress-bar-animated', 'bg-brand');
+            loadingProgressBar.classList.remove('bg-success', 'bg-danger');
+        }
+
         progressTimerId = window.setInterval(() => {
             progressStepIndex = (progressStepIndex + 1) % steps.length;
             actualizarMensajeProgreso(steps[progressStepIndex]);
@@ -104,7 +113,98 @@
         if (!estaCargando) {
             detenerMensajesProgreso();
             actualizarMensajeProgreso({ title: 'Generando ruta...', detail: 'Preparando el proceso...' });
+            if (loadingProgressBar) {
+                loadingProgressBar.style.width = '0%';
+                loadingProgressBar.classList.remove('bg-danger', 'bg-success');
+                loadingProgressBar.classList.add('bg-brand');
+            }
+            if (loadingEta) loadingEta.textContent = 'Tiempo estimado: calculando...';
+        } else {
+            if (loadingProgressBar) {
+                loadingProgressBar.style.width = '0%';
+                loadingProgressBar.classList.remove('bg-danger', 'bg-success');
+                loadingProgressBar.classList.add('bg-brand');
+            }
+            if (loadingEta) loadingEta.textContent = 'Tiempo estimado: calculando...';
         }
+    }
+
+    function iniciarPollingProgreso(historialId, sesionId) {
+        detenerMensajesProgreso(); 
+
+        const url = config.urls.obtenerProgreso.replace('0', historialId);
+        
+        const TEXTOS_ETAPAS = {
+            'pendiente': 'Preparando entorno...',
+            'generacion': 'Buscando puntos de interés...',
+            'validacion': 'Validando coherencia geográfica...',
+            'scoring': 'Evaluando la mejor alternativa...',
+            'optimizacion': 'Optimizando la ruta...',
+            'finalizado': '¡Ruta lista!'
+        };
+
+        progressTimerId = window.setInterval(async () => {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) return;
+                const json = await response.json();
+                if (json.status !== 'OK') return;
+
+                const data = json.datos;
+                
+                if (loadingProgressBar) {
+                    loadingProgressBar.style.width = data.cargando_porcentaje + '%';
+                }
+
+                const textoEtapa = TEXTOS_ETAPAS[data.etapa_actual] || 'Generando ruta...';
+                actualizarMensajeProgreso({ title: textoEtapa, detail: 'Calculando la mejor opción para tus requerimientos.' });
+                
+                if (loadingEta) {
+                    if (data.estado_tarea === 'completado') {
+                        loadingEta.textContent = '¡Completado!';
+                    } else if (data.estado_tarea === 'error') {
+                        loadingEta.textContent = 'Error durante la generación';
+                    } else {
+                        const segundos = Math.ceil(data.eta_segundos);
+                        loadingEta.textContent = `Tiempo estimado: ${segundos}s`;
+                    }
+                }
+
+                if (data.estado_tarea === 'completado') {
+                    detenerMensajesProgreso();
+                    if (loadingProgressBar) {
+                        loadingProgressBar.style.width = '100%';
+                        loadingProgressBar.classList.remove('bg-brand', 'progress-bar-animated', 'progress-bar-striped');
+                        loadingProgressBar.classList.add('bg-success');
+                    }
+                    
+                    form.classList.add('d-none');
+                    document.getElementById('subtitulo-form').classList.add('d-none');
+                    
+                    window.setTimeout(() => {
+                        setCargando(false);
+                        renderizarRutaPropuesta(data.datos_ruta || {});
+                        
+                        estado.className = 'alert alert-success mt-3';
+                        estado.innerHTML = `Opciones generadas correctamente.<span class="badge bg-warning text-dark ms-2">Checkpoint IA: ruta_generada</span>`;
+                        estado.classList.remove('d-none');
+                    }, 500); 
+                } else if (data.estado_tarea === 'error') {
+                    detenerMensajesProgreso();
+                    if (loadingProgressBar) {
+                        loadingProgressBar.classList.remove('bg-brand', 'progress-bar-animated', 'progress-bar-striped');
+                        loadingProgressBar.classList.add('bg-danger');
+                    }
+                    window.setTimeout(() => {
+                        setCargando(false);
+                        renderizarErrores(data.mensaje_error || "Error desconocido durante la generación con IA");
+                    }, 1000);
+                }
+
+            } catch (err) {
+                console.error("Error polling progreso", err);
+            }
+        }, 1500);
     }
 
     async function recogerMetadata() {
@@ -513,7 +613,7 @@
         event.preventDefault();
         estado.classList.add('d-none');
         setCargando(true);
-        iniciarMensajesProgreso('generar');
+        actualizarMensajeProgreso({ title: 'Preparando entorno...', detail: 'Generando ticket de petición estructurada.' });
 
         try {
             let payload = await leerFormulario();
@@ -521,22 +621,16 @@
             const data = await enviarPeticion(payload);
             sesionGeneracionActiva = data.sesion_generacion_id || null;
 
-            form.classList.add('d-none');
-            document.getElementById('subtitulo-form').classList.add('d-none');
-            renderizarRutaPropuesta(data.datos_ruta || {});
-
-            estado.className = 'alert alert-success mt-3';
-            estado.innerHTML = `
-                ${data.mensaje}
-                <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${data.checkpoint_actual || 'ruta_generada'}</span>
-            `;
-            estado.classList.remove('d-none');
+            if (data.historial_id) {
+                iniciarPollingProgreso(data.historial_id, sesionGeneracionActiva);
+            } else {
+                throw new Error("No se recibió historial_id del backend para rastrear el progreso.");
+            }
         } catch (error) {
             console.error(error);
             renderizarErrores(error.message);
-        } finally {
             setCargando(false);
-        }
+        } 
     });
 
     inicializarDeseos();

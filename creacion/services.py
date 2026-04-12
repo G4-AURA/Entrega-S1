@@ -1902,7 +1902,8 @@ def calcular_progreso_historial(historial_id: int) -> dict:
             "eta_segundos": 0.0,
             "mensaje_error": None,
             "tiempos_historicos": {},
-            "detalle_etapas": {}
+            "detalle_etapas": {},
+            "datos_ruta": historial.respuesta if hasattr(historial, 'respuesta') else None
         }
         
     if historial.estado_tarea == 'error':
