@@ -719,3 +719,17 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     )
 
     return curiosidad, True
+
+
+def generar_curiosidad_parada_preview(parada: Parada, ciudad: str = "Sevilla") -> dict:
+    """
+    Genera una curiosidad para previsualización sin persistir en BD.
+
+    Se usa en UI para que el usuario pueda cancelar sin guardar cambios.
+    """
+    servicio_ia = ServicioCuriosidadesIA()
+    datos_ia = servicio_ia._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+    payload = servicio_ia._normalizar_payload_curiosidad(parada=parada, datos_curiosidad=datos_ia)
+    payload["parada_id"] = parada.id
+    payload["ciudad"] = (str(ciudad or "").strip() or "Sevilla")[:100]
+    return payload

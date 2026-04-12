@@ -36,4 +36,9 @@ urlpatterns = [
         views.guardar_curiosidad_parada_api,
         name="parada-curiosidad-guardar",
     ),
+    path(
+        "api/paradas/<int:parada_id>/curiosidad/eliminar/",
+        views.eliminar_curiosidad_parada_api,
+        name="parada-curiosidad-eliminar",
+    ),
 ]

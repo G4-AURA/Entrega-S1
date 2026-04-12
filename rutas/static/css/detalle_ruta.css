@@ -274,3 +274,32 @@
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
 }
+
+/* ── Panel de generación de curiosidades (S3.1-11) ────────────────── */
+.ia-curiosidad-panel {
+    margin-top: 0.75rem;
+}
+
+.ia-curiosidad-panel .border {
+    border-color: #e0e7ff !important;
+    background-color: #f8fafc !important;
+}
+
+.ia-curiosidad-panel .bg-light {
+    background-color: #f0f4f8 !important;
+}
+
+.curiosidad-form {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
