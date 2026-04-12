@@ -7,6 +7,7 @@ import requests
 import uuid
 from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
+from django.db.models import Avg
 from django.utils import timezone
 
 from creacion.geo_clients import MapboxGeocodingClient, OSMGeocodingClient
@@ -1882,3 +1883,124 @@ def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
         ruta_final['duraciones_etapas'] = mejor['duraciones']
 
     return ruta_final
+
+
+def calcular_progreso_historial(historial_id: int) -> dict:
+    from django.utils import timezone as tz
+    
+    try:
+        historial = Historial_ia.objects.get(id=historial_id)
+    except Historial_ia.DoesNotExist:
+        raise ErrorSesionGeneracionNoEncontrada(f"No se encontró el historial con ID {historial_id}")
+
+    if historial.estado_tarea == 'completado':
+        return {
+            "historial_id": historial_id,
+            "estado_tarea": historial.estado_tarea,
+            "etapa_actual": historial.etapa_actual,
+            "cargando_porcentaje": 100.0,
+            "eta_segundos": 0.0,
+            "mensaje_error": None,
+            "tiempos_historicos": {},
+            "detalle_etapas": {}
+        }
+        
+    if historial.estado_tarea == 'error':
+        return {
+            "historial_id": historial_id,
+            "estado_tarea": historial.estado_tarea,
+            "etapa_actual": historial.etapa_actual,
+            "cargando_porcentaje": 100.0,
+            "eta_segundos": 0.0,
+            "mensaje_error": historial.mensaje_error,
+            "tiempos_historicos": {},
+            "detalle_etapas": {}
+        }
+
+    promedios = Historial_ia.objects.filter(estado_tarea='completado').aggregate(
+        avg_gen=Avg('duracion_generacion'),
+        avg_val=Avg('duracion_validacion'),
+        avg_sco=Avg('duracion_scoring'),
+        avg_opt=Avg('duracion_optimizacion')
+    )
+
+    t_gen = promedios.get('avg_gen')
+    t_val = promedios.get('avg_val')
+    t_sco = promedios.get('avg_sco')
+    t_opt = promedios.get('avg_opt')
+    
+    t_gen = float(t_gen) if t_gen is not None else 10.0
+    t_val = float(t_val) if t_val is not None else 4.0
+    t_sco = float(t_sco) if t_sco is not None else 2.0
+    t_opt = float(t_opt) if t_opt is not None else 2.0
+
+    tiempos_historicos = {
+        "generacion": t_gen,
+        "validacion": t_val,
+        "scoring": t_sco,
+        "optimizacion": t_opt
+    }
+
+    t_total_esperado = t_gen + t_val + t_sco + t_opt
+    
+    etapas_orden = ['generacion', 'validacion', 'scoring', 'optimizacion']
+    pesos = {
+        "generacion": (t_gen / t_total_esperado) * 100,
+        "validacion": (t_val / t_total_esperado) * 100,
+        "scoring": (t_sco / t_total_esperado) * 100,
+        "optimizacion": (t_opt / t_total_esperado) * 100,
+    }
+
+    etapa_actual = historial.etapa_actual
+    now = tz.now()
+    
+    cargando_porcentaje = 0.0
+    eta_segundos = 0.0
+    detalle_etapas = {}
+
+    try:
+        idx_actual = etapas_orden.index(etapa_actual)
+    except ValueError:
+        idx_actual = -1
+
+    for i, etapa in enumerate(etapas_orden):
+        peso = pesos[etapa]
+        tiempo_esp = tiempos_historicos[etapa]
+        
+        if i < idx_actual:
+            cargando_porcentaje += peso
+            detalle_etapas[etapa] = {"estado": "completado", "peso_total": round(peso, 1)}
+        elif i == idx_actual:
+            if historial.timestamp_inicio_etapa:
+                tiempo_transcurrido = (now - historial.timestamp_inicio_etapa).total_seconds()
+            else:
+                tiempo_transcurrido = 0.0
+            
+            fraccion = tiempo_transcurrido / tiempo_esp if tiempo_esp > 0 else 1.0
+            fraccion_segura = min(fraccion, 0.99)
+            
+            progreso_interno_pct = fraccion_segura * 100
+            cargando_porcentaje += (peso * fraccion_segura)
+            
+            tiempo_restante = max(0.0, tiempo_esp - tiempo_transcurrido)
+            eta_segundos += tiempo_restante
+            
+            detalle_etapas[etapa] = {
+                "estado": "procesando", 
+                "peso_total": round(peso, 1),
+                "progreso_interno": round(progreso_interno_pct, 1)
+            }
+        else:
+            eta_segundos += tiempo_esp
+            detalle_etapas[etapa] = {"estado": "pendiente", "peso_total": round(peso, 1)}
+
+    return {
+        "historial_id": historial_id,
+        "estado_tarea": historial.estado_tarea,
+        "etapa_actual": etapa_actual,
+        "cargando_porcentaje": round(min(cargando_porcentaje, 99.9), 1),
+        "eta_segundos": round(eta_segundos, 1),
+        "mensaje_error": None,
+        "tiempos_historicos": {k: round(v, 1) for k, v in tiempos_historicos.items()},
+        "detalle_etapas": detalle_etapas
+    }

@@ -22,4 +22,9 @@ urlpatterns = [
         views.actualizar_checkpoint_sesion_generacion,
         name='actualizar_checkpoint_sesion_generacion',
     ),
+    path(
+        'api/generar/<int:historial_id>/progreso/',
+        views.obtener_progreso_generacion,
+        name='obtener_progreso_generacion',
+    ),
 ]

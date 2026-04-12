@@ -551,3 +551,18 @@ def actualizar_checkpoint_sesion_generacion(request, session_id):
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
 
     return JsonResponse({'status': 'OK', 'datos': estado}, status=200)
+
+
+@require_GET
+def obtener_progreso_generacion(request, historial_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes iniciar sesión.'}, status=401)
+
+    try:
+        datos_progreso = services.calcular_progreso_historial(historial_id)
+        return JsonResponse({'status': 'OK', 'datos': datos_progreso}, status=200)
+    except services.ErrorSesionGeneracionNoEncontrada as exc:
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
+    except Exception as exc:
+        logger.exception("Error al calcular el progreso del historial")
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Error inesperado al calcular el progreso.'}, status=500)
