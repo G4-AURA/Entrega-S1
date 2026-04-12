@@ -198,3 +198,29 @@ class Curiosidad(models.Model):
 
     def __str__(self):
         return f"{self.titulo} ({self.parada.nombre})"
+
+
+class RutaAuditoria(models.Model):
+    class TipoEvento(models.TextChoices):
+        PARADA_ANADIDA = 'parada_anadida', 'Parada añadida'
+        PARADA_MODIFICADA = 'parada_modificada', 'Parada modificada'
+        PARADA_ELIMINADA = 'parada_eliminada', 'Parada eliminada'
+        PARADAS_REORDENADAS = 'paradas_reordenadas', 'Paradas reordenadas'
+
+    ruta = models.ForeignKey(Ruta, on_delete=models.CASCADE, related_name='auditoria')
+    parada = models.ForeignKey(Parada, on_delete=models.SET_NULL, null=True, blank=True)
+    parada_id_snapshot = models.PositiveIntegerField(null=True, blank=True)
+    parada_nombre_snapshot = models.CharField(max_length=255, blank=True, default='')
+    parada_orden_snapshot = models.PositiveIntegerField(null=True, blank=True)
+    tipo_evento = models.CharField(max_length=40, choices=TipoEvento.choices)
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    motivo = models.TextField(blank=True, default='')
+    detalles = models.JSONField(default=dict, blank=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-fecha_creacion', '-id']
+
+    def __str__(self):
+        parada = self.parada_nombre_snapshot or getattr(self.parada, 'nombre', '') or 'Ruta'
+        return f"{self.get_tipo_evento_display()} - {parada}"

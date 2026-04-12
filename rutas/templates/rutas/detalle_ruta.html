@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load l10n static %}
+{% load l10n static tz %}
 
 {% block title %}AURA - Detalle de Ruta{% endblock %}
 
@@ -352,6 +352,49 @@
             </div>
         </div>
     </div>
+
+    {% if auditoria_ruta %}
+    <details class="card shadow-sm border-0 mt-3 auditoria-card">
+        <summary class="auditoria-summary">
+            <span class="auditoria-summary-left">
+                <span class="h6 mb-0 d-inline">Auditoría de cambios</span>
+            </span>
+            <span class="auditoria-summary-arrow" aria-hidden="true">▾</span>
+            <span class="auditoria-summary-count">{{ auditoria_ruta|length }} eventos</span>
+        </summary>
+        <div class="card-body pt-0">
+            <div class="list-group list-group-flush auditoria-list">
+                {% for evento in auditoria_ruta %}
+                <div class="list-group-item px-0">
+                    <div class="d-flex justify-content-between gap-3">
+                        <div>
+                            <div class="small fw-semibold">{{ evento.get_tipo_evento_display }}</div>
+                            <div class="small text-muted">
+                                {% if evento.parada_nombre_snapshot %}
+                                    Parada: {{ evento.parada_nombre_snapshot }}
+                                {% elif evento.parada %}
+                                    Parada: {{ evento.parada.nombre }}
+                                {% else %}
+                                    Cambio sobre la ruta
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="text-end small text-muted">
+                            {{ evento.fecha_creacion|localtime|date:"d/m/Y H:i" }}
+                            {% if evento.usuario %}
+                                <div>{{ evento.usuario.username }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if evento.motivo %}
+                    <div class="small mt-1">Motivo: {{ evento.motivo }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+    {% endif %}
 
     <div class="recalc-cta mt-4">
         <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper"
