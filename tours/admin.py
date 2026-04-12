@@ -35,6 +35,10 @@ class TuristaSesionAdmin(admin.ModelAdmin):
 
 @admin.register(MensajeChat)
 class MensajeChatAdmin(admin.ModelAdmin):
-    list_display = ("nombre_remitente", "sesion_tour", "momento", "texto")
-    list_filter = ("sesion_tour",)
+    list_display = ("nombre_remitente", "sesion_tour", "momento", "es_privado", "destinatario_turista", "texto_corto")
+    list_filter = ("sesion_tour", "es_privado")
     search_fields = ("nombre_remitente", "texto")
+ 
+    def texto_corto(self, obj):
+        return obj.texto[:60] if obj.texto else "—"
+    texto_corto.short_description = "Texto"

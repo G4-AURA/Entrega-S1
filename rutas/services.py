@@ -17,7 +17,7 @@ import math
 from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 from django.db.models import Prefetch
 import requests
 
@@ -122,7 +122,8 @@ def obtener_datos_catalogo_paginado(user, limit, page_number, tipo):
             if ruta.guia and ruta.guia.user:
                 guia_id = ruta.guia.id
                 guia_username = ruta.guia.user.user.username
-        except Exception:
+        # El único fallo posible es AttributeError
+        except AttributeError:
             pass
 
         sesion_activa = SESION_TOUR.objects.filter(
@@ -452,9 +453,17 @@ def recalcular_ruta_graphhopper(ruta) -> bool:
             "GraphHopper: no se pudo calcular Ruta(id=%d): %s", ruta.id, exc
         )
         return False
-    except Exception:
-        logger.exception(
-            "GraphHopper: error inesperado al calcular Ruta(id=%d)", ruta.id
+    
+    except DatabaseError as exc:
+        logger.error(
+            "GraphHopper: error de BD al persistir métricas de Ruta(id=%d): %s",
+            ruta.id, exc,
+        )
+        return False
+    except (AttributeError, TypeError) as exc:
+        logger.error(
+            "GraphHopper: datos de parada malformados en Ruta(id=%d): %s",
+            ruta.id, exc,
         )
         return False
 
@@ -702,8 +711,10 @@ class ServicioCuriosidadesIA:
 
         except json.JSONDecodeError:
             raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
-        except Exception as e:
-            raise Exception(f"Error al comunicarse con la API de IA: {str(e)}")
+        except (requests.RequestException, TimeoutError, ConnectionError) as e:
+            raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
+        except (AttributeError, KeyError, IndexError) as e:
+            raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """
@@ -760,7 +771,9 @@ class ServicioCuriosidadesIA:
                 exc,
             )
             return None
-        except ValueError:
+        
+        # Solo json.JSONDecodeError es esperado
+        except json.JSONDecodeError:
             logger.warning(
                 "Curiosidades IA: respuesta JSON inválida de Wikimedia para '%s'",
                 consulta,

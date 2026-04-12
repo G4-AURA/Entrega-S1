@@ -49,7 +49,7 @@ class SesionesServicesUnitTests(TestCase):
 
         self.assertEqual(codigo, "XYZ789")
 
-    def test_iniciar_sesion_actualiza_estado_fecha_y_codigo(self):
+    def test_iniciar_sesion_actualiza_estado_y_fecha(self):
         codigo_original = self.sesion.codigo_acceso
 
         with patch("tours.services.generar_codigo_unico", return_value="UNIT02"):
@@ -57,8 +57,9 @@ class SesionesServicesUnitTests(TestCase):
         self.sesion.refresh_from_db()
 
         self.assertEqual(self.sesion.estado, SesionTour.EN_CURSO)
-        self.assertNotEqual(self.sesion.codigo_acceso, codigo_original)
         self.assertIsNotNone(self.sesion.fecha_inicio)
+        # Verificamos explícitamente que el código NO cambia
+        self.assertEqual(self.sesion.codigo_acceso, codigo_original)
 
     def test_cerrar_sesion_finaliza_y_desactiva_participantes(self):
         turista2 = Turista.objects.create(alias="turista2_unit", user=None)

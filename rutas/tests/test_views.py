@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.test import TestCase, Client, override_settings
@@ -519,3 +520,145 @@ class RutasViewsTest(TestCase):
         url = reverse('parada-curiosidad', args=[self.parada.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 502)
+
+    # 6. S3.1-09 Guardado manual de curiosidad
+    def test_guardar_curiosidad_parada_api_post_persiste(self):
+        url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
+        payload = {
+            'texto': 'Curiosidad manual persistida',
+            'tipo': 'Historia',
+            'titulo': 'Titulo manual',
+        }
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['creada'])
+        self.assertEqual(data['curiosidad']['texto'], payload['texto'])
+        self.assertEqual(data['curiosidad']['tipo'], payload['tipo'])
+
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertEqual(curiosidad.texto, payload['texto'])
+        self.assertEqual(curiosidad.tipo, payload['tipo'])
+
+    def test_guardar_curiosidad_parada_api_put_actualiza(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Titulo viejo',
+            texto='Texto viejo',
+            tipo='Arquitectura',
+        )
+        url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
+        payload = {
+            'texto': 'Texto actualizado por PUT',
+            'tipo': 'Evento',
+            'titulo': 'Titulo actualizado',
+        }
+        response = self.client.put(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertFalse(data['creada'])
+        self.assertEqual(data['curiosidad']['id'], curiosidad.id)
+
+        curiosidad.refresh_from_db()
+        self.assertEqual(curiosidad.texto, payload['texto'])
+        self.assertEqual(curiosidad.tipo, payload['tipo'])
+
+    def test_guardar_curiosidad_parada_api_freemium_bloquea_cuarta_ruta(self):
+        for index in range(2, 5):
+            ruta_extra = Ruta.objects.create(
+                titulo=f'Ruta extra {index}',
+                duracion_horas=2.0,
+                num_personas=5,
+                guia=self.guia,
+            )
+            parada_extra = Parada.objects.create(
+                orden=1,
+                nombre=f'Parada extra {index}',
+                coordenadas=Point(index, index),
+                ruta=ruta_extra,
+            )
+            if index < 4:
+                Curiosidad.objects.create(
+                    parada=parada_extra,
+                    ciudad='Sevilla',
+                    titulo=f'Curiosidad {index}',
+                    texto='Texto previo',
+                    tipo='Historia',
+                )
+            else:
+                parada_cuarta = parada_extra
+
+        Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosidad base',
+            texto='Texto base',
+            tipo='Historia',
+        )
+
+        url = reverse('parada-curiosidad-guardar', args=[parada_cuarta.id])
+        response = self.client.post(
+            url,
+            data=json.dumps({'texto': 'No debería crear', 'tipo': 'Evento'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 429)
+        data = response.json()
+        self.assertEqual(data['status'], 'ERROR')
+        self.assertEqual(data['code'], 'TIER_LIMIT_REACHED')
+        self.assertFalse(Curiosidad.objects.filter(parada=parada_cuarta).exists())
+
+    def test_guardar_curiosidad_parada_api_premium_sin_limite(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        for index in range(2, 6):
+            ruta_extra = Ruta.objects.create(
+                titulo=f'Ruta premium {index}',
+                duracion_horas=2.0,
+                num_personas=5,
+                guia=self.guia,
+            )
+            parada_extra = Parada.objects.create(
+                orden=1,
+                nombre=f'Parada premium {index}',
+                coordenadas=Point(index, index),
+                ruta=ruta_extra,
+            )
+            if index < 5:
+                Curiosidad.objects.create(
+                    parada=parada_extra,
+                    ciudad='Sevilla',
+                    titulo=f'Curiosidad premium {index}',
+                    texto='Texto previo',
+                    tipo='Historia',
+                )
+            else:
+                parada_objetivo = parada_extra
+
+        url = reverse('parada-curiosidad-guardar', args=[parada_objetivo.id])
+        response = self.client.post(
+            url,
+            data=json.dumps({'texto': 'Sí debería crear', 'tipo': 'Dato Curioso'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['creada'])
+        self.assertTrue(Curiosidad.objects.filter(parada=parada_objetivo).exists())
