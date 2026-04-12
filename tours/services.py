@@ -13,6 +13,7 @@ from typing import Optional, Tuple
 from django.core.cache import cache
 from django.contrib.auth.models import User
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from rutas.models import Guia
@@ -232,7 +233,7 @@ def unir_turista_anonimo(
 
 
 # ---------------------------------------------------------------------------
-# Chat
+# Chat público
 # ---------------------------------------------------------------------------
 
 def determinar_remitente(
@@ -271,6 +272,8 @@ def crear_mensaje(
     nombre_remitente: str,
     texto: str,
     imagen=None,
+    es_privado: bool = False,
+    destinatario_turista: Optional[Turista] = None,
 ) -> MensajeChat:
     return MensajeChat.objects.create(
         sesion_tour=sesion,
@@ -279,7 +282,103 @@ def crear_mensaje(
         nombre_remitente=nombre_remitente,
         texto=texto,
         imagen=imagen,
+        es_privado=es_privado,
+        destinatario_turista=destinatario_turista,
     )
+
+
+# ---------------------------------------------------------------------------
+# Chat — mensajes privados
+# ---------------------------------------------------------------------------
+ 
+def _q_hilo_privado_turista(turista: Turista) -> Q:
+    """
+    Q-object que selecciona todos los mensajes del hilo privado
+    de un turista concreto (tanto los enviados como los recibidos).
+    """
+    return Q(turista=turista, es_privado=True) | Q(destinatario_turista=turista, es_privado=True)
+ 
+ 
+def obtener_mensajes_privados_turista(
+    sesion: SesionTour,
+    turista: Turista,
+    desde=None,
+    limite: int = 50,
+) -> list[MensajeChat]:
+    """
+    Devuelve los mensajes privados del hilo Guía ↔ turista_concreto,
+    filtrados por sesión.
+ 
+    Parámetros:
+      desde — datetime (opcional): solo mensajes posteriores a esta marca.
+      limite — número máximo de mensajes a devolver.
+    """
+    qs = MensajeChat.objects.filter(
+        sesion_tour=sesion
+    ).filter(
+        _q_hilo_privado_turista(turista)
+    )
+ 
+    if desde is not None:
+        qs = qs.filter(momento__gt=desde)
+ 
+    return list(qs.order_by("momento")[:limite])
+ 
+ 
+def obtener_bandeja_privada_guia(sesion: SesionTour) -> list[dict]:
+    """
+    Para el panel de chat privado del guía: devuelve una lista de
+    conversaciones abiertas, una por turista activo que haya intercambiado
+    mensajes privados (o simplemente todos los activos).
+ 
+    Formato de cada elemento:
+      {
+        "turista_id":    int,
+        "alias":         str,
+        "ultimo_mensaje": str | None,
+        "ultimo_momento": str | None,   # ISO-8601
+        "no_leidos":      int,          # siempre 0 por ahora (sin modelo de lectura)
+      }
+    """
+    turistas_activos = list(
+        TuristaSesion.objects.filter(sesion_tour=sesion, activo=True)
+        .select_related("turista")
+        .order_by("turista__alias")
+    )
+ 
+    bandeja = []
+    for ts in turistas_activos:
+        turista = ts.turista
+        ultimo = (
+            MensajeChat.objects.filter(
+                sesion_tour=sesion,
+            )
+            .filter(_q_hilo_privado_turista(turista))
+            .order_by("-momento")
+            .first()
+        )
+        bandeja.append({
+            "turista_id": turista.id,
+            "alias": turista.alias,
+            "ultimo_mensaje": (ultimo.texto[:60] if ultimo and ultimo.texto else None),
+            "ultimo_momento": (ultimo.momento.isoformat() if ultimo else None),
+            "no_leidos": 0,
+        })
+ 
+    return bandeja
+ 
+ 
+def obtener_mensajes_hilo_privado_guia(
+    sesion: SesionTour,
+    turista: Turista,
+    desde=None,
+    limite: int = 50,
+) -> list[MensajeChat]:
+    """
+    Mensajes del hilo privado entre el guía y un turista concreto.
+    Alias semántico de obtener_mensajes_privados_turista para uso desde vistas del guía.
+    """
+    return obtener_mensajes_privados_turista(sesion, turista, desde=desde, limite=limite)
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +388,7 @@ def crear_mensaje(
 def iniciar_sesion(sesion: SesionTour) -> None:
     sesion.estado = SesionTour.EN_CURSO
     sesion.fecha_inicio = timezone.now()
-    sesion.codigo_acceso = generar_codigo_unico()
-    sesion.save(update_fields=["estado", "fecha_inicio", "codigo_acceso"])
+    sesion.save(update_fields=["estado", "fecha_inicio"])
     set_route_snapshot(sesion)
 
 

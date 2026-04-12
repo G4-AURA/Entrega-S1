@@ -9,6 +9,7 @@ Roles:
 S2.1-32: endpoint AJAX para recalcular bajo demanda.
 """
 import json
+import logging
 
 from datetime import timezone as dt_timezone
 from urllib.parse import quote_plus, unquote_plus
@@ -22,6 +23,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
+import requests
 
 from billing.models import Subscription, TierUsageEvent
 from billing.services import StripeAPIError, fetch_subscription_snapshot
@@ -42,6 +44,9 @@ from tours.models import SesionTour
 from .forms import EditarPerfilForm
 from . import services
 from .models import Curiosidad, Guia, Parada, Ruta
+
+logger = logging.getLogger(__name__)
+
 MAX_RUTAS_PAGE_SIZE = 9
 
 PLAN_LIMITS = {
@@ -396,9 +401,23 @@ def _refrescar_periodo_desde_stripe_si_falta(subscription):
             secret_key=getattr(settings, 'STRIPE_SECRET_KEY', ''),
             stripe_subscription_id=subscription.stripe_subscription_id,
         )
-    except StripeAPIError:
+    except StripeAPIError as exc:
+        logger.warning(
+            'No se pudo refrescar periodo Stripe para suscripción %s: %s',
+            subscription.stripe_subscription_id, exc,
+        )
         return subscription
-    except Exception:
+    except (requests.RequestException, TimeoutError) as exc:
+        logger.warning(
+            'Error de red al refrescar periodo Stripe para suscripción %s: %s',
+            subscription.stripe_subscription_id, exc,
+        )
+        return subscription
+    except (ValueError, TypeError, OSError) as exc:
+        logger.warning(
+            'Error procesando respuesta Stripe para suscripción %s: %s',
+            subscription.stripe_subscription_id, exc,
+        )
         return subscription
 
     period_end_epoch = _resolver_period_end_epoch(snapshot)

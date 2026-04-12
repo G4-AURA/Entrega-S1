@@ -41,6 +41,12 @@ class JoinTourByCodeTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.sesion_pendiente = SesionTour.objects.create(
+            codigo_acceso='JOINP01',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
 
     def test_codigo_valido_redirige(self):
         """Verifica que código válido redirige a join_tour"""
@@ -50,6 +56,15 @@ class JoinTourByCodeTests(TestCase):
         
         self.assertEqual(response.status_code, 302)
         self.assertIn(str(self.sesion.token), response.url)
+
+    def test_codigo_pendiente_tambien_redirige_a_join_tour(self):
+        """Verifica que una sesión pendiente también permite entrar al flujo de unión"""
+        response = self.client.get(
+            reverse('tours:join_tour_by_code', args=['JOINP01'])
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(self.sesion_pendiente.token), response.url)
 
     def test_codigo_insensible_mayusculas(self):
         """Verifica que código es insensible a mayúsculas"""
@@ -103,6 +118,12 @@ class JoinTourTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.sesion_pendiente = SesionTour.objects.create(
+            codigo_acceso='JOIN003',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
 
     def test_get_muestra_formulario(self):
         """Verifica que GET muestra el formulario de alias"""
@@ -112,6 +133,16 @@ class JoinTourTests(TestCase):
         
         self.assertEqual(response.status_code, 200)
         # Verificar templates usadas en la respuesta
+        template_names = [t.name for t in response.templates]
+        self.assertIn('tours/join_tour.html', template_names)
+
+    def test_get_muestra_formulario_en_sesion_pendiente(self):
+        """Verifica que GET también muestra el formulario en una sesión pendiente"""
+        response = self.client.get(
+            reverse('tours:join_tour', args=[self.sesion_pendiente.token])
+        )
+
+        self.assertEqual(response.status_code, 200)
         template_names = [t.name for t in response.templates]
         self.assertIn('tours/join_tour.html', template_names)
 
@@ -125,6 +156,17 @@ class JoinTourTests(TestCase):
         self.assertEqual(response.status_code, 302)
         # Verificar que turista fue creado
         self.assertTrue(Turista.objects.filter(alias='Juan').exists())
+
+    def test_post_valido_en_sesion_pendiente_crea_turista_y_redirige(self):
+        """Verifica que una sesión pendiente permite unirse y pasar a la sala de espera"""
+        response = self.client.post(
+            reverse('tours:join_tour', args=[self.sesion_pendiente.token]),
+            {'alias': 'Maria'},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(self.sesion_pendiente.token), response.url)
+        self.assertTrue(Turista.objects.filter(alias='Maria').exists())
 
     def test_post_alias_corto_error(self):
         """Verifica error si alias es muy corto"""
@@ -250,6 +292,26 @@ class CrearSesionTests(TestCase):
         self.assertEqual(response.status_code, 302)
         # Verificar que sesión fue creada
         self.assertTrue(SesionTour.objects.filter(ruta=self.ruta).exists())
+
+    def test_crear_sesion_idempotencia_redirige_si_existente(self):
+        """Verifica que redirige a sesión activa si ya existe y no crea duplicados"""
+        sesion_existente = SesionTour.objects.create(
+            codigo_acceso='EXIST1',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+        self.client.force_login(self.guia_user)
+        
+        response = self.client.get(
+            reverse('tours:crear_sesion'),
+            {'ruta_id': self.ruta.id},
+        )
+        
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('tours:guia_sesion', args=[sesion_existente.id]), response.url)
+        # Verificar que NO se crearon nuevas sesiones (sólo debería existir la original)
+        self.assertEqual(SesionTour.objects.filter(ruta=self.ruta).count(), 1)
 
 
 class IniciarTourTests(TestCase):
@@ -726,6 +788,7 @@ class ObtenerUbicacionGuiaTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.client.force_login(self.guia_user)
 
     def test_obtener_ubicacion_sin_ubicacion_404(self):
         """Verifica error si no hay ubicación"""

@@ -1,5 +1,7 @@
 import time
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError, IntegrityError
+import requests
 from rutas.models import Parada
 from rutas.services import obtener_o_generar_curiosidad_parada
 
@@ -40,7 +42,25 @@ class Command(BaseCommand):
                     time.sleep(2)
                 else:
                     self.stdout.write(self.style.NOTICE(f"  - Ya existía en BD (o creada por el seed), se omitió IA."))
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"  ✖ Error llamando a la IA para '{parada.nombre}': {str(e)}"))
+            except ValueError as e:
+                # _generar_curiosidad_ia lanza ValueError para JSON inválido o respuesta malformada
+                self.stdout.write(self.style.ERROR(
+                    f"  ✖ Respuesta de IA inválida para '{parada.nombre}': {e}"
+                ))
+            except RuntimeError as e:
+                # _generar_curiosidad_ia lanza RuntimeError para errores de red con Gemini/SDK
+                self.stdout.write(self.style.ERROR(
+                    f"  ✖ Error de red con la IA para '{parada.nombre}': {e}"
+                ))
+            except (DatabaseError, IntegrityError) as e:
+                # _guardar_curiosidad_en_cache puede fallar al persistir
+                self.stdout.write(self.style.ERROR(
+                    f"  ✖ Error de base de datos guardando curiosidad de '{parada.nombre}': {e}"
+                ))
+            except requests.RequestException as e:
+                # _buscar_wikimedia puede lanzar RequestException no capturada en algún path
+                self.stdout.write(self.style.ERROR(
+                    f"  ✖ Error de red con Wikimedia para '{parada.nombre}': {e}"
+                ))
 
         self.stdout.write(self.style.SUCCESS(f"\n¡Proceso finalizado! Se invocó a Gemini y Wikimedia para {generadas_ahora} paradas nuevas."))

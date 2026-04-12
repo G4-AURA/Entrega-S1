@@ -5,6 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026032301">
+<link rel="stylesheet" href="{% static 'css/chat_privado.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -39,13 +40,20 @@
         </button>
         <button class="tab-btn" data-tab="chat">
             <span class="material-icons-round">chat</span>
-            Chat
+            Chat grupal
             <span class="chat-badge" id="chat-badge" style="display:none;"></span>
+        </button>
+
+        <button class="tab-btn" data-tab="chat-privado">
+            <span class="material-icons-round">lock</span>
+            {% if es_guia %}Privado{% else %}Guía{% endif %}
+            <span class="chat-badge" id="chat-privado-badge" style="display:none;"></span>
         </button>
     </div>
 
     <div class="panel-content">
 
+        {# ── Pestaña: Itinerario ─────────────────────────────────────────── #}
         <div class="tab-content active" id="tab-itinerario">
             <div class="d-flex justify-content-between align-items-center mb-1 mt-2">
                 {% if sesion.estado == 'en_curso' %}
@@ -117,6 +125,7 @@
             </div>
         </div>
 
+        {# ── Pestaña: Chat Grupal ──────────────────────────────────────────── #}
         <div class="tab-content" id="tab-chat">
             <div class="chat-container">
                 <div class="chat-messages" id="chat-messages">
@@ -128,16 +137,87 @@
                 <div class="chat-input-container">
                     <input type="file" id="chat-image-input" class="chat-image-input"
                         accept="image/jpeg,image/png,image/webp" hidden>
-                    <button id="chat-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto">
+                    <button id="chat-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto" {% if sesion.estado != 'en_curso' %}disabled{% endif %}>
                         <span class="material-icons-round">image</span>
                     </button>
-                    <input type="text" id="chat-input" class="chat-input" placeholder="Escribe un mensaje...">
-                    <button id="chat-send" class="chat-send-btn">
+                    <input type="text" id="chat-input" class="chat-input" placeholder="{% if sesion.estado == 'en_curso' %}Escribe un mensaje...{% else %}El chat se habilita al iniciar el tour{% endif %}" {% if sesion.estado != 'en_curso' %}disabled{% endif %}>
+                    <button id="chat-send" class="chat-send-btn" {% if sesion.estado != 'en_curso' %}disabled{% endif %}>
                         <span class="material-icons-round">send</span>
                     </button>
                 </div>
                 <div class="chat-preview-container" id="chat-preview-container"></div>
             </div>
+        </div>
+
+        {# ── Pestaña: Chat Privado ─────────────────────────────────────────── #}
+        <div class="tab-content" id="tab-chat-privado">
+        {% if es_guia %}
+        {# Vista del GUÍA: bandeja de conversaciones privadas #}
+        <div id="private-inbox-view">
+            <p style="font-size:.75rem;color:var(--text-muted);margin:8px 0 12px;font-weight:500;">
+            Selecciona un turista para iniciar o continuar una conversación privada.
+            </p>
+            <div id="private-inbox" class="private-inbox">
+            <div class="inbox-empty">
+                <span class="material-icons-round">hourglass_empty</span>
+                <p>Cargando turistas...</p>
+            </div>
+            </div>
+        </div>
+    
+        <div id="private-chat-view" class="private-chat-view" style="display:none;">
+            <div class="private-chat-header">
+            <button class="btn-back-inbox" id="btn-back-to-inbox" title="Volver a conversaciones">
+                <span class="material-icons-round">arrow_back</span>
+            </button>
+            <h3 class="private-chat-name" id="private-chat-title">—</h3>
+            <span class="private-chat-badge">Privado</span>
+            </div>
+            <div class="chat-messages" id="private-chat-messages">
+            <div class="chat-empty">
+                <span class="material-icons-round">lock_open</span>
+                <p>Empieza la conversación privada</p>
+            </div>
+            </div>
+            <div class="chat-input-container">
+            <input type="file" id="private-image-input" accept="image/jpeg,image/png,image/webp" hidden>
+            <button id="private-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto">
+                <span class="material-icons-round">image</span>
+            </button>
+            <input type="text" id="private-chat-input" class="chat-input" placeholder="Mensaje privado...">
+            <button id="private-chat-send" class="chat-send-btn">
+                <span class="material-icons-round">send</span>
+            </button>
+            </div>
+            <div class="chat-preview-container" id="private-preview-container"></div>
+        </div>
+    
+        {% else %}
+        {# Vista del TURISTA: hilo directo con el guía #}
+        <div class="private-chat-view" id="turista-private-view">
+            <div class="private-chat-to-guide-hint">
+            <span class="material-icons-round">lock</span>
+            Conversación privada con tu guía
+            </div>
+            <div class="chat-messages" id="private-chat-messages">
+            <div class="chat-empty">
+                <span class="material-icons-round">lock_open</span>
+                <p>Aquí verás tus mensajes privados con el guía</p>
+            </div>
+            </div>
+            <div class="chat-input-container">
+            <input type="file" id="private-image-input" accept="image/jpeg,image/png,image/webp" hidden>
+            <button id="private-image-btn" class="chat-image-btn" type="button" title="Adjuntar foto">
+                <span class="material-icons-round">image</span>
+            </button>
+            <input type="text" id="private-chat-input" class="chat-input" placeholder="Mensaje privado al guía...">
+            <button id="private-chat-send" class="chat-send-btn">
+                <span class="material-icons-round">send</span>
+            </button>
+            </div>
+            <div class="chat-preview-container" id="private-preview-container"></div>
+        </div>
+        {% endif %}
         </div>
 
     </div>
@@ -150,19 +230,27 @@
 {{ sesion.ruta.duracion_horas|json_script:"duracion-ruta-horas-data" }}
 
 <script>
-    const mapboxToken = '{{ MAPBOX_ACCESS_TOKEN }}';
-    const sesionId = {{ sesion.id }};
-    const esGuia = {% if es_guia %}true{% else %} false{% endif %};
-    const sesionEstado = '{{ sesion.estado }}';
-    const duracionRutaHoras = Number(JSON.parse(document.getElementById('duracion-ruta-horas-data').textContent));
-    const sesionFechaInicioEpochMs = Number.parseInt('{{ sesion.fecha_inicio|date:"U" }}', 10) * 1000;
-    const paradasData = JSON.parse(document.getElementById('paradas-data').textContent);
-    const currentUserName = '{{ current_user_name|escapejs }}';
-    const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
-    const startCountdownUrl = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
-    const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
-    const countdownStatusUrl = '{% url "tours:estado_cronometro" sesion.id %}';
-    const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
+  const mapboxToken          = '{{ MAPBOX_ACCESS_TOKEN }}';
+  const sesionId             = Number('{{ sesion.id|default:"0" }}');
+  const esGuia               = ('{% if es_guia %}true{% else %}false{% endif %}' === 'true');
+  const sesionEstado         = '{{ sesion.estado }}';
+  const duracionRutaHoras    = Number(JSON.parse(document.getElementById('duracion-ruta-horas-data').textContent));
+  const sesionFechaInicioEpochMs = Number.parseInt('{{ sesion.fecha_inicio|date:"U" }}', 10) * 1000;
+  const paradasData          = JSON.parse(document.getElementById('paradas-data').textContent);
+  const currentUserName      = '{{ current_user_name|escapejs }}';
+  const geometriaRuta        = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
+  const startCountdownUrl    = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
+  const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
+  const countdownStatusUrl   = '{% url "tours:estado_cronometro" sesion.id %}';
+  const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
+  // Chat privado — URLs de API
+  const bandejaPrivadaUrl    = '{% url "tours:bandeja_privada_guia" sesion.id %}';
+  const mensajesPrivadosBaseUrl = '/tours/sesiones/{{ sesion.id }}/chat-privado/';
+  const enviarMensajeUrl     = '{% url "tours:enviar_mensaje" sesion.id %}';
+  // Turista — ID propio para filtrado de mensajes
+  const turistaIdRaw         = '{% if turista %}{{ turista.id }}{% else %}null{% endif %}';
+  const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);
 </script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032301"></script>
+<script src="{% static 'js/chat_privado.js' %}?v={% now 'U' %}"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v=2026032401"></script>
 {% endblock %}
