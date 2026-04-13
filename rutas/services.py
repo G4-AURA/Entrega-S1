@@ -236,7 +236,7 @@ def _validar_coordenadas(raw_lat, raw_lon):
         raise ValueError("Coordenadas inválidas")
 
 
-def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
+def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -244,10 +244,12 @@ def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
         raise ValueError("El nombre de la parada no puede superar los 255 caracteres")
 
     lat, lon = _validar_coordenadas(raw_lat, raw_lon)
+    descripcion_limpia = (descripcion or '').strip()[:500]
 
     parada.nombre = nombre
+    parada.descripcion = descripcion_limpia
     parada.coordenadas = Point(lon, lat, srid=4326)
-    parada.save(update_fields=["nombre", "coordenadas"])
+    parada.save(update_fields=["nombre", "descripcion", "coordenadas"])
 
 
 def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):

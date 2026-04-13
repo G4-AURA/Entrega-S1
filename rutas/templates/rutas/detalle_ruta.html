@@ -398,6 +398,11 @@
                             <input type="text" name="nombre" class="form-control form-control-sm"
                                    value="{{ parada.nombre }}" required>
                         </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Descripcion (opcional)</label>
+                            <textarea name="descripcion" class="form-control form-control-sm" rows="2"
+                                      maxlength="500" placeholder="Breve descripcion de la parada...">{{ parada.descripcion }}</textarea>
+                        </div>
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small mb-1">Latitud</label>
@@ -837,7 +842,7 @@ function agregarSugerenciaComoNuevaParada(candidato) {
     const nameInput = form.querySelector('input[name="nombre"]');
     const latInput = form.querySelector('input[name="lat"]');
     const lonInput = form.querySelector('input[name="lon"]');
-    const descInput = form.querySelector('input[name="descripcion"]');
+    const descInput = form.querySelector('[name="descripcion"]');
 
     const lat = Number(candidato.lat);
     const lon = Number(candidato.lon);
@@ -861,7 +866,7 @@ function reemplazarParadaConSugerencia(paradaId, candidato) {
     const nameInput = form.querySelector('input[name="nombre"]');
     const latInput = form.querySelector('input[name="lat"]');
     const lonInput = form.querySelector('input[name="lon"]');
-    const descInput = form.querySelector('input[name="descripcion"]');
+    const descInput = form.querySelector('[name="descripcion"]');
 
     const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
     const lat = Number(coords[0]);

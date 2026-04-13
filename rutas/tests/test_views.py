@@ -354,10 +354,13 @@ class RutasViewsTest(TestCase):
             'form_type': 'stop_edit',
             'parada_id': self.parada.id,
             'nombre': 'Parada Editada',
+            'descripcion': 'Descripcion editada manualmente',
             'lat': '5.0',
             'lon': '5.0'
         })
         self.assertRedirects(response, f"{url}?stop_updated=1")
+        self.parada.refresh_from_db()
+        self.assertEqual(self.parada.descripcion, 'Descripcion editada manualmente')
 
     def test_ruta_detalle_post_stop_delete_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
