@@ -14,6 +14,8 @@ importación circular.
 
 import logging
 
+from django.db import DatabaseError
+
 from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
     ErrorIntegracionIA,
@@ -32,7 +34,7 @@ def _obtener_pois_allowlist(ciudad: str, moods: list) -> list:
     try:
         from creacion.services import _obtener_pois_allowlist as _svc
         return _svc(ciudad=ciudad, moods=moods)
-    except Exception as exc:
+    except (ImportError, AttributeError, DatabaseError) as exc:
         logger.warning('No se pudo obtener allowlist: %s', exc)
         return []
 
@@ -42,7 +44,7 @@ def _construir_pois_fallback_allowlist(ciudad: str, moods: list, cantidad_objeti
     try:
         from creacion.services import _construir_pois_fallback_allowlist as _svc
         return _svc(ciudad=ciudad, moods=moods, cantidad_objetivo=cantidad_objetivo)
-    except Exception as exc:
+    except (ImportError, AttributeError, DatabaseError) as exc:
         logger.warning('No se pudo construir fallback allowlist: %s', exc)
         return []
 

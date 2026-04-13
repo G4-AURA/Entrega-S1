@@ -353,8 +353,6 @@ def llamar_gemini_bypass(prompt, api_key):
             raise ErrorIntegracionIA('Error de red al conectar con Gemini.') from exc
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ErrorIntegracionIA('Respuesta no válida de Gemini.') from exc
-        except Exception as exc:
-            raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
 
@@ -466,8 +464,11 @@ def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
                 return resultado
 
         return []
-    except Exception as exc:
+    except (ImportError, LookupError) as exc:
         logger.warning('Error al consultar la allowlist de POIs: %s', exc)
+        return []
+    except DatabaseError as exc:
+        logger.warning('Error de BD al consultar la allowlist de POIs: %s', exc)
         return []
 
 
@@ -1317,10 +1318,18 @@ def serializar_ruta_creada(ruta, paradas):
 def generar_ruta_con_ia(payload):
     try:
         ruta_generada = consultar_langgraph(payload)
-    except ErrorIntegracionIA:
-        raise
-    except Exception as exc:
-        raise ErrorPersistenciaRuta('No se pudo generar la ruta con IA en este momento.') from exc
+    except (ValueError, TypeError, KeyError) as exc:
+        # consultar_langgraph puede devolver datos con formato inesperado
+        # al acceder a campos del state_resultado del grafo
+        raise ErrorPersistenciaRuta(
+            'La ruta generada por IA contiene datos con formato inesperado.'
+        ) from exc
+    except RuntimeError as exc:
+        # LangGraph puede lanzar RuntimeError si el grafo falla internamente
+        raise ErrorPersistenciaRuta(
+            'Error interno en el pipeline de generación de rutas.'
+        ) from exc
+    
     if not isinstance(ruta_generada, dict):
         raise ErrorPersistenciaRuta('La IA devolvió un formato de ruta no válido.')
     return ruta_generada
@@ -1392,7 +1401,7 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
                 )
     except ErrorValidacionRuta:
         raise
-    except (DatabaseError, IntegrityError, TypeError, ValueError) as exc:
+    except (DatabaseError, IntegrityError, TypeError, ValueError, AttributeError) as exc:
         raise ErrorPersistenciaRuta('No se pudo guardar la ruta generada en la base de datos.') from exc
     ruta_generada['id'] = ruta.id
     ruta_generada['nivel_exigencia'] = exigencia_normalizada
@@ -1443,8 +1452,10 @@ def obtener_contexto_checkpoint_por_ruta(ruta_id):
         return contexto_vacio
     try:
         historiales = Historial_ia.objects.order_by('-momento')[:200]
-    except DatabaseError:
+    except (DatabaseError, AttributeError, TypeError, ValueError) as exc:
+        logger.warning('Error obteniendo contexto de checkpoint para ruta %s: %s', ruta_id, exc)
         return contexto_vacio
+    
     for historial in historiales:
         respuesta = historial.respuesta if isinstance(historial.respuesta, dict) else {}
         if int(respuesta.get('id') or 0) != int(ruta_id):
@@ -1754,8 +1765,17 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
     """
     try:
         respuesta_ia = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
-    except Exception as exc:
-        raise ErrorIntegracionIA('No se pudieron generar paradas adicionales con IA en este momento.') from exc
+    except ErrorIntegracionIA:
+        raise
+    except (requests.RequestException, TimeoutError, ConnectionError) as exc:
+        raise ErrorIntegracionIA(
+            'Error de red al contactar con Gemini para paradas adicionales.'
+        ) from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ErrorIntegracionIA(
+            'Respuesta con formato inválido al generar paradas adicionales.'
+        ) from exc
+    
     candidatos_ia = _extraer_lista_desde_respuesta_ia(respuesta_ia)
     if not candidatos_ia:
         raise ErrorIntegracionIA('La IA devolvió un formato inválido para las paradas adicionales.')
@@ -1808,11 +1828,23 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str, historial_id
     payload_variacion = {**payload, '_variacion': variacion}
     grafo = construir_grafo()
     
-    state_resultado = grafo.invoke({
-        'usuario_input': payload_variacion,
-        'historial_id': historial_id,
-        'duraciones': {}
-    })
+    try:
+        state_resultado = grafo.invoke({
+            'usuario_input': payload_variacion,
+            'historial_id': historial_id,
+            'duraciones': {}
+        })
+    except ErrorIntegracionIA:
+        raise
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ErrorIntegracionIA(
+            f'El grafo devolvió datos con formato inesperado: {exc}'
+        ) from exc
+    except RuntimeError as exc:
+        raise ErrorIntegracionIA(
+            f'Error de ejecución en el pipeline LangGraph: {exc}'
+        ) from exc
+
 
     ruta = state_resultado.get('ruta_final') or {}
     metricas = state_resultado.get('metricas_scoring') or {

@@ -531,7 +531,7 @@ def stripe_webhook_view(request):
             webhook_secret=getattr(settings, 'STRIPE_WEBHOOK_SECRET', ''),
             tolerance_seconds=int(getattr(settings, 'STRIPE_WEBHOOK_TOLERANCE_SECONDS', 300)),
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return JsonResponse(
             {'status': 'ERROR', 'mensaje': 'Tolerancia de firma inválida en configuración.'},
             status=500,

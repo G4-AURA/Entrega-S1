@@ -11,6 +11,9 @@ Opciones:
 """
 import time
 from django.core.management.base import BaseCommand
+from django.db import DatabaseError
+
+from rutas.graphhopper import GraphHopperError
 
 
 class Command(BaseCommand):
@@ -113,8 +116,14 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.WARNING('⚠️  sin resultado (ver logs)'))
                     errores += 1
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f'❌ {e}'))
+            except GraphHopperError as e:
+                self.stdout.write(self.style.ERROR(f'❌ GraphHopper: {e}'))
+                errores += 1
+            except DatabaseError as e:
+                self.stdout.write(self.style.ERROR(f'❌ Base de datos: {e}'))
+                errores += 1
+            except (AttributeError, TypeError) as e:
+                self.stdout.write(self.style.ERROR(f'❌ Datos de ruta malformados: {e}'))
                 errores += 1
 
             # Pequeña pausa para respetar los límites de la API gratuita de GraphHopper
