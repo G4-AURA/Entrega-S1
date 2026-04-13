@@ -80,6 +80,14 @@
 
     function updateDisplay() {
         display.innerText = stopCount;
+        if (btnRemoveStop) {
+            btnRemoveStop.disabled = stopCount <= LIMITES_MANUAL.paradasMin;
+            btnRemoveStop.setAttribute('aria-disabled', String(stopCount <= LIMITES_MANUAL.paradasMin));
+        }
+        if (btnAddStop) {
+            btnAddStop.disabled = stopCount >= LIMITES_MANUAL.paradasMax;
+            btnAddStop.setAttribute('aria-disabled', String(stopCount >= LIMITES_MANUAL.paradasMax));
+        }
     }
     
     function actualizarAyudaExigencia() {
@@ -212,7 +220,12 @@
     }
 
     function removeStop() {
-        if (stopCount <= 1) {
+        if (stopCount <= LIMITES_MANUAL.paradasMin) {
+            avisar(
+                `Esta ruta requiere al menos ${LIMITES_MANUAL.paradasMin} paradas.`,
+                'warning',
+                3200,
+            );
             return;
         }
 

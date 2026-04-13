@@ -126,6 +126,16 @@ textarea.input-field {
     gap: 12px;
 }
 
+.stops-range {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    background: rgb(255 255 255 / 18%);
+    border: 1px solid rgb(255 255 255 / 28%);
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+
 .stops-label {
     font-size: 14px;
     font-weight: 600;
@@ -155,6 +165,12 @@ textarea.input-field {
 
 .btn-counter:hover {
     background: rgb(255 255 255 / 30%);
+}
+
+.btn-counter:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: rgb(255 255 255 / 14%);
 }
 
 .counter-actions {
@@ -470,6 +486,11 @@ textarea.input-field {
 
     .stops-info {
         gap: 8px;
+    }
+
+    .stops-range {
+        font-size: 11px;
+        padding: 3px 8px;
     }
 
     .counter-number {
