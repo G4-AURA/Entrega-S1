@@ -34,7 +34,15 @@ from rutas import services as rutas_services
 from rutas.models import Curiosidad, Ruta
 
 from . import services
-from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
+from .models import (
+    EntregaRecordatorioTurista,
+    MensajeChat,
+    RecordatorioSesion,
+    SesionTour,
+    Turista,
+    TuristaSesion,
+    UbicacionVivo,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -131,6 +139,28 @@ def _serializar_mensaje(mensaje: MensajeChat, guia_user_id: int | None = None) -
         "destinatario_turista_id": mensaje.destinatario_turista_id,
         "turista_id": mensaje.turista_id,
     }
+
+
+def _serializar_recordatorio(recordatorio: RecordatorioSesion) -> dict:
+    alerta_en = recordatorio.hora_objetivo - timedelta(minutes=recordatorio.avisar_minutos_antes)
+    payload = {
+        "id": recordatorio.id,
+        "mensaje": recordatorio.mensaje,
+        "hora_objetivo": recordatorio.hora_objetivo.isoformat(),
+        "avisar_minutos_antes": recordatorio.avisar_minutos_antes,
+        "alerta_en": alerta_en.isoformat(),
+        "activo": recordatorio.activo,
+        "creado_en": recordatorio.creado_en.isoformat(),
+    }
+    if recordatorio.ubicacion_quedada:
+        payload["ubicacion_quedada"] = {
+            "lat": recordatorio.ubicacion_quedada.y,
+            "lng": recordatorio.ubicacion_quedada.x,
+            "etiqueta": recordatorio.etiqueta_quedada,
+        }
+    else:
+        payload["ubicacion_quedada"] = None
+    return payload
 
 
 def _render_join_error(request, mensaje: str, status: int = 400):
@@ -908,6 +938,174 @@ def obtener_ubicaciones_turistas(request, sesion_id):
         )
 
     return JsonResponse({"turistas": resultados})
+
+
+# ===========================================================================
+# RECORDATORIOS / ALERTAS DE SESIÓN
+# ===========================================================================
+
+@require_http_methods(["GET", "POST"])
+def recordatorios_sesion(request, sesion_id):
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if request.method == "GET":
+        if not services.tiene_acceso_a_sesion(request, sesion):
+            return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+        recordatorios = list(
+            RecordatorioSesion.objects.filter(sesion_tour=sesion).order_by("hora_objetivo", "id")
+        )
+        return JsonResponse(
+            {
+                "recordatorios": [_serializar_recordatorio(r) for r in recordatorios],
+                "total": len(recordatorios),
+                "estado_sesion": sesion.estado,
+            }
+        )
+
+    if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "Solo el guía puede crear recordatorios."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "No se pueden crear recordatorios en una sesión finalizada."}, status=410)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "Solo puedes crear recordatorios cuando el tour está en curso."}, status=409)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    mensaje = str(body.get("mensaje") or "").strip()
+    if not mensaje:
+        return JsonResponse({"error": "El mensaje del recordatorio es obligatorio."}, status=400)
+    if len(mensaje) > 5000:
+        return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
+
+    hora_objetivo_raw = body.get("hora_objetivo")
+    hora_objetivo = parse_datetime(str(hora_objetivo_raw or ""))
+    if not hora_objetivo:
+        return JsonResponse({"error": "hora_objetivo debe ser una fecha ISO-8601 válida."}, status=400)
+    if timezone.is_naive(hora_objetivo):
+        hora_objetivo = timezone.make_aware(hora_objetivo, timezone.get_current_timezone())
+
+    avisar_minutos_antes_raw = body.get("avisar_minutos_antes", 10)
+    try:
+        avisar_minutos_antes = int(avisar_minutos_antes_raw)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "avisar_minutos_antes debe ser un entero."}, status=400)
+    if avisar_minutos_antes < 0 or avisar_minutos_antes > 240:
+        return JsonResponse({"error": "avisar_minutos_antes debe estar entre 0 y 240."}, status=400)
+
+    ahora = timezone.now()
+    if hora_objetivo <= ahora:
+        return JsonResponse({"error": "La hora objetivo debe ser futura."}, status=400)
+
+    alerta_en = hora_objetivo - timedelta(minutes=avisar_minutos_antes)
+    if alerta_en <= ahora:
+        return JsonResponse(
+            {"error": "Con esa antelación, la alerta ya habría ocurrido. Ajusta hora o minutos."},
+            status=400,
+        )
+
+    meetup_lat = body.get("meetup_lat")
+    meetup_lng = body.get("meetup_lng")
+    etiqueta_quedada = str(body.get("etiqueta_quedada") or "").strip()
+    ubicacion_quedada = None
+
+    if meetup_lat is not None or meetup_lng is not None:
+        if meetup_lat is None or meetup_lng is None:
+            return JsonResponse({"error": "Debes enviar meetup_lat y meetup_lng juntos."}, status=400)
+        try:
+            lat = float(meetup_lat)
+            lng = float(meetup_lng)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "meetup_lat y meetup_lng deben ser numéricos."}, status=400)
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            return JsonResponse({"error": "Coordenadas de quedada fuera de rango válido."}, status=400)
+        ubicacion_quedada = Point(lng, lat, srid=4326)
+
+    recordatorio = RecordatorioSesion.objects.create(
+        sesion_tour=sesion,
+        creado_por=request.user,
+        mensaje=mensaje,
+        hora_objetivo=hora_objetivo,
+        avisar_minutos_antes=avisar_minutos_antes,
+        ubicacion_quedada=ubicacion_quedada,
+        etiqueta_quedada=etiqueta_quedada,
+    )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "recordatorio": _serializar_recordatorio(recordatorio),
+        },
+        status=201,
+    )
+
+
+@require_GET
+def alertas_recordatorios(request, sesion_id):
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    turista = services.obtener_turista_request(request)
+    if not turista:
+        return JsonResponse({"error": "Solo los turistas pueden consultar alertas."}, status=403)
+
+    es_participante_activo = TuristaSesion.objects.filter(
+        turista=turista,
+        sesion_tour=sesion,
+        activo=True,
+    ).exists()
+    if not es_participante_activo:
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"alertas": [], "total": 0, "estado_sesion": sesion.estado})
+
+    ahora = timezone.now()
+    ventana_pasado = ahora - timedelta(minutes=5)
+
+    candidatos = list(
+        RecordatorioSesion.objects.filter(
+            sesion_tour=sesion,
+            activo=True,
+            hora_objetivo__gte=ventana_pasado,
+        ).order_by("hora_objetivo", "id")
+    )
+
+    alertas = []
+    for recordatorio in candidatos:
+        alerta_en = recordatorio.hora_objetivo - timedelta(minutes=recordatorio.avisar_minutos_antes)
+        if alerta_en > ahora:
+            continue
+
+        entrega, created = EntregaRecordatorioTurista.objects.get_or_create(
+            recordatorio=recordatorio,
+            turista=turista,
+        )
+        if not created:
+            continue
+
+        alertas.append(
+            {
+                **_serializar_recordatorio(recordatorio),
+                "entregado_en": entrega.entregado_en.isoformat(),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "alertas": alertas,
+            "total": len(alertas),
+            "estado_sesion": sesion.estado,
+        }
+    )
 
 
 # ===========================================================================
