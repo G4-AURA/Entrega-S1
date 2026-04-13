@@ -1178,11 +1178,39 @@ function _buildPopupTour(parada, role) {
 function _buildParadaIcon(parada, highlighted = false, role = null) {
     const esActual = Boolean(parada && parada.es_actual);
 
-    if (role === 'origin' && !highlighted) {
+    // 1. ESTADO SELECCIONADO (Siempre Naranja para destacar la selección)
+    if (highlighted) {
+        const bg = '#f97316';
+        const shadow = 'rgba(249,115,22,.45)';
+        const size = 40;
+
+        // Inyectamos el SVG correspondiente para no perder la forma al seleccionarla
+        let svg = '';
+        if (role === 'origin') {
+            svg = '<svg viewBox="0 0 12 12" width="12" height="12" fill="white"><polygon points="6,1 11,10 1,10"/></svg>';
+        } else if (role === 'destination') {
+            svg = '<svg viewBox="0 0 12 12" width="12" height="12" fill="white"><rect x="1" y="1" width="10" height="10" rx="2"/></svg>';
+        }
+
+        return L.divIcon({
+            className: '',
+            html: `<div style="background:${bg};width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 4px ${shadow.replace('.45','.25')},0 4px 12px ${shadow};display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
+                    ${svg}
+                    <span style="color:white;font-size:15px;font-weight:800;line-height:1;">${parada.orden}</span>
+                  </div>`,
+            iconSize: [size, size], iconAnchor: [size/2, size/2], popupAnchor: [0, -(size/2)-4],
+        });
+    }
+
+    // 2. ESTADO INICIO
+    if (role === 'origin') {
+        // Si es la parada actual real del tour, usamos el índigo de AURA; si no, el verde de inicio.
+        const bg = esActual ? '#4f46e5' : '#16a34a';
+        const shadow = esActual ? 'rgba(79,70,229,.5)' : 'rgba(22,163,74,.5)';
         const size = esActual ? 34 : 30;
         return L.divIcon({
             className: '',
-            html: `<div style="background:#16a34a;width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(22,163,74,.5);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
+            html: `<div style="background:${bg};width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px ${shadow};display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
                     <svg viewBox="0 0 12 12" width="11" height="11" fill="white"><polygon points="6,1 11,10 1,10"/></svg>
                     <span style="color:white;font-size:9px;font-weight:800;line-height:1;">${parada.orden}</span>
                   </div>`,
@@ -1190,11 +1218,14 @@ function _buildParadaIcon(parada, highlighted = false, role = null) {
         });
     }
 
-    if (role === 'destination' && !highlighted) {
+    // 3. ESTADO FIN
+    if (role === 'destination') {
+        const bg = esActual ? '#4f46e5' : '#dc2626';
+        const shadow = esActual ? 'rgba(79,70,229,.5)' : 'rgba(220,38,38,.5)';
         const size = esActual ? 34 : 30;
         return L.divIcon({
             className: '',
-            html: `<div style="background:#dc2626;width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(220,38,38,.5);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
+            html: `<div style="background:${bg};width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px ${shadow};display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
                     <svg viewBox="0 0 12 12" width="11" height="11" fill="white"><rect x="1" y="1" width="10" height="10" rx="2"/></svg>
                     <span style="color:white;font-size:9px;font-weight:800;line-height:1;">${parada.orden}</span>
                   </div>`,
@@ -1202,20 +1233,7 @@ function _buildParadaIcon(parada, highlighted = false, role = null) {
         });
     }
 
-    if (highlighted) {
-        let bg = '#f97316', shadow = 'rgba(249,115,22,.45)';
-        if (role === 'origin')      { bg = '#15803d'; shadow = 'rgba(21,128,61,.5)'; }
-        if (role === 'destination') { bg = '#b91c1c'; shadow = 'rgba(185,28,28,.5)'; }
-        const size = 40;
-        return L.divIcon({
-            className: '',
-            html: `<div style="background:${bg};width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 4px ${shadow.replace('.5','.25')},0 4px 12px ${shadow};display:flex;align-items:center;justify-content:center;">
-                    <span style="color:white;font-size:15px;font-weight:800;">${parada.orden}</span>
-                  </div>`,
-            iconSize: [size, size], iconAnchor: [size/2, size/2], popupAnchor: [0, -(size/2)-4],
-        });
-    }
-
+    // 4. PARADAS INTERMEDIAS
     const size = esActual ? 34 : 26;
     const bg = esActual ? '#4f46e5' : '#d1d5db';
     const bw = esActual ? 3 : 2;
@@ -1223,6 +1241,7 @@ function _buildParadaIcon(parada, highlighted = false, role = null) {
     const tc = esActual ? '#ffffff' : '#6b7280';
     const ts = esActual ? 14 : 11;
     const tw = esActual ? 700 : 600;
+
     return L.divIcon({
         className: '',
         html: `<div style="background:${bg};width:${size}px;height:${size}px;border-radius:50%;border:${bw}px solid white;box-shadow:${shadow};display:flex;align-items:center;justify-content:center;">
