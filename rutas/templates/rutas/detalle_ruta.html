@@ -437,6 +437,8 @@
 {{ geometria_ruta_json|json_script:"geometria-ruta-json" }}
 <script src="{% static 'js/pages/route_detail.js' %}"></script>
 
+<script src="{% static 'js/map_icons.js' %}"></script>
+
 <script>
 /**
  * detalle_ruta.js (inline)
@@ -488,20 +490,6 @@ const _paradasConCoords = paradas.filter(p => Array.isArray(p.coordenadas) && p.
 const _ordenMin = _paradasConCoords.length > 0 ? Math.min(..._paradasConCoords.map(p => p.orden)) : null;
 const _ordenMax = _paradasConCoords.length > 0 ? Math.max(..._paradasConCoords.map(p => p.orden)) : null;
 
-function _buildIconoDetalle(parada, esOrigen, esDestino) {
-    if (esOrigen) return L.divIcon({ className: '', iconSize: [32,32], iconAnchor: [16,16], popupAnchor: [0,-20],
-        html: `<div style="background:#16a34a;width:32px;height:32px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(22,163,74,.5);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
-                <svg viewBox="0 0 12 12" width="11" height="11" fill="white"><polygon points="6,1 11,10 1,10"/></svg>
-                <span style="color:white;font-size:9px;font-weight:800;line-height:1;">${parada.orden}</span></div>` });
-    if (esDestino) return L.divIcon({ className: '', iconSize: [32,32], iconAnchor: [16,16], popupAnchor: [0,-20],
-        html: `<div style="background:#dc2626;width:32px;height:32px;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(220,38,38,.5);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;">
-                <svg viewBox="0 0 12 12" width="11" height="11" fill="white"><rect x="1" y="1" width="10" height="10" rx="2"/></svg>
-                <span style="color:white;font-size:9px;font-weight:800;line-height:1;">${parada.orden}</span></div>` });
-    return L.divIcon({ className: '', iconSize: [26,26], iconAnchor: [13,13], popupAnchor: [0,-17],
-        html: `<div style="background:#4f46e5;width:26px;height:26px;border-radius:50%;border:2px solid white;box-shadow:0 1px 5px rgba(79,70,229,.4);display:flex;align-items:center;justify-content:center;">
-                <span style="color:white;font-size:11px;font-weight:700;">${parada.orden}</span></div>` });
-}
-
 function _buildPopupDetalle(parada, esOrigen, esDestino) {
     const badge = esOrigen
         ? ' <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;">INICIO</span>'
@@ -514,11 +502,19 @@ function _buildPopupDetalle(parada, esOrigen, esDestino) {
 paradas.forEach(parada => {
     if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
     puntos.push(parada.coordenadas);
+    
     const esOrigen  = _paradasConCoords.length >= 2 && parada.orden === _ordenMin;
     const esDestino = _paradasConCoords.length >= 2 && parada.orden === _ordenMax;
-    L.marker(parada.coordenadas, { icon: _buildIconoDetalle(parada, esOrigen, esDestino) })
-        .addTo(mapa)
-        .bindPopup(_buildPopupDetalle(parada, esOrigen, esDestino));
+    
+    let role = null;
+    if (esOrigen) role = 'origin';
+    else if (esDestino) role = 'destination';
+
+    L.marker(parada.coordenadas, { 
+        icon: window.buildAuraMarkerIcon(parada, { role: role }) 
+    })
+    .addTo(mapa)
+    .bindPopup(_buildPopupDetalle(parada, esOrigen, esDestino));
 });
 
 // ── Estado del badge en el mapa ────────────────────────────────────────────
