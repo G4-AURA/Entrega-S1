@@ -27,6 +27,8 @@ let ubicacionPollId   = null;
 let chatPollId        = null;
 let geolocationWatchId = null;
 let tourFinalizado    = false;
+let ultimaPosicionTurista = null;
+let primeraUbicacionTuristaCentrada = false;
 // ------------------------------------------------------------
 
 const paradasMarkers  = new Map();
@@ -197,32 +199,12 @@ function _dibujarRutaYParadas() {
 
 async function _iniciarRastreoLocal() {
     if (!navigator.geolocation) return;
-    const feedback = window.AuraFeedback;
-
-    if (feedback && typeof feedback.confirm === 'function') {
-        const confirmarUbicacion = await feedback.confirm({
-            title: 'Compartir ubicación',
-            message: esGuia
-                ? 'Activa tu ubicación para que los turistas puedan seguirte durante el tour.'
-                : 'Activa tu ubicación para mostrar curiosidades cercanas y seguir al guía en tiempo real.',
-            confirmText: 'Permitir',
-            cancelText: 'Ahora no',
-            type: 'info',
-        });
-
-        if (!confirmarUbicacion) {
-            feedback.toast('Puedes activar la ubicación más tarde desde los permisos del navegador.', {
-                type: 'info',
-                duration: 3200,
-            });
-            return;
-        }
-    }
 
     geolocationWatchId = navigator.geolocation.watchPosition(
         position => {
             const { latitude: lat, longitude: lng } = position.coords;
             const pos = [lat, lng];
+            ultimaPosicionTurista = { lat, lng };
 
             if (!miUbicacionMarker) {
                 const color = esGuia ? '#ef4444' : '#3b82f6';
@@ -244,6 +226,11 @@ async function _iniciarRastreoLocal() {
                 }).addTo(map).bindPopup(esGuia ? 'Guía (tú)' : 'Tú');
             } else {
                 miUbicacionMarker.setLatLng(pos);
+            }
+
+            if (!esGuia && !primeraUbicacionTuristaCentrada && map) {
+                map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.6 });
+                primeraUbicacionTuristaCentrada = true;
             }
 
             // El guía envía su posición al servidor para que los turistas la vean
@@ -277,7 +264,23 @@ async function _iniciarRastreoLocal() {
                 _detectarParadaYSolicitarCuriosidad(lat, lng);
             }
         },
-        () => {},
+        error => {
+            const feedback = window.AuraFeedback;
+            const mensaje =
+                error?.code === error.PERMISSION_DENIED
+                    ? 'El navegador ha bloqueado la ubicación. Revisa los permisos del sitio.'
+                    : error?.code === error.POSITION_UNAVAILABLE
+                        ? 'No se pudo obtener una posición válida en este momento.'
+                        : error?.code === error.TIMEOUT
+                            ? 'La localización está tardando demasiado en responder.'
+                            : 'No se pudo detectar la ubicación automáticamente.';
+
+            if (feedback && typeof feedback.toast === 'function') {
+                feedback.toast(mensaje, { type: 'warning', duration: 3800 });
+            } else {
+                console.warn('[AURA geolocation]', mensaje);
+            }
+        },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 },
     );
 }
@@ -1234,6 +1237,11 @@ function _initBotónCentraMapa() {
 
 function _centrar_en_turista() {
     if (!map || !miUbicacionMarker) {
+        if (ultimaPosicionTurista) {
+            map.flyTo([ultimaPosicionTurista.lat, ultimaPosicionTurista.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+            return;
+        }
+
         console.warn('No se puede centrar: posición del turista no disponible');
         return;
     }
