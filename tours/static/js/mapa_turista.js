@@ -126,6 +126,11 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 document.dispatchEvent(new CustomEvent('privateChatClosed'));
             }
+            if (target === 'notificaciones') {
+                const badge = document.getElementById('recordatorios-badge');
+                if (badge) badge.style.display = 'none';
+                document.dispatchEvent(new CustomEvent('recordatoriosOpened'));
+            }
         });
     });
 
@@ -138,6 +143,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Chat ──────────────────────────────────────────────────────────────
     _initSessionCountdown();
     _initChat();
+    _initRecordatorios();
 });
 
 
@@ -984,6 +990,269 @@ function _initChat() {
     });
 
     syncChatAvailability();
+}
+
+
+function _initRecordatorios() {
+    const listEl = document.getElementById('recordatorios-list');
+    if (!listEl) return;
+
+    const horaInput = document.getElementById('recordatorio-hora');
+    const avisarInput = document.getElementById('recordatorio-avisar');
+    const mensajeInput = document.getElementById('recordatorio-mensaje');
+    const crearBtn = document.getElementById('recordatorio-crear-btn');
+    const feedbackEl = document.getElementById('recordatorio-feedback');
+    const badgeEl = document.getElementById('recordatorios-badge');
+
+    let unreadAlerts = 0;
+    let tabVisible = false;
+    const alertasActivasPorId = new Map();
+    let ultimoRecordatorios = [];
+
+    document.addEventListener('recordatoriosOpened', () => {
+        tabVisible = true;
+        unreadAlerts = 0;
+        if (badgeEl) badgeEl.style.display = 'none';
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabVisible = btn.getAttribute('data-tab') === 'notificaciones';
+        });
+    });
+
+    const tabBtn = document.querySelector('[data-tab="notificaciones"]');
+    if (tabBtn && tabBtn.classList.contains('active')) {
+        tabVisible = true;
+    }
+
+    function showFeedback(msg, isError) {
+        if (!feedbackEl) return;
+        feedbackEl.textContent = msg || '';
+        feedbackEl.classList.toggle('error', Boolean(isError));
+        feedbackEl.classList.toggle('ok', !isError && Boolean(msg));
+    }
+
+    function formatDate(isoDate) {
+        try {
+            return new Date(isoDate).toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return 'Fecha inválida';
+        }
+    }
+
+    function formatHour(isoDate) {
+        try {
+            return new Date(isoDate).toLocaleTimeString('es-ES', {
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return '--:--';
+        }
+    }
+
+    function clearExpiredActiveAlerts() {
+        const nowMs = Date.now();
+        Array.from(alertasActivasPorId.entries()).forEach(([id, alerta]) => {
+            const endMs = Date.parse(alerta?.hora_objetivo || '');
+            if (!Number.isFinite(endMs) || endMs <= nowMs) {
+                alertasActivasPorId.delete(id);
+            }
+        });
+    }
+
+    function renderRecordatorios(recordatorios) {
+        clearExpiredActiveAlerts();
+
+        if (!Array.isArray(recordatorios) || !recordatorios.length) {
+            listEl.innerHTML = `
+                <div class="chat-empty">
+                    <span class="material-icons-round">notifications_none</span>
+                    <p>Aún no hay recordatorios</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = '';
+        recordatorios.forEach(item => {
+            const card = document.createElement('article');
+            const itemId = String(item.id);
+            const alertaActiva = alertasActivasPorId.has(itemId);
+            card.className = `recordatorio-item ${alertaActiva ? 'recordatorio-item-alerta' : ''}`;
+
+            const chipTexto = alertaActiva
+                ? `ALERTA HASTA ${formatHour(item.hora_objetivo)}`
+                : `${item.avisar_minutos_antes} min antes`;
+
+            card.innerHTML = `
+                <div class="recordatorio-item-head">
+                    <span class="recordatorio-chip">${_escapeHtml(chipTexto)}</span>
+                    <span class="recordatorio-time">${_escapeHtml(formatDate(item.hora_objetivo))}</span>
+                </div>
+                <p class="recordatorio-text">${_escapeHtml(item.mensaje)}</p>
+            `;
+            listEl.appendChild(card);
+        });
+    }
+
+    function pollRecordatorios() {
+        if (typeof recordatoriosUrl === 'undefined' || !recordatoriosUrl) return;
+        fetch(recordatoriosUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => {
+                ultimoRecordatorios = data.recordatorios || [];
+                renderRecordatorios(ultimoRecordatorios);
+            })
+            .catch(() => {});
+    }
+
+    async function playReminderSound() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const context = new AudioCtx();
+
+            const beep = (startAt, freq) => {
+                const osc = context.createOscillator();
+                const gain = context.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, startAt);
+                gain.gain.exponentialRampToValueAtTime(0.2, startAt + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.3);
+                osc.connect(gain);
+                gain.connect(context.destination);
+                osc.start(startAt);
+                osc.stop(startAt + 0.32);
+            };
+
+            const now = context.currentTime;
+            beep(now, 880);
+            beep(now + 0.35, 660);
+            beep(now + 0.7, 880);
+
+            setTimeout(() => {
+                context.close().catch(() => {});
+            }, 1500);
+        } catch {
+            return;
+        }
+    }
+
+    function notifyBrowser(alerta) {
+        const title = 'Recordatorio del guía';
+        const body = alerta.mensaje || 'Tienes un nuevo recordatorio';
+
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body });
+            return;
+        }
+        if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    new Notification(title, { body });
+                }
+            }).catch(() => {});
+        }
+    }
+
+    function pollAlertasTurista() {
+        if (esGuia) return;
+        if (typeof recordatoriosAlertasUrl === 'undefined' || !recordatoriosAlertasUrl) return;
+
+        fetch(recordatoriosAlertasUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => {
+                const alertas = data.alertas || [];
+                if (!alertas.length) return;
+
+                alertas.forEach(alerta => {
+                    alertasActivasPorId.set(String(alerta.id), alerta);
+                    notifyBrowser(alerta);
+                });
+
+                renderRecordatorios(ultimoRecordatorios);
+
+                playReminderSound();
+
+                if (!tabVisible) {
+                    unreadAlerts += alertas.length;
+                    if (badgeEl) {
+                        badgeEl.textContent = unreadAlerts > 99 ? '99+' : String(unreadAlerts);
+                        badgeEl.style.display = 'block';
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    function createRecordatorio() {
+        if (!esGuia || !crearBtn) return;
+
+        const hora = horaInput ? horaInput.value : '';
+        const mensaje = mensajeInput ? mensajeInput.value.trim() : '';
+        const avisar = avisarInput ? avisarInput.value : '10';
+
+        if (!hora) {
+            showFeedback('Debes indicar la hora objetivo.', true);
+            return;
+        }
+        if (!mensaje) {
+            showFeedback('Debes escribir un mensaje para el recordatorio.', true);
+            return;
+        }
+
+        const payload = {
+            hora_objetivo: new Date(hora).toISOString(),
+            avisar_minutos_antes: Number(avisar || '10'),
+            mensaje,
+        };
+
+        crearBtn.disabled = true;
+        showFeedback('Creando recordatorio...', false);
+
+        fetch(recordatoriosUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': _getCsrf(),
+            },
+            body: JSON.stringify(payload),
+        })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    throw new Error(data.error || 'No se pudo crear el recordatorio.');
+                }
+                return data;
+            })
+            .then(() => {
+                if (mensajeInput) mensajeInput.value = '';
+                showFeedback('Recordatorio creado correctamente.', false);
+                pollRecordatorios();
+            })
+            .catch(err => {
+                showFeedback(err.message || 'No se pudo crear el recordatorio.', true);
+            })
+            .finally(() => {
+                crearBtn.disabled = false;
+            });
+    }
+
+    if (crearBtn) {
+        crearBtn.addEventListener('click', createRecordatorio);
+    }
+
+    pollRecordatorios();
+    setInterval(pollRecordatorios, 15000);
+    setInterval(pollAlertasTurista, 10000);
 }
 
 
