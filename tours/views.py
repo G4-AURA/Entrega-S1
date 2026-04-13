@@ -26,6 +26,7 @@ from billing.tier_guard import (
     TierRuleViolation,
     ensure_chat_mode_allowed,
     ensure_curiosity_route_allowed,
+    is_feature_enabled_for_guia,
     ensure_session_capacity_available,
     ensure_session_creation_allowed,
     tier_error_response,
@@ -46,6 +47,13 @@ from .models import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_private_chat_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'chat_mode_separate')
+    except Exception:
+        return False
 
 
 def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -368,6 +376,7 @@ def mapa_turista_anonimo(request, token):
             "paradas_json":        json.dumps(snapshot["paradas"]),
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "current_user_name":   turista.alias,
+            "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
         },
     )
 
@@ -643,6 +652,7 @@ def mapa_guia(request, sesion_id):
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "es_guia":             True,
             "current_user_name":   request.user.username,
+            "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
         },
     )
 
@@ -1183,12 +1193,13 @@ def enviar_mensaje(request, sesion_id):
     if error:
         return JsonResponse({"error": error}, status=403)
 
-    # Validación de tier solo para mensajes públicos
-    if not es_privado:
-        try:
+    try:
+        if es_privado:
+            ensure_chat_mode_allowed(sesion, 'separado')
+        else:
             ensure_chat_mode_allowed(sesion, modo_chat)
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     # Resolución del destinatario privado
     destinatario_turista = None
@@ -1384,6 +1395,11 @@ def bandeja_privada_guia(request, sesion_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
     if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, 'separado')
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
  
     bandeja = services.obtener_bandeja_privada_guia(sesion)
     return JsonResponse({"bandeja": bandeja})
@@ -1415,6 +1431,11 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
  
     if not es_guia_req and not es_turista_propio:
         return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, 'separado')
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
  
     desde_str = request.GET.get("desde")
     limite_str = request.GET.get("limite", "50")

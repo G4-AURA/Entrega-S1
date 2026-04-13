@@ -49,11 +49,13 @@
             <span class="chat-badge" id="recordatorios-badge" style="display:none;"></span>
         </button>
 
+        {% if private_chat_enabled %}
         <button class="tab-btn" data-tab="chat-privado">
             <span class="material-icons-round">lock</span>
             {% if es_guia %}Privado{% else %}Guía{% endif %}
             <span class="chat-badge" id="chat-privado-badge" style="display:none;"></span>
         </button>
+        {% endif %}
     </div>
 
     <div class="panel-content">
@@ -190,6 +192,7 @@
         </div>
 
         {# ── Pestaña: Chat Privado ─────────────────────────────────────────── #}
+        {% if private_chat_enabled %}
         <div class="tab-content" id="tab-chat-privado">
         {% if es_guia %}
         {# Vista del GUÍA: bandeja de conversaciones privadas #}
@@ -204,6 +207,7 @@
             </div>
             </div>
         </div>
+        {% endif %}
     
         <div id="private-chat-view" class="private-chat-view" style="display:none;">
             <div class="private-chat-header">
@@ -283,6 +287,7 @@
   const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
   const countdownStatusUrl   = '{% url "tours:estado_cronometro" sesion.id %}';
   const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
+  const privateChatEnabled   = ('{% if private_chat_enabled %}true{% else %}false{% endif %}' === 'true');
   // Chat privado — URLs de API
   const bandejaPrivadaUrl    = '{% url "tours:bandeja_privada_guia" sesion.id %}';
   const mensajesPrivadosBaseUrl = '/tours/sesiones/{{ sesion.id }}/chat-privado/';

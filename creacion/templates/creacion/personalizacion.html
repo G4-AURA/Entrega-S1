@@ -68,6 +68,7 @@
                     </div>
                 </div>
 
+                {% if payload_wishes_enabled %}
                 <div class="col-12">
                     <div class="deseos-section">
                         <div class="deseos-header">
@@ -85,6 +86,13 @@
                         </button>
                     </div>
                 </div>
+                {% else %}
+                <div class="col-12">
+                    <div class="alert alert-light border">
+                        El campo de deseos con IA no está habilitado para tu plan actual.
+                    </div>
+                </div>
+                {% endif %}
 
                 <br>
 

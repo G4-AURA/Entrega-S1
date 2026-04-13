@@ -15,6 +15,10 @@
 'use strict';
 
 (function () {
+  const privateChatEnabledFlag = (typeof privateChatEnabled !== 'undefined')
+    ? Boolean(privateChatEnabled)
+    : true;
+  if (!privateChatEnabledFlag) return;
 
   // ── Variables de estado ─────────────────────────────────────────────────
   let activeTuristaId    = null;   // guía: turista del hilo abierto
