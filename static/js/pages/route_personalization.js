@@ -140,6 +140,7 @@
             'validacion': 'Validando coherencia geográfica...',
             'scoring': 'Evaluando la mejor alternativa...',
             'optimizacion': 'Optimizando la ruta...',
+            'esperando_cuota': 'Servidores de IA ocupados. Reintentando en breve...',
             'finalizado': '¡Ruta lista!'
         };
 

@@ -63,8 +63,8 @@ def nodo_generacion(state: State) -> dict:
     bloque_allowlist = construir_bloque_allowlist(pois_allowlist)
 
     prompt = f"""
-        Eres un guía turístico experto. Tu tarea es seleccionar los mejores Puntos de Interés (POIs) para
-        una ruta en {datos.get('ciudad')}.
+        Eres un guía turístico experto de nivel mundial. Tu tarea es generar LA MEJOR ruta posible de Puntos de Interés (POIs)
+        para {datos.get('ciudad')}.
 
         ## Parámetros de la ruta
         - Duración total: {datos.get('duracion')} horas
@@ -75,20 +75,21 @@ def nodo_generacion(state: State) -> dict:
         {bloque_deseos}
         {bloque_allowlist}
 
-        ## Instrucción
-        Genera una lista de EXACTAMENTE {objetivo_paradas} POIs adecuados para estos parámetros.
-        Ten en cuenta el contexto del solicitante y sus preferencias específicas si las hay.
-        Si se han proporcionado POIs recomendados (allowlist), dales prioridad frente a otros lugares
-        siempre que encajen con la temática. Puedes complementar con otros POIs si son necesarios.
+        ## Tarea Cognitiva Avanzada (Evaluación Interna)
+        1. Genera mentalmente 3 posibles variaciones de rutas con EXACTAMENTE {objetivo_paradas} POIs cada una.
+        2. Evalúa internamente esas 3 rutas penalizando si los lugares están muy lejos físicamente entre sí, y premiando la coherencia con las temáticas y la diversidad.
+        3. Selecciona la ruta ganadora de entre esas 3 opciones y descarta el resto.
 
-        Responde ÚNICAMENTE con un JSON válido (sin texto extra) con esta estructura:
+        ## Output Final
+        Devuelve ÚNICAMENTE la lista de la ruta ganadora de {objetivo_paradas} POIs. No añadas explicaciones, texto extra, ni bloques de markdown.
+        Responde estrictamente con un JSON válido usando este formato:
         [
             {{"nombre": "Nombre del sitio", "coords": [lat, lon], "desc": "Breve descripción del lugar", "categoria": "Categoría"}}
         ]
     """
 
     try:
-        pois_crudos = llamar_gemini(prompt)
+        pois_crudos = llamar_gemini(prompt, historial_id=state.get("historial_id"))
         if not isinstance(pois_crudos, list):
             raise ErrorIntegracionIA("Gemini devolvió un formato inválido.")
     except ErrorIntegracionIA as exc:

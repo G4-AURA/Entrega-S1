@@ -63,7 +63,7 @@ def _leer_int_env(nombre: str, default: int) -> int:
         return default
 
 
-def llamar_gemini(prompt: str) -> list | dict:
+def llamar_gemini(prompt: str, historial_id: int = None) -> list | dict:
     """
     Llama a Gemini y devuelve la respuesta parseada como JSON.
     Lanza ErrorIntegracionIA ante cualquier fallo.
@@ -81,8 +81,8 @@ def llamar_gemini(prompt: str) -> list | dict:
         'contents': [{'parts': [{'text': prompt}]}],
         'generationConfig': {'response_mime_type': 'application/json'},
     }
-    timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
-    max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
+    timeout_s = max(60, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 60))
+    max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 3)) # Max 3 based on user requirements 
     http_reintentable = {408, 409, 425, 429, 500, 502, 503, 504}
 
     ultimo_error: Exception | None = None
@@ -90,7 +90,21 @@ def llamar_gemini(prompt: str) -> list | dict:
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
             if response.status_code in http_reintentable and intento < max_reintentos:
-                logger.warning('Gemini status=%s (reintento %s/%s).', response.status_code, intento + 1, max_reintentos)
+                tiempo_espera = 15 * (2 ** intento) # Exponential backoff: 15s, 30s, 60s
+                logger.warning('Gemini status=%s. Esperando %s s... (reintento %s/%s).', response.status_code, tiempo_espera, intento + 1, max_reintentos)
+                
+                etapa_previa = None
+                if historial_id:
+                    from creacion.models import Historial_ia
+                    hist = Historial_ia.objects.filter(id=historial_id).first()
+                    etapa_previa = hist.etapa_actual if hist else None
+                    Historial_ia.objects.filter(id=historial_id).update(etapa_actual='esperando_cuota')
+                
+                time.sleep(tiempo_espera)
+                
+                if historial_id and etapa_previa:
+                    from creacion.models import Historial_ia
+                    Historial_ia.objects.filter(id=historial_id).update(etapa_actual=etapa_previa)
                 continue
             response.raise_for_status()
             resultado = response.json()
@@ -99,17 +113,35 @@ def llamar_gemini(prompt: str) -> list | dict:
         except requests.Timeout as exc:
             ultimo_error = exc
             if intento < max_reintentos:
+                tiempo_espera = 10 * (2 ** intento)
+                time.sleep(tiempo_espera)
                 continue
             raise ErrorIntegracionIA(f'Timeout tras {max_reintentos + 1} intentos.') from exc
         except requests.HTTPError as exc:
             ultimo_error = exc
             status = exc.response.status_code if exc.response is not None else 'desconocido'
             if status in http_reintentable and intento < max_reintentos:
+                tiempo_espera = 15 * (2 ** intento)
+                logger.warning('Gemini HTTPError status=%s. Esperando %s s... (reintento %s/%s).', status, tiempo_espera, intento + 1, max_reintentos)
+                
+                etapa_previa = None
+                if historial_id:
+                    from creacion.models import Historial_ia
+                    hist = Historial_ia.objects.filter(id=historial_id).first()
+                    etapa_previa = hist.etapa_actual if hist else None
+                    Historial_ia.objects.filter(id=historial_id).update(etapa_actual='esperando_cuota')
+                
+                time.sleep(tiempo_espera)
+                
+                if historial_id and etapa_previa:
+                    from creacion.models import Historial_ia
+                    Historial_ia.objects.filter(id=historial_id).update(etapa_actual=etapa_previa)
                 continue
             raise ErrorIntegracionIA(f'Error HTTP de Gemini (status={status}).') from exc
         except requests.RequestException as exc:
             ultimo_error = exc
             if intento < max_reintentos:
+                time.sleep(5)
                 continue
             raise ErrorIntegracionIA('Error de red al conectar con Gemini.') from exc
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:

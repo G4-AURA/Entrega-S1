@@ -5,6 +5,7 @@ import re
 import logging
 import requests
 import uuid
+import time
 from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Avg
@@ -1788,25 +1789,6 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Selección de mejor alternativa
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _seleccionar_mejor_alternativa(alternativas):
-    if not alternativas:
-        raise ErrorIntegracionIA('No se pudieron generar alternativas de ruta válidas.')
-    distancias = [a['metricas']['distancia_total_km'] for a in alternativas]
-    min_d, max_d = min(distancias), max(distancias)
-    for alternativa in alternativas:
-        dist = alternativa['metricas']['distancia_total_km']
-        distancia_score = 1.0 if max_d == min_d else 1.0 - ((dist - min_d) / (max_d - min_d))
-        diversidad = alternativa['metricas']['diversidad']
-        coherencia = alternativa['metricas']['coherencia_tematica']
-        alternativa['score_total'] = round(0.45 * distancia_score + 0.30 * diversidad + 0.25 * coherencia, 4)
-    alternativas.sort(key=lambda a: a['score_total'], reverse=True)
-    return alternativas[0], alternativas
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Grafo y orquestación
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1851,36 +1833,20 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str, historial_id
 
 def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
     try:
-        num_alternativas = int(prompt_params.get('num_alternativas', 3))
-    except (TypeError, ValueError):
-        num_alternativas = 3
+        # El Mega-Prompt asume una evaluación interna, por lo que llamamos el grafo 1 sola vez.
+        alternativa = _ejecutar_grafo_para_alternativa(prompt_params, "Direct optimization", historial_id=historial_id)
+    except ErrorIntegracionIA as exc:
+        raise ErrorIntegracionIA("No se pudo generar la ruta tras el intento optimizado.") from exc
 
-    num_alternativas = max(1, min(MAX_ALTERNATIVAS_RUTA, num_alternativas))
-
-    alternativas = []
-    for idx in range(num_alternativas):
-        variacion = _VARIACIONES_ALTERNATIVA[idx % len(_VARIACIONES_ALTERNATIVA)]
-        try:
-            alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion, historial_id=historial_id)
-        except ErrorIntegracionIA:
-            continue
-        alternativas.append(alternativa)
-
-    if not alternativas:
-        raise ErrorIntegracionIA("No se pudo generar ninguna alternativa válida de ruta.")
-
-    mejor, evaluadas = _seleccionar_mejor_alternativa(alternativas)
-    ruta_final = mejor['ruta']
-    ruta_final['paradas_rechazadas_validacion'] = mejor.get('paradas_rechazadas_validacion') or []
-    ruta_final['alternativas_evaluadas'] = [
-        {'score_total': a.get('score_total'), 'metricas': a.get('metricas')}
-        for a in evaluadas
-    ]
-    ruta_final['metricas_seleccion'] = mejor.get('metricas')
+    ruta_final = alternativa['ruta']
+    # Mantener coherencia con lo que espera el resto del sistema
+    ruta_final['paradas_rechazadas_validacion'] = alternativa.get('paradas_rechazadas_validacion') or []
+    ruta_final['alternativas_evaluadas'] = []  # Omitido, la IA evaluó en memoria
+    ruta_final['metricas_seleccion'] = alternativa.get('metricas')
     
     # Si tenemos métricas de tiempo de la mejor alternativa, las incluimos
-    if 'duraciones' in mejor:
-        ruta_final['duraciones_etapas'] = mejor['duraciones']
+    if 'duraciones' in alternativa:
+        ruta_final['duraciones_etapas'] = alternativa['duraciones']
 
     return ruta_final
 
