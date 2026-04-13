@@ -11,7 +11,7 @@ El acceso y uso de la App atribuye la condición de usuario e implica la aceptac
 
 ---
 
-## 1. DEFINICIONES
+## 1. Definiciones
 
 - **AURA**: Plataforma digital que facilita la creación y gestión de tours turísticos.
 - **Usuario**: Persona que accede a la App (Guía o Turista).
@@ -21,7 +21,7 @@ El acceso y uso de la App atribuye la condición de usuario e implica la aceptac
 
 ---
 
-## 2. OBJETO DEL SERVICIO
+## 2. Objeto del servicio
 
 AURA actúa como **plataforma intermediaria tecnológica** que conecta guías turísticos con usuarios interesados en experiencias turísticas.
 
@@ -29,7 +29,7 @@ AURA no organiza directamente los tours, salvo que se indique expresamente.
 
 ---
 
-## 3. REGISTRO Y CUENTAS
+## 3. Registro y cuentas
 
 - El usuario garantiza que los datos proporcionados son veraces
 - Es responsable de mantener la confidencialidad de su cuenta
@@ -39,7 +39,7 @@ AURA podrá suspender cuentas en caso de uso indebido.
 
 ---
 
-## 4. RESPONSABILIDAD DE LOS GUÍAS
+## 4. Responsabilidad de los guías
 
 Los guías son responsables de:
 
@@ -54,7 +54,7 @@ AURA no se responsabiliza de:
 
 ---
 
-## 5. PAGOS Y USO DE STRIPE
+## 5. Pagos y uso de Stripe
 
 ### Procesamiento de pagos
 
@@ -78,7 +78,7 @@ AURA puede:
 
 ---
 
-## 6. USO DE INTELIGENCIA ARTIFICIAL
+## 6. Uso de Inteligencia Artificial
 
 AURA puede utilizar IA para:
 - Recomendaciones
@@ -91,7 +91,7 @@ El usuario reconoce que:
 
 ---
 
-## 7. RESPONSABILIDAD DEL USUARIO
+## 7. Responsabilidad del usuario
 
 El usuario se compromete a:
 - Actuar conforme a la ley
@@ -105,7 +105,7 @@ AURA no se responsabiliza de:
 
 ---
 
-## 8. DISPONIBILIDAD DEL SERVICIO
+## 8. Disponibilidad del servicio
 
 AURA no garantiza:
 - Funcionamiento ininterrumpido
@@ -117,7 +117,7 @@ Podrá:
 
 ---
 
-## 9. PROPIEDAD INTELECTUAL
+## 9. Propiedad intelectual
 
 Todos los contenidos de AURA son propiedad de la empresa o cuentan con licencia.
 
@@ -128,7 +128,7 @@ Queda prohibido:
 
 ---
 
-## 10. PROTECCIÓN DE DATOS (RGPD)
+## 10. Protección de datos (RGPD)
 
 AURA cumple con el **Reglamento (UE) 2016/679 (RGPD)** y la **Ley Orgánica 3/2018 (LOPDGDD)**.
 
@@ -136,7 +136,7 @@ Los datos personales serán tratados conforme a la Política de Privacidad.
 
 ---
 
-## 11. LIMITACIÓN DE RESPONSABILIDAD
+## 11. Limitación de responsabilidades
 
 AURA no será responsable de:
 - Daños indirectos
@@ -145,7 +145,7 @@ AURA no será responsable de:
 
 ---
 
-## 12. MODIFICACIÓN DE LOS TÉRMINOS
+## 12. Modificación de términos
 
 AURA podrá modificar estos términos en cualquier momento.
 
@@ -155,7 +155,7 @@ Se notificará a los usuarios mediante:
 
 ---
 
-## 13. LEGISLACIÓN Y JURISDICCIÓN
+## 13. Legislación y Jurisdicción
 
 Estos términos se rigen por la legislación española.
 
@@ -163,7 +163,7 @@ En caso de conflicto, las partes se someten a los tribunales de la ciudad compet
 
 ---
 
-## 14. CONTACTO
+## 14. Contacto
 
 Para cualquier consulta:
 
@@ -172,6 +172,6 @@ Email: aura.ispp@gmail.com
 
 ---
 
-## 15. ACEPTACIÓN
+## 15. Aceptación
 
 El uso de la App de AURA implica la aceptación de estos Términos y Condiciones.
