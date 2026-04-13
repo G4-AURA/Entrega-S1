@@ -307,7 +307,23 @@
             body: JSON.stringify(payload),
         });
 
-        const data = await response.json();
+        const rawText = await response.text();
+        let data = null;
+        try {
+            data = rawText ? JSON.parse(rawText) : null;
+        } catch (_error) {
+            data = null;
+        }
+
+        if (!data) {
+            const snippet = rawText ? rawText.slice(0, 120).replace(/\s+/g, ' ').trim() : '';
+            throw new Error(
+                response.ok
+                    ? 'La respuesta del servidor no es JSON válido.'
+                    : `El servidor respondió con un error no JSON${snippet ? `: ${snippet}` : '.'}`,
+            );
+        }
+
         if (!response.ok || data.status !== 'OK') {
             throw new Error(data.mensaje || 'Error desconocido al generar la ruta');
         }
