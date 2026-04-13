@@ -12,7 +12,7 @@
 {% csrf_token %}
 
 {% if es_guia %}
-<a href="{% url 'catalogo' %}" class="btn-back">
+<a href="{% url 'tours:guia_sesion' sesion.id %}" class="btn-back">
     <span class="material-icons-round">arrow_back</span>
 </a>
 {% else %}
@@ -252,5 +252,5 @@
   const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);
 </script>
 <script src="{% static 'js/chat_privado.js' %}?v={% now 'U' %}"></script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032401"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v={% now 'U' %}"></script>
 {% endblock %}

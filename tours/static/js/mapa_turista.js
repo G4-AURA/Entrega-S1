@@ -21,6 +21,14 @@ let miUbicacionMarker = null;
 const turistasMarkers = new Map();
 let countdownTimerId  = null;
 let countdownPollId   = null;
+
+// --- Variables para el control del fin de sesión del tour ---
+let ubicacionPollId   = null;
+let chatPollId        = null;
+let geolocationWatchId = null;
+let tourFinalizado    = false;
+// ------------------------------------------------------------
+
 const paradasMarkers  = new Map();
 const paradasDataById = new Map();
 let paradaSeleccionadaId = null;
@@ -81,10 +89,10 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Polling de posiciones en vivo ──────────────────────────────────────
     if (!esGuia) {
         _obtenerUbicacionGuia();
-        setInterval(_obtenerUbicacionGuia, 5000);
+        ubicacionPollId = setInterval(_obtenerUbicacionGuia, 5000);
     } else {
         _obtenerUbicacionesTuristas();
-        setInterval(_obtenerUbicacionesTuristas, 5000);
+        ubicacionPollId = setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
     // ── Panel expandible ──────────────────────────────────────────────────
@@ -102,10 +110,21 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             this.classList.add('active');
             document.getElementById('tab-' + target)?.classList.add('active');
+
             if (target === 'chat') {
                 const badge = document.getElementById('chat-badge');
                 if (badge) badge.style.display = 'none';
                 document.dispatchEvent(new CustomEvent('chatOpened'));
+            } else {
+                document.dispatchEvent(new CustomEvent('chatClosed'));
+            }
+
+            if (target === 'chat-privado') {
+                const privBadge = document.getElementById('chat-privado-badge');
+                if (privBadge) privBadge.style.display = 'none';
+                document.dispatchEvent(new CustomEvent('privateChatOpened'));
+            } else {
+                document.dispatchEvent(new CustomEvent('privateChatClosed'));
             }
         });
     });
@@ -200,7 +219,7 @@ async function _iniciarRastreoLocal() {
         }
     }
 
-    navigator.geolocation.watchPosition(
+    geolocationWatchId = navigator.geolocation.watchPosition(
         position => {
             const { latitude: lat, longitude: lng } = position.coords;
             const pos = [lat, lng];
@@ -267,10 +286,16 @@ async function _iniciarRastreoLocal() {
 // ── Posición del guía (solo turistas) ─────────────────────────────────────
 
 function _obtenerUbicacionGuia() {
-    if (!map) return;
+    if (!map || tourFinalizado) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
-        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(r => { 
+            if ([401, 403, 410].includes(r.status)) {
+                _manejarFinDeTour(); throw new Error('Fin');
+            }
+            if (!r.ok) throw new Error(); 
+            return r.json(); 
+        })
         .then(data => {
             if (!data.lat || !data.lng) return;
             const pos = [data.lat, data.lng];
@@ -508,6 +533,55 @@ function _sesionEnCurso() {
     return sesionEstadoActual === 'en_curso';
 }
 
+function _manejarFinDeTour() {
+    if (tourFinalizado) return;
+    tourFinalizado = true;
+    sesionEstadoActual = 'finalizada';
+
+    // 1. Limpiar todos los intervalos de peticiones
+    if (countdownPollId) clearInterval(countdownPollId);
+    if (countdownTimerId) clearInterval(countdownTimerId);
+    if (ubicacionPollId) clearInterval(ubicacionPollId);
+    if (chatPollId) clearInterval(chatPollId);
+
+    // 2. Detener el rastreo GPS local (ahorra batería)
+    if (geolocationWatchId && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geolocationWatchId);
+    }
+
+    // 3. Actualizar la UI del temporizador a "Finalizado"
+    const timerContainer = document.getElementById('session-countdown');
+    const timerValue = document.getElementById('session-countdown-time');
+    if (timerContainer && timerValue) {
+        timerContainer.classList.remove('waiting', 'en_curso');
+        timerContainer.classList.add('finished');
+        timerValue.textContent = '00:00:00';
+    }
+    const estadoBadgeContainer = document.querySelector('#tab-itinerario > div.d-flex.justify-content-between');
+    if (estadoBadgeContainer) {
+        const oldBadge = estadoBadgeContainer.querySelector('span'); // Selecciona la primera pastilla
+        if (oldBadge) {
+            oldBadge.outerHTML = `<span style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">Finalizado</span>`;
+        }
+    }
+
+    // 4. Disparar el evento para deshabilitar el input del chat
+    document.dispatchEvent(new CustomEvent('sessionStateChanged', { detail: { estado: 'finalizada' } }));
+
+    // 5. Notificar al usuario visualmente
+    const feedback = window.AuraFeedback;
+    if (feedback && typeof feedback.alert === 'function') {
+        feedback.alert({
+            title: 'Recorrido finalizado',
+            message: 'El guía ha terminado el tour. Ya no se actualizará tu ubicación ni el chat, pero puedes consultar el itinerario y los mensajes anteriores. Una vez que salgas del tour, no podrás volver a unirte.',
+            confirmText: 'Entendido',
+            type: 'info'
+        });
+    } else {
+        alert('El tour ha finalizado. Ya no se recibirán actualizaciones.');
+    }
+}
+
 
 // ── Cronómetro de sesión ──────────────────────────────────────────────────
 
@@ -598,12 +672,25 @@ function _initSessionCountdown() {
     };
 
     const fetchCountdownState = () => {
-        if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl) return;
+        if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl || tourFinalizado) return;
         const separator = countdownStatusUrl.includes('?') ? '&' : '?';
         const liveStatusUrl = `${countdownStatusUrl}${separator}_=${Date.now()}`;
+        
         fetch(liveStatusUrl, { cache: 'no-store' })
-            .then(r => r.ok ? r.json() : Promise.reject())
-            .then(applyRemoteState)
+            .then(r => {
+                if ([401, 403, 410].includes(r.status)) {
+                    _manejarFinDeTour();
+                    return Promise.reject('Fin de sesión');
+                }
+                return r.ok ? r.json() : Promise.reject();
+            })
+            .then(data => {
+                if (data && data.estado === 'finalizada') {
+                    _manejarFinDeTour();
+                } else {
+                    applyRemoteState(data);
+                }
+            })
             .catch(() => {});
     };
 
@@ -669,6 +756,8 @@ function _initChat() {
     let previewObjectUrl = null;
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
+
+    document.addEventListener('chatClosed', () => { chatVisible = false; });
 
     const escHtml = t => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
     const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
@@ -804,15 +893,26 @@ function _initChat() {
     }
 
     function fetchMessages() {
+        if (tourFinalizado) return;
         let url = `/tours/sesiones/${sesionId}/mensajes/`;
         if (lastMessageTime) {
             try { url += `?desde=${encodeURIComponent(new Date(lastMessageTime).toISOString())}`; }
             catch { url += `?desde=${encodeURIComponent(lastMessageTime)}`; }
         }
+
         fetch(url)
-            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(r => {
+                if ([401, 403, 410].includes(r.status)) {
+                    _manejarFinDeTour(); return Promise.reject('Fin de sesión');
+                }
+                return r.ok ? r.json() : Promise.reject();
+            })
             .then(data => {
                 if (data && data.estado_sesion) {
+                    if (data.estado_sesion === 'finalizada') {
+                        _manejarFinDeTour();
+                        return;
+                    }
                     sesionEstadoActual = data.estado_sesion;
                     document.dispatchEvent(new CustomEvent('sessionStateChanged', {
                         detail: { estado: data.estado_sesion },
@@ -877,7 +977,7 @@ function _initChat() {
     });
 
     fetchMessages();
-    setInterval(fetchMessages, 5000);
+    chatPollId = setInterval(fetchMessages, 5000);
 
     document.addEventListener('sessionStateChanged', () => {
         syncChatAvailability();
@@ -888,10 +988,16 @@ function _initChat() {
 
 
 function _obtenerUbicacionesTuristas() {
-    if (!map || !esGuia) return;
+    if (!map || !esGuia || tourFinalizado) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
-        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(r => { 
+            if ([401, 403, 410].includes(r.status)) {
+                _manejarFinDeTour(); throw new Error('Fin');
+            }
+            if (!r.ok) throw new Error(); 
+            return r.json(); 
+        })
         .then(data => _renderizarTuristasEnMapa(data.turistas || []))
         .catch(() => {});
 }
