@@ -154,6 +154,28 @@ class RutasServicesValidationTest(TestCase):
         with self.assertRaisesMessage(ValueError, "El nombre de la parada no puede superar los 255 caracteres"):
             editar_parada(self.parada1, "A" * 256, "0", "0")
 
+    def test_editar_parada_actualiza_descripcion(self):
+        editar_parada(
+            self.parada1,
+            "Parada 1 editada",
+            "37.39",
+            "-5.99",
+            descripcion="Descripcion nueva para la parada",
+        )
+        self.parada1.refresh_from_db()
+        self.assertEqual(self.parada1.descripcion, "Descripcion nueva para la parada")
+
+    def test_editar_parada_recorta_descripcion_larga(self):
+        editar_parada(
+            self.parada1,
+            "Parada 1 editada",
+            "37.39",
+            "-5.99",
+            descripcion="A" * 700,
+        )
+        self.parada1.refresh_from_db()
+        self.assertEqual(len(self.parada1.descripcion), 500)
+
     # 9. Añadir Parada
     def test_añadir_parada_nombre_vacio(self):
         with self.assertRaisesMessage(ValueError, "El nombre no puede estar vacío"):

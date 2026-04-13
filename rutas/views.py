@@ -680,6 +680,7 @@ def ruta_detalle_view(request, ruta_id):
                     request.POST.get("nombre"),
                     request.POST.get("lat"),
                     request.POST.get("lon"),
+                    descripcion=request.POST.get("descripcion", ""),
                 )
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")

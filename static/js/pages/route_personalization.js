@@ -79,6 +79,45 @@
         exigenciaAyuda.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
     }
 
+    function configurarIncrementoDuracionMediaHora(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) {
+            return;
+        }
+
+        input.step = '0.5';
+        input.setAttribute('step', '0.5');
+
+        input.addEventListener('keydown', function (event) {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                return;
+            }
+
+            event.preventDefault();
+
+            const current = Number(input.value);
+            const min = Number(input.min);
+            const max = Number(input.max);
+            const base = Number.isFinite(current)
+                ? current
+                : (Number.isFinite(min) ? min : 0.5);
+            const delta = event.key === 'ArrowUp' ? 0.5 : -0.5;
+            let next = Math.round((base + delta) * 2) / 2;
+
+            if (Number.isFinite(min)) {
+                next = Math.max(min, next);
+            }
+            if (Number.isFinite(max)) {
+                next = Math.min(max, next);
+            }
+
+            input.value = next.toFixed(1);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    configurarIncrementoDuracionMediaHora('duracion');
+
     function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
         if (!rutaId || !sesionGeneracionId) return;
 
@@ -268,7 +307,23 @@
             body: JSON.stringify(payload),
         });
 
-        const data = await response.json();
+        const rawText = await response.text();
+        let data = null;
+        try {
+            data = rawText ? JSON.parse(rawText) : null;
+        } catch (_error) {
+            data = null;
+        }
+
+        if (!data) {
+            const snippet = rawText ? rawText.slice(0, 120).replace(/\s+/g, ' ').trim() : '';
+            throw new Error(
+                response.ok
+                    ? 'La respuesta del servidor no es JSON válido.'
+                    : `El servidor respondió con un error no JSON${snippet ? `: ${snippet}` : '.'}`,
+            );
+        }
+
         if (!response.ok || data.status !== 'OK') {
             throw new Error(data.mensaje || 'Error desconocido al generar la ruta');
         }
