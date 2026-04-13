@@ -87,3 +87,56 @@ class ApiErrorMiddlewareIntegrationTest(TestCase):
         self.assertIn('X-Request-ID', response)
         self.assertEqual(body['request_id'], response['X-Request-ID'])
         self.assertEqual(body['error'], 'Debes iniciar sesión para acceder al checkout.')
+
+    def test_endpoint_creacion_sin_autenticacion_incluye_request_id(self):
+        '''Verifica que endpoint de creacion también normaliza con request_id.'''
+        response = self.client.post(
+            '/crear-ruta/api/rutas/123/paradas-ia/',
+            data='{}',
+            content_type='application/json',
+            HTTP_ACCEPT='application/json',
+        )
+
+        body = response.json()
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('X-Request-ID', response)
+        self.assertEqual(body['request_id'], response['X-Request-ID'])
+        self.assertIn('error', body)
+
+    def test_endpoint_allowlist_sin_permisos_incluye_request_id(self):
+        '''Verifica que endpoint de allowList también normaliza con request_id (no superuser).'''
+        from django.contrib.auth.models import User
+        # Crear usuario no superusuario
+        user = User.objects.create_user(username='user_no_super', password='pass123')
+        self.client.login(username='user_no_super', password='pass123')
+        
+        response = self.client.post(
+            '/allowList/api/buscar-osm/',
+            data='{}',
+            content_type='application/json',
+            HTTP_ACCEPT='application/json',
+        )
+
+        # No es superusuario, así que devuelve 403 con JsonResponse de middlewear
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('X-Request-ID', response)
+        body = response.json()
+        self.assertEqual(body['request_id'], response['X-Request-ID'])
+        self.assertIn('error', body)
+
+    def test_cliente_puede_inyectar_request_id_y_se_propaga(self):
+        '''Verifica que cliente puede enviar X-Request-ID y se devuelve integro.'''
+        custom_id = 'req-client-123-abc'
+        response = self.client.post(
+            '/billing/create-checkout-session/',
+            data='{}',
+            content_type='application/json',
+            HTTP_ACCEPT='application/json',
+            HTTP_X_REQUEST_ID=custom_id,
+        )
+
+        body = response.json()
+
+        self.assertEqual(response['X-Request-ID'], custom_id)
+        self.assertEqual(body['request_id'], custom_id)
