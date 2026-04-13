@@ -252,5 +252,5 @@
   const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);
 </script>
 <script src="{% static 'js/chat_privado.js' %}?v={% now 'U' %}"></script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032401"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v={% now 'U' %}"></script>
 {% endblock %}
