@@ -1,0 +1,197 @@
+body.aura-feedback-open {
+    overflow: hidden;
+}
+
+.aura-feedback-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(15, 23, 42, 0.52);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0.75rem;
+    transition: opacity 0.18s ease;
+}
+
+.aura-feedback-overlay.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.aura-feedback-modal {
+    width: min(100%, 440px);
+    background: #fff;
+    background-color: #fff;
+    border: 1px solid var(--border-color, #d7dde8);
+    border-radius: 16px;
+    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.24);
+    padding: 1rem;
+    opacity: 1;
+    transform: translateY(0);
+    transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.aura-feedback-overlay.is-hidden .aura-feedback-modal {
+    transform: translateY(10px);
+    opacity: 0;
+}
+
+.aura-feedback-modal-icon-wrap {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--brand-light, #eef2ff);
+    color: var(--brand-color, #4f46e5);
+    margin-bottom: 0.75rem;
+}
+
+.aura-feedback-modal-icon-wrap.is-danger {
+    background: var(--danger-light, #fef2f2);
+    color: var(--danger, #ef4444);
+}
+
+.aura-feedback-modal-title {
+    margin: 0 0 0.4rem;
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary, #0f172a);
+}
+
+.aura-feedback-modal-message {
+    margin: 0;
+    font-size: 0.93rem;
+    line-height: 1.45;
+    color: var(--text-secondary, #334155);
+}
+
+.aura-feedback-modal-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 1rem;
+}
+
+.aura-feedback-modal-actions button {
+    flex: 1;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.aura-feedback-modal-cancel {
+    background: var(--bg-surface, #f8fafc);
+    border-color: var(--border-color, #d7dde8);
+    color: var(--text-secondary, #334155);
+}
+
+.aura-feedback-modal-confirm {
+    background: var(--brand-color, #4f46e5);
+    color: #fff;
+}
+
+.aura-feedback-modal-confirm.is-danger {
+    background: var(--danger, #ef4444);
+}
+
+.aura-feedback-toast-host {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    z-index: 2100;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    align-items: center;
+    pointer-events: none;
+    padding: 0 0.75rem;
+}
+
+.aura-feedback-toast {
+    width: min(100%, 460px);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.78rem 0.9rem;
+    background: #fff;
+    border: 1px solid var(--border-color, #d7dde8);
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    color: var(--text-primary, #0f172a);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.aura-feedback-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.aura-feedback-toast-icon {
+    font-size: 18px;
+    margin-top: 1px;
+}
+
+.aura-feedback-toast-text {
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.aura-feedback-toast--success {
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.aura-feedback-toast--success .aura-feedback-toast-icon {
+    color: var(--success, #10b981);
+}
+
+.aura-feedback-toast--error {
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.aura-feedback-toast--error .aura-feedback-toast-icon {
+    color: var(--danger, #ef4444);
+}
+
+.aura-feedback-toast--info {
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.aura-feedback-toast--info .aura-feedback-toast-icon {
+    color: #2563eb;
+}
+
+@media (min-width: 768px) {
+    .aura-feedback-overlay {
+        align-items: center;
+        padding: 1.5rem;
+    }
+
+    .aura-feedback-modal {
+        padding: 1.2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .aura-feedback-modal {
+        border-radius: 14px;
+        padding: 0.95rem;
+    }
+
+    .aura-feedback-modal-title {
+        font-size: 1.03rem;
+    }
+
+    .aura-feedback-modal-message {
+        font-size: 0.9rem;
+    }
+}

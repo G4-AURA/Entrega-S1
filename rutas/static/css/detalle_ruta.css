@@ -156,19 +156,25 @@
 }
 
 /* ── Botón recalcular ──────────────────────────────────────────────── */
+.recalc-cta {
+    width: 100%;
+}
+
 .btn-recalcular {
-    margin-left: auto;
+    width: 100%;
+    min-height: 3rem;
     border: 1px solid var(--brand-color);
     background: var(--bg-white);
     color: var(--brand-color);
-    border-radius: 999px;
-    padding: 0.3rem 0.8rem;
-    font-size: 0.8rem;
-    font-weight: 600;
+    border-radius: 12px;
+    padding: 0.55rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 700;
     cursor: pointer;
-    display: inline-flex;
+    display: flex;
+    justify-content: center;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.45rem;
     transition: background 0.15s;
 }
 
@@ -267,4 +273,59 @@
     background: #f8fbff;
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
+}
+
+/* ── Panel de generación de curiosidades (S3.1-11) ────────────────── */
+.ia-curiosidad-panel {
+    margin-top: 0.75rem;
+}
+
+.ia-curiosidad-panel .border {
+    border-color: #e0e7ff !important;
+    background-color: #f8fafc !important;
+}
+
+.ia-curiosidad-panel .bg-light {
+    background-color: #f0f4f8 !important;
+}
+
+.curiosidad-form {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.curiosidad-estado {
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid transparent;
+    font-weight: 600;
+}
+
+.curiosidad-estado--info {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.curiosidad-estado--success {
+    color: #166534;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.curiosidad-estado--error {
+    color: #991b1b;
+    background: #fef2f2;
+    border-color: #fecaca;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.08);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }

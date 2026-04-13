@@ -1,5 +1,6 @@
 (function () {
     const config = JSON.parse(document.getElementById('personalizacion-config').textContent);
+    const PERSONAS_MAX_PLAN = Number(config?.limits?.personasMax) || 50;
 
     const form = document.getElementById('form-personalizacion-ruta');
     const boton = document.getElementById('btn-generar-ruta');
@@ -19,6 +20,7 @@
     const btnGenerarAdicionales = document.getElementById('btn-generar-adicionales');
     const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
+    const feedback = window.AuraFeedback;
 
     let leafletMap = null;
     let sesionGeneracionActiva = null;
@@ -116,6 +118,21 @@
 
         if ('geolocation' in navigator) {
             try {
+                let permisoSolicitado = true;
+                if (feedback && typeof feedback.confirm === 'function') {
+                    permisoSolicitado = await feedback.confirm({
+                        title: 'Compartir ubicación',
+                        message: '¿Quieres permitir tu ubicación para sugerir una ciudad automáticamente?',
+                        confirmText: 'Permitir',
+                        cancelText: 'Ahora no',
+                        type: 'info',
+                    });
+                }
+
+                if (!permisoSolicitado) {
+                    return meta;
+                }
+
                 const pos = await new Promise((resolve, reject) =>
                     navigator.geolocation.getCurrentPosition(resolve, reject, {
                         timeout: 5000,
@@ -142,7 +159,14 @@
                         meta.ubicacion.pais = addr.country || null;
                     }
                 } catch (_) {}
-            } catch (_) {}
+            } catch (_) {
+                if (feedback && typeof feedback.toast === 'function') {
+                    feedback.toast('No se pudo obtener tu ubicación automática.', {
+                        type: 'info',
+                        duration: 2800,
+                    });
+                }
+            }
         }
         return meta;
     }
@@ -250,6 +274,30 @@
         }
 
         return data;
+    }
+
+    function validarPayloadPersonalizacion(payload) {
+        const duracion = Number(payload?.duracion);
+        const personas = Number(payload?.personas);
+        if (!Number.isFinite(duracion)) {
+            throw new Error('La duración debe ser un número válido.');
+        }
+        if (duracion < 0.5 || duracion > 24) {
+            throw new Error('La duración debe estar entre 0.5 y 24 horas.');
+        }
+        if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
+            throw new Error('La duración debe indicarse en bloques de 0.5 horas.');
+        }
+        if (!Number.isInteger(personas)) {
+            throw new Error('El número de personas debe ser un entero válido.');
+        }
+        if (personas < 1 || personas > PERSONAS_MAX_PLAN) {
+            throw new Error(`El número de personas debe estar entre 1 y ${PERSONAS_MAX_PLAN}.`);
+        }
+
+        payload.duracion = duracion;
+        payload.personas = personas;
+        return payload;
     }
 
     async function obtenerEstadoSesionGeneracion(sesionGeneracionId) {
@@ -468,7 +516,8 @@
         iniciarMensajesProgreso('generar');
 
         try {
-            const payload = await leerFormulario();
+            let payload = await leerFormulario();
+            payload = validarPayloadPersonalizacion(payload);
             const data = await enviarPeticion(payload);
             sesionGeneracionActiva = data.sesion_generacion_id || null;
 

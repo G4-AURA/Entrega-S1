@@ -159,6 +159,57 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 0.82rem;
 }
 
+.btn-user-menu {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background: var(--bg-app);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    padding: 0.3rem 0.85rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: 'DM Sans', sans-serif;
+}
+
+.btn-user-menu strong {
+    color: var(--text-primary);
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.82rem;
+}
+
+.btn-user-menu:hover,
+.btn-user-menu:focus,
+.btn-user-menu:active,
+.btn-user-menu.show {
+    color: var(--brand-color);
+    border-color: rgba(79, 70, 229, 0.35);
+    background: var(--bg-surface);
+}
+
+.aura-user-menu {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 0.35rem;
+}
+
+.aura-user-menu .dropdown-item {
+    border-radius: var(--radius-sm);
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: 'Manrope', sans-serif;
+    padding: 0.5rem 0.65rem;
+}
+
+.aura-user-menu .dropdown-item:hover,
+.aura-user-menu .dropdown-item:focus {
+    background: var(--brand-light);
+    color: var(--brand-color);
+}
+
 .btn-logout {
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -306,17 +357,6 @@ h1, h2, h3, h4, h5, h6 {
     text-transform: uppercase;
     font-size: 1.5rem;
     text-align: center;
-}
-
-/* --- QR Reader --- */
-#qr-reader {
-    border: none !important;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-}
-
-#qr-reader img {
-    display: none !important;
 }
 
 /* QR container centering used in guia_sesion */

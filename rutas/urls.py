@@ -9,6 +9,8 @@ urlpatterns = [
     # Gestión de rutas: listar (catálogo), visualizar y eliminar
     # ------------------------------------------------------------------
     path("catalogo/", views.catalogo_view, name="catalogo"),
+    path("perfil/editar/", views.editar_perfil_view, name="perfil-editar"),
+    path("perfil/plan/", views.plan_view, name="plan"),
     path("catalogo/<int:ruta_id>/", views.ruta_detalle_view, name="ruta-detalle"),
     path("catalogo/<int:ruta_id>/eliminar/", views.eliminar_ruta_view, name="ruta-eliminar"),
     # ------------------------------------------------------------------
@@ -28,5 +30,15 @@ urlpatterns = [
         "api/paradas/<int:parada_id>/curiosidad/",
         views.obtener_curiosidad_parada_api,
         name="parada-curiosidad",
+    ),
+    path(
+        "api/paradas/<int:parada_id>/curiosidad/guardar/",
+        views.guardar_curiosidad_parada_api,
+        name="parada-curiosidad-guardar",
+    ),
+    path(
+        "api/paradas/<int:parada_id>/curiosidad/eliminar/",
+        views.eliminar_curiosidad_parada_api,
+        name="parada-curiosidad-eliminar",
     ),
 ]

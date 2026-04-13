@@ -68,14 +68,15 @@ class NodoGeneracionTestCase(TestCase):
     @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
     def test_usa_fallback_si_gemini_falla(self, mock_gemini, _mock_allowlist, mock_fallback):
-        from creacion.services import ErrorIntegracionIA
+        from creacion.langgraph.utils import ErrorIntegracionIA
         mock_gemini.side_effect = ErrorIntegracionIA('timeout')
         fallback_pois = [_poi_crudo('Fallback A'), _poi_crudo('Fallback B'),
-                         _poi_crudo('Fallback C'), _poi_crudo('Fallback D')]
+                         _poi_crudo('Fallback C'), _poi_crudo('Fallback D'),
+                         _poi_crudo('Fallback E')]
         mock_fallback.return_value = fallback_pois
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
-        state = _estado_base(duracion=2)  # objetivo = 4 paradas
+        state = _estado_base(duracion=2)  # objetivo mínimo = 5 paradas
         resultado = nodo_generacion(state)
 
         self.assertEqual(resultado['pois_crudos'], fallback_pois)
@@ -84,7 +85,7 @@ class NodoGeneracionTestCase(TestCase):
     @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
     def test_lanza_error_si_gemini_y_fallback_fallan(self, mock_gemini, _mock_allowlist, _mock_fallback):
-        from creacion.services import ErrorIntegracionIA
+        from creacion.langgraph.utils import ErrorIntegracionIA
         mock_gemini.side_effect = ErrorIntegracionIA('timeout')
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
@@ -92,10 +93,11 @@ class NodoGeneracionTestCase(TestCase):
         with self.assertRaises(ErrorIntegracionIA):
             nodo_generacion(state)
 
+    @patch('creacion.langgraph.nodes.generacion._construir_pois_fallback_allowlist', return_value=[])
     @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
-    def test_lanza_error_si_gemini_devuelve_no_lista(self, mock_gemini, _mock_allowlist):
-        from creacion.services import ErrorIntegracionIA
+    def test_lanza_error_si_gemini_devuelve_no_lista(self, mock_gemini, _mock_allowlist, _mock_fallback):
+        from creacion.langgraph.utils import ErrorIntegracionIA
         mock_gemini.return_value = {'error': 'formato incorrecto'}
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
@@ -168,7 +170,7 @@ class NodoValidacionTestCase(TestCase):
         self, mock_completar, _mock_mapbox, _mock_osm
     ):
         from creacion.geo_validation import NoConvergenciaCoordenadasError
-        from creacion.services import ErrorIntegracionIA
+        from creacion.langgraph.utils import ErrorIntegracionIA
         mock_completar.side_effect = NoConvergenciaCoordenadasError('sin convergencia')
 
         from creacion.langgraph.nodes.validacion import nodo_validacion
@@ -239,7 +241,7 @@ class NodoOptimizacionTestCase(TestCase):
         state['pois_crudos'] = []
         state['razones_descarte'] = []
         state['metricas_scoring'] = {}
-        state['pois_validados'] = pois or [
+        state['pois_validados'] = pois if pois is not None else [
             _poi_validado('A', 37.386, -5.992),
             _poi_validado('B', 37.383, -5.990),
             _poi_validado('C', 37.377, -5.987),
@@ -270,7 +272,7 @@ class NodoOptimizacionTestCase(TestCase):
         ruta = nodo_optimizacion(state)['ruta_final']
 
         self.assertEqual(len(ruta['paradas']), 1)
-        self.assertIn('Sin optimización', ruta['descripcion'])
+        self.assertIn('sin optimización', ruta['descripcion'].lower())
 
     def test_lista_vacia_devuelve_paradas_vacias(self):
         from creacion.langgraph.nodes.optimizacion import nodo_optimizacion

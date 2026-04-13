@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -10,6 +11,18 @@ from rutas.models import AuthUser, Guia, Ruta
 from tours.models import TURISTA
 
 
+def _crear_guia_para_usuario(user, tipo_suscripcion=Guia.Suscripcion.FREEMIUM):
+    auth_profile, _ = AuthUser.objects.get_or_create(user=user)
+    guia, _ = Guia.objects.get_or_create(
+        user=auth_profile,
+        defaults={'tipo_suscripcion': tipo_suscripcion},
+    )
+    if guia.tipo_suscripcion != tipo_suscripcion:
+        guia.tipo_suscripcion = tipo_suscripcion
+        guia.save(update_fields=['tipo_suscripcion'])
+    return guia
+
+
 class GenerarRutaIAViewTests(TestCase):
     def setUp(self):
         self.client = Client()
@@ -19,7 +32,7 @@ class GenerarRutaIAViewTests(TestCase):
             'duracion': 3,
             'personas': 6,
             'exigencia': 'media',
-            'mood': ['historia', 'gastronomia'],
+            'mood': ['historia'],
         }
 
     def test_rechaza_usuario_no_autenticado(self):
@@ -46,8 +59,8 @@ class GenerarRutaIAViewTests(TestCase):
         self.client.force_login(user)
 
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
-        mock_get_guia.return_value = object()
-        mock_guardar.return_value = type('RutaStub', (), {'id': 99})()
+        mock_get_guia.return_value = _crear_guia_para_usuario(user)
+        mock_guardar.return_value = SimpleNamespace(id=99)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
@@ -57,7 +70,7 @@ class GenerarRutaIAViewTests(TestCase):
             'duracion': 3.0,
             'personas': 6,
             'exigencia': Ruta.Exigencia.MEDIA,
-            'mood': [Ruta.Mood.HISTORIA, Ruta.Mood.GASTRONOMIA],
+            'mood': [Ruta.Mood.HISTORIA],
             'deseos': [],
             'restricciones': [],
             'metadata': {},
@@ -80,22 +93,24 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         mock_consultar.assert_not_called()
 
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph', side_effect=ValueError('datos inválidos'))
-    def test_error_validacion_retorna_400(self, _mock_consultar, _mock_get_guia):
+    def test_error_validacion_retorna_400(self, _mock_consultar, mock_get_guia):
         user = User.objects.create_user(username='guia_error', password='1234')
         self.client.force_login(user)
+        mock_get_guia.return_value = _crear_guia_para_usuario(user)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('Error en los datos', response.json()['mensaje'])
 
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph', side_effect=services.ErrorIntegracionIA('fallo mapbox/osm'))
-    def test_error_integracion_ia_retorna_502(self, _mock_consultar, _mock_get_guia):
+    def test_error_integracion_ia_retorna_502(self, _mock_consultar, mock_get_guia):
         user = User.objects.create_user(username='guia_ia_fail', password='1234')
         self.client.force_login(user)
+        mock_get_guia.return_value = _crear_guia_para_usuario(user)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
@@ -201,7 +216,7 @@ class GuardarRutaManualViewTests(TestCase):
             'titulo': 'Ruta extrema',
             'descripcion': 'Prueba de límites',
             'duracion_horas': '1e309',
-            'num_personas': '9999999999999999999999999999',
+            'num_personas': '10',
             'nivel_exigencia': 'Media',
             'mood': ['Historia'],
             'paradas': [
@@ -241,6 +256,8 @@ class GenerarParadasIAViewTests(TestCase):
     @patch('creacion.views.services.generar_candidatos_paradas_ia')
     def test_retorna_candidatos_cuando_servicio_responde_ok(self, mock_generar):
         self.client.force_login(self.user)
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=['es_generada_ia'])
         mock_generar.return_value = {'ruta_id': self.ruta.id, 'candidatos': [{'nombre': 'Archivo'}]}
 
         response = self.client.post(self.url, data=json.dumps({'cantidad': 2}), content_type='application/json')
@@ -252,6 +269,8 @@ class GenerarParadasIAViewTests(TestCase):
     @patch('creacion.views.services.generar_candidatos_paradas_ia')
     def test_retorna_400_si_cantidad_no_es_numerica(self, mock_generar):
         self.client.force_login(self.user)
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=['es_generada_ia'])
 
         response = self.client.post(self.url, data=json.dumps({'cantidad': 'abc'}), content_type='application/json')
 
@@ -261,12 +280,26 @@ class GenerarParadasIAViewTests(TestCase):
         mock_generar.assert_not_called()
         
     @patch('creacion.views.services.generar_candidatos_paradas_ia', side_effect=services.ErrorIntegracionIA('sin convergencia'))
-    def test_retorna_502_si_servicio_no_completa_cantidad_objetivo(self, _mock_generar):
+    def test_retorna_200_con_candidatos_vacios_si_falla_integracion_ia(self, _mock_generar):
         self.client.force_login(self.user)
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=['es_generada_ia'])
         response = self.client.post(self.url, data=json.dumps({'cantidad': 3}), content_type='application/json')
 
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'OK')
+        self.assertEqual(response.json()['datos']['candidatos'], [])
+
+    @patch('creacion.views.services.generar_candidatos_paradas_ia')
+    def test_retorna_400_si_la_ruta_no_es_generada_con_ia(self, mock_generar):
+        self.client.force_login(self.user)
+
+        response = self.client.post(self.url, data=json.dumps({'cantidad': 3}), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertIn('solo están disponibles', response.json()['mensaje'])
+        mock_generar.assert_not_called()
 
 
 class SesionGeneracionIAViewTests(TestCase):
@@ -276,11 +309,12 @@ class SesionGeneracionIAViewTests(TestCase):
         self.client.force_login(self.user)
 
     @patch('creacion.views.consultar_langgraph')
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views._guardar_ruta_ia_en_bd')
-    def test_obtener_y_actualizar_checkpoint_de_sesion(self, mock_guardar, _mock_guia, mock_consultar):
+    def test_obtener_y_actualizar_checkpoint_de_sesion(self, mock_guardar, mock_guia, mock_consultar):
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
-        mock_guardar.return_value = type('RutaStub', (), {'id': 7})()
+        mock_guia.return_value = _crear_guia_para_usuario(self.user)
+        mock_guardar.return_value = SimpleNamespace(id=7)
 
         payload = {
             'ciudad': 'Sevilla',
@@ -364,12 +398,12 @@ class FlujoSeleccionParadasIATests(TestCase):
         mock_guardar.assert_not_called()
 
     @patch('creacion.views._guardar_ruta_ia_en_bd')
-    @patch('creacion.views._obtener_guia_para_usuario', return_value=object())
+    @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph')
     def test_confirmar_seleccion_guarda_ruta_y_checkpoint_final(
         self,
         mock_consultar,
-        _mock_get_guia,
+        mock_get_guia,
         mock_guardar,
     ):
         mock_consultar.return_value = {
@@ -379,7 +413,8 @@ class FlujoSeleccionParadasIATests(TestCase):
                 {'nombre': 'Parada B', 'coordenadas': [37.39, -6.00]},
             ],
         }
-        mock_guardar.return_value = type('RutaStub', (), {'id': 123})()
+        mock_get_guia.return_value = _crear_guia_para_usuario(self.user)
+        mock_guardar.return_value = SimpleNamespace(id=123)
 
         generar = self.client.post(
             reverse('creacion:generar_ruta_ia'),

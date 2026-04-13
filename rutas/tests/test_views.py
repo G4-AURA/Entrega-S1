@@ -1,12 +1,25 @@
-from django.test import TestCase, Client
+import json
+import shutil
+import tempfile
+from datetime import timedelta
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
+from billing.models import Subscription, TierUsageEvent
 from unittest.mock import patch, Mock
+from django.utils import timezone
+from tours.models import SesionTour, Turista, TuristaSesion
 
 class RutasViewsTest(TestCase):
     def setUp(self):
+        self._tmp_media_root = tempfile.mkdtemp(prefix='test-media-')
+        self._media_override = override_settings(MEDIA_ROOT=self._tmp_media_root)
+        self._media_override.enable()
+
         self.client = Client()
         self.user = User.objects.create_user(username='guia_test', password='password')
         self.auth_user = AuthUser.objects.create(user=self.user)
@@ -22,6 +35,10 @@ class RutasViewsTest(TestCase):
         self.parada = Parada.objects.create(
             orden=1, nombre="Parada 1", coordenadas=Point(0, 0), ruta=self.ruta
         )
+
+    def tearDown(self):
+        self._media_override.disable()
+        shutil.rmtree(self._tmp_media_root, ignore_errors=True)
 
     # 1. Seguridad y Decoradores
     def test_es_guia_denegado_for_normal_user(self):
@@ -50,6 +67,199 @@ class RutasViewsTest(TestCase):
         response = self.client.get(reverse('catalogo'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'rutas/catalogo.html')
+
+    def test_catalogo_view_muestra_estado_plan(self):
+        response = self.client.get(reverse('catalogo'))
+        self.assertContains(response, 'Plan actual')
+        self.assertContains(response, self.guia.tipo_suscripcion)
+
+    def test_navbar_dropdown_muestra_enlaces_perfil_y_plan(self):
+        response = self.client.get(reverse('catalogo'))
+        self.assertContains(response, reverse('perfil-editar'))
+        self.assertContains(response, reverse('plan'))
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_freemium_muestra_cta_upgrade(self):
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'rutas/plan.html')
+        self.assertContains(response, 'Plan actual')
+        self.assertContains(response, 'Pasar a Premium')
+
+    def test_plan_view_freemium_muestra_consumos_reales(self):
+        Parada.objects.create(
+            orden=2,
+            nombre="Parada 2",
+            coordenadas=Point(1, 1),
+            ruta=self.ruta,
+        )
+
+        sesion = SesionTour.objects.create(
+            codigo_acceso='ABC123',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+        turista_1 = Turista.objects.create(alias='T1')
+        turista_2 = Turista.objects.create(alias='T2')
+        TuristaSesion.objects.create(turista=turista_1, sesion_tour=sesion, activo=True)
+        TuristaSesion.objects.create(turista=turista_2, sesion_tour=sesion, activo=True)
+
+        TierUsageEvent.objects.create(
+            guia=self.guia,
+            action=TierUsageEvent.Action.IA_ROUTE_GENERATION,
+        )
+        TierUsageEvent.objects.create(
+            guia=self.guia,
+            ruta=self.ruta,
+            action=TierUsageEvent.Action.IA_STOP_REPLACEMENT,
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sesión más ocupada: 2/15 turistas')
+        self.assertContains(response, 'Ruta con más paradas: 2/5')
+        self.assertContains(response, 'Usadas en el ciclo actual: 1 de 3.')
+        self.assertContains(response, 'Ciclo: 1/9. Ruta más usada: 1/3')
+        self.assertContains(response, 'Inicio del ciclo:')
+        self.assertNotContains(response, 'N/D')
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_premium_no_muestra_cta_upgrade(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ya estás en Premium')
+        self.assertNotContains(response, 'id="btn-upgrade-plan"')
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_premium_muestra_cta_downgrade_si_hay_suscripcion_activa(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_test_123',
+            current_period_end=timezone.now(),
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Volver a Freemium al final del periodo')
+        self.assertContains(response, 'Próxima renovación')
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_prioriza_suscripcion_activa_frente_a_incomplete_reciente(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        renewal_dt = timezone.now() + timedelta(days=25)
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_active_123',
+            current_period_end=renewal_dt,
+        )
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.INCOMPLETE,
+            stripe_subscription_id='',
+            current_period_end=None,
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Volver a Freemium al final del periodo')
+        self.assertContains(
+            response,
+            timezone.localtime(renewal_dt).strftime('%d/%m/%Y %H:%M'),
+        )
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_plan_view_oculta_datos_tecnicos_stripe(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_secret_id_123',
+            current_period_end=timezone.now(),
+        )
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Suscripción Stripe')
+        self.assertNotContains(response, 'sub_secret_id_123')
+
+    @override_settings(STRIPE_ENABLED=True, STRIPE_SECRET_KEY='sk_test_123')
+    @patch('rutas.views.fetch_subscription_snapshot')
+    def test_plan_view_refresca_periodo_desde_stripe_si_falta(self, mock_fetch_subscription):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        Subscription.objects.create(
+            guia=self.guia,
+            tier=Guia.Suscripcion.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+            stripe_subscription_id='sub_refresh_123',
+            cancel_at_period_end=True,
+            current_period_end=None,
+        )
+        mock_fetch_subscription.return_value = {
+            'id': 'sub_refresh_123',
+            'status': 'active',
+            'cancel_at_period_end': True,
+            'current_period_end': None,
+            'cancel_at': 1777590764,
+            'canceled_at': None,
+        }
+
+        response = self.client.get(reverse('plan'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fin del periodo actual')
+        mock_fetch_subscription.assert_called_once()
+
+    def test_editar_perfil_view_get(self):
+        response = self.client.get(reverse('perfil-editar'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'rutas/perfil_editar.html')
+        self.assertContains(response, 'Editar perfil')
+        self.assertContains(response, self.user.username)
+
+    def test_editar_perfil_view_post_actualiza_datos(self):
+        url = reverse('perfil-editar')
+        response = self.client.post(url, {
+            'first_name': 'Max',
+            'last_name': 'Corti',
+            'email': 'max@example.com',
+        })
+        self.assertRedirects(response, f"{url}?updated=1")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Max')
+        self.assertEqual(self.user.last_name, 'Corti')
+        self.assertEqual(self.user.email, 'max@example.com')
+
+    def test_editar_perfil_view_email_duplicado(self):
+        user2 = User.objects.create_user(
+            username='otro_usuario',
+            password='password',
+            email='existente@example.com',
+        )
+        AuthUser.objects.create(user=user2)
+        Guia.objects.create(user=user2.auth_profile)
+
+        response = self.client.post(reverse('perfil-editar'), {
+            'first_name': 'Nombre',
+            'last_name': 'Apellido',
+            'email': 'existente@example.com',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ya existe una cuenta con este correo electrónico.')
 
     # 3. Eliminar Ruta
     def test_eliminar_ruta_view_success(self):
@@ -110,6 +320,33 @@ class RutasViewsTest(TestCase):
             'nivel_exigencia': 'Alta'
         })
         self.assertRedirects(response, f"{url}?meta_updated=1")
+
+    def test_ruta_detalle_post_meta_success_con_duracion_legacy_sin_cambiar(self):
+        self.ruta.duracion_horas = 1.2
+        self.ruta.save(update_fields=["duracion_horas"])
+
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'meta',
+            'duracion_horas': '1.2',
+            'num_personas': '15',
+            'nivel_exigencia': 'Alta'
+        })
+        self.assertRedirects(response, f"{url}?meta_updated=1")
+        self.ruta.refresh_from_db()
+        self.assertEqual(self.ruta.num_personas, 15)
+        self.assertEqual(self.ruta.nivel_exigencia, 'Alta')
+
+    def test_ruta_detalle_post_meta_bloquea_capacidad_freemium(self):
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'meta',
+            'duracion_horas': '2.0',
+            'num_personas': '16',
+            'nivel_exigencia': 'Media'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('tier_code=TIER_CAPACITY_REACHED', response.url)
 
     def test_ruta_detalle_post_stop_add_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
@@ -272,3 +509,229 @@ class RutasViewsTest(TestCase):
         url = reverse('parada-curiosidad', args=[self.parada.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 502)
+
+    # 6. S3.1-09 Guardado manual de curiosidad
+    def test_guardar_curiosidad_parada_api_post_persiste(self):
+        url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
+        payload = {
+            'texto': 'Curiosidad manual persistida',
+            'tipo': 'Historia',
+            'titulo': 'Titulo manual',
+        }
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['creada'])
+        self.assertEqual(data['curiosidad']['texto'], payload['texto'])
+        self.assertEqual(data['curiosidad']['tipo'], payload['tipo'])
+
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertEqual(curiosidad.texto, payload['texto'])
+        self.assertEqual(curiosidad.tipo, payload['tipo'])
+
+    def test_guardar_curiosidad_parada_api_put_actualiza(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Titulo viejo',
+            texto='Texto viejo',
+            tipo='Arquitectura',
+        )
+        url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
+        payload = {
+            'texto': 'Texto actualizado por PUT',
+            'tipo': 'Evento',
+            'titulo': 'Titulo actualizado',
+        }
+        response = self.client.put(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertFalse(data['creada'])
+        self.assertEqual(data['curiosidad']['id'], curiosidad.id)
+
+        curiosidad.refresh_from_db()
+        self.assertEqual(curiosidad.texto, payload['texto'])
+        self.assertEqual(curiosidad.tipo, payload['tipo'])
+
+    def test_guardar_curiosidad_parada_api_post_multipart_guarda_imagen_local(self):
+        url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
+        image_file = SimpleUploadedFile(
+            'curiosidad.png',
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+            content_type='image/png',
+        )
+
+        response = self.client.post(
+            url,
+            data={
+                'texto': 'Curiosidad con imagen local',
+                'tipo': 'Historia',
+                'titulo': 'Titulo con imagen',
+                'imagen_manual': image_file,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
+
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertTrue(bool(curiosidad.imagen_manual))
+
+    def test_obtener_curiosidad_parada_api_prioriza_imagen_manual(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosa',
+            texto='Texto',
+            tipo='Historia',
+            imagen_url='https://externa.example/curiosa.jpg',
+        )
+        curiosidad.imagen_manual.save(
+            'manual.png',
+            SimpleUploadedFile(
+                'manual.png',
+                b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+                content_type='image/png',
+            ),
+        )
+
+        with patch('rutas.services.obtener_o_generar_curiosidad_parada') as mock_obtener:
+            mock_obtener.return_value = (curiosidad, False)
+            url = reverse('parada-curiosidad', args=[self.parada.id])
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
+
+    def test_obtener_curiosidad_parada_api_preview_existente_prioriza_imagen_manual(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosa preview',
+            texto='Texto preview',
+            tipo='Historia',
+            imagen_url='https://externa.example/preview.jpg',
+        )
+        curiosidad.imagen_manual.save(
+            'manual_preview.png',
+            SimpleUploadedFile(
+                'manual_preview.png',
+                b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+                content_type='image/png',
+            ),
+        )
+
+        url = reverse('parada-curiosidad', args=[self.parada.id])
+        response = self.client.get(f'{url}?preview=1')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['persistida'])
+        self.assertFalse(data['generada'])
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
+
+    def test_guardar_curiosidad_parada_api_freemium_bloquea_cuarta_ruta(self):
+        for index in range(2, 5):
+            ruta_extra = Ruta.objects.create(
+                titulo=f'Ruta extra {index}',
+                duracion_horas=2.0,
+                num_personas=5,
+                guia=self.guia,
+            )
+            parada_extra = Parada.objects.create(
+                orden=1,
+                nombre=f'Parada extra {index}',
+                coordenadas=Point(index, index),
+                ruta=ruta_extra,
+            )
+            if index < 4:
+                Curiosidad.objects.create(
+                    parada=parada_extra,
+                    ciudad='Sevilla',
+                    titulo=f'Curiosidad {index}',
+                    texto='Texto previo',
+                    tipo='Historia',
+                )
+            else:
+                parada_cuarta = parada_extra
+
+        Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosidad base',
+            texto='Texto base',
+            tipo='Historia',
+        )
+
+        url = reverse('parada-curiosidad-guardar', args=[parada_cuarta.id])
+        response = self.client.post(
+            url,
+            data=json.dumps({'texto': 'No debería crear', 'tipo': 'Evento'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 429)
+        data = response.json()
+        self.assertEqual(data['status'], 'ERROR')
+        self.assertEqual(data['code'], 'TIER_LIMIT_REACHED')
+        self.assertFalse(Curiosidad.objects.filter(parada=parada_cuarta).exists())
+
+    def test_guardar_curiosidad_parada_api_premium_sin_limite(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        for index in range(2, 6):
+            ruta_extra = Ruta.objects.create(
+                titulo=f'Ruta premium {index}',
+                duracion_horas=2.0,
+                num_personas=5,
+                guia=self.guia,
+            )
+            parada_extra = Parada.objects.create(
+                orden=1,
+                nombre=f'Parada premium {index}',
+                coordenadas=Point(index, index),
+                ruta=ruta_extra,
+            )
+            if index < 5:
+                Curiosidad.objects.create(
+                    parada=parada_extra,
+                    ciudad='Sevilla',
+                    titulo=f'Curiosidad premium {index}',
+                    texto='Texto previo',
+                    tipo='Historia',
+                )
+            else:
+                parada_objetivo = parada_extra
+
+        url = reverse('parada-curiosidad-guardar', args=[parada_objetivo.id])
+        response = self.client.post(
+            url,
+            data=json.dumps({'texto': 'Sí debería crear', 'tipo': 'Dato Curioso'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['creada'])
+        self.assertTrue(Curiosidad.objects.filter(parada=parada_objetivo).exists())

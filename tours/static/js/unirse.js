@@ -1,5 +1,5 @@
 /* =========================================
-   AURA - Lógica para unirse a Tours (QR y Código)
+   AURA - Lógica para unirse a Tours (Código manual)
 ========================================= */
 
 // Utilidad para extraer el CSRF Token de las cookies de Django
@@ -18,44 +18,13 @@ function getCookie(name) {
     return cookieValue;
 }
 
-// --- LÓGICA DEL ESCÁNER QR ---
-let html5QrCode;
-const btnStartScan = document.getElementById('btn-start-scan');
-const qrReaderElement = document.getElementById('qr-reader');
 const codigoInput = document.getElementById('codigo-input');
-
-if (btnStartScan) {
-    btnStartScan.addEventListener('click', function() {
-        qrReaderElement.style.display = 'block';
-        btnStartScan.style.display = 'none';
-
-        html5QrCode = new Html5Qrcode("qr-reader");
-        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-        
-        html5QrCode.start({ facingMode: "environment" }, config, 
-            (decodedText, decodedResult) => {
-                // Éxito al leer el QR
-                html5QrCode.stop().then(() => {
-                    qrReaderElement.style.display = 'none';
-                    btnStartScan.style.display = 'flex';
-                    codigoInput.value = decodedText;
-                    document.getElementById('btn-unirse').click(); // Simula el click de Unirse
-                }).catch(err => console.error(err));
-            },
-            (errorMessage) => { /* Ignorar errores de lectura en proceso */ }
-        ).catch((err) => {
-            alert("No se pudo acceder a la cámara. Revisa los permisos.");
-            qrReaderElement.style.display = 'none';
-            btnStartScan.style.display = 'flex';
-        });
-    });
-}
 
 // --- LÓGICA DEL BOTÓN "VERIFICAR Y UNIRSE" ---
 const btnUnirse = document.getElementById('btn-unirse');
 if (btnUnirse) {
     btnUnirse.addEventListener('click', function() {
-        const codigoValor = codigoInput.value.trim().toUpperCase();
+        const codigoValor = (codigoInput?.value || '').trim().toUpperCase();
         const mensajeDiv = document.getElementById('mensaje-resultado');
         const csrftoken = getCookie('csrftoken');
 
@@ -120,21 +89,17 @@ const joinModal = document.getElementById('joinModal');
 if (joinModal) {
     // Auto-focus en el input al abrir
     joinModal.addEventListener('shown.bs.modal', function () {
-        codigoInput.focus();
+        if (codigoInput) {
+            codigoInput.focus();
+        }
     });
     
-    // Limpiar input y cámara al cerrar
+    // Limpiar input al cerrar
     joinModal.addEventListener('hidden.bs.modal', function () {
-        codigoInput.value = '';
-        document.getElementById('mensaje-resultado').classList.add('d-none');
-        
-        // Apagar cámara si el modal se cierra sin leer nada
-        if (html5QrCode && html5QrCode.isScanning) {
-            html5QrCode.stop().then(() => {
-                qrReaderElement.style.display = 'none';
-                btnStartScan.style.display = 'flex';
-            }).catch(err => console.error(err));
+        if (codigoInput) {
+            codigoInput.value = '';
         }
+        document.getElementById('mensaje-resultado')?.classList.add('d-none');
     });
 }
 

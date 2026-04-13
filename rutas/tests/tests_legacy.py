@@ -532,7 +532,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         )
 
     @patch('rutas.services.requests.get')
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_primera_solicitud_genera_y_guarda_curiosidad(self, mock_client_class, mock_requests_get):
         """Camino feliz completo: Gemini genera bien y Wikimedia devuelve imagen."""
         mock_client = mock_client_class.return_value
@@ -570,7 +570,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         mock_requests_get.assert_called_once()
 
     @patch('rutas.services.requests.get')
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_segunda_solicitud_reutiliza_cache_sin_ia(self, mock_client_class, mock_requests_get):
         """Camino feliz: la segunda solicitud tira de base de datos."""
         mock_client = mock_client_class.return_value
@@ -593,7 +593,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         mock_client.models.generate_content.assert_called_once()
 
     @patch('rutas.services.requests.get')
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_generacion_usa_temas_de_la_ruta_en_el_prompt(self, mock_client_class, mock_requests_get):
         """Camino feliz: verifica que el prompt contiene los temas (moods) de la ruta."""
         mock_client = mock_client_class.return_value
@@ -613,7 +613,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         self.assertIn('Historia', prompt)
         self.assertIn('Arquitectura', prompt)
 
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_ia_devuelve_json_invalido(self, mock_client_class):
         """Caso infeliz: IA devuelve JSON deformado."""
         mock_client = mock_client_class.return_value
@@ -626,7 +626,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
             with self.assertRaisesMessage(ValueError, "Error de formato: La IA no devolvió un JSON válido."):
                 servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
 
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_ia_devuelve_json_sin_texto(self, mock_client_class):
         """Caso infeliz: IA devuelve JSON pero olvida el atributo fundamental (texto)."""
         mock_client = mock_client_class.return_value
@@ -639,7 +639,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
             with self.assertRaisesMessage(ValueError, "Error de formato: La IA devolvió una curiosidad sin texto."):
                 servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
 
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_ia_lanza_excepcion_api(self, mock_client_class):
         """Caso infeliz: Problema de red con Gemini o API key inválida."""
         mock_client = mock_client_class.return_value
@@ -647,11 +647,11 @@ class ServicioCuriosidadesIACacheTest(TestCase):
 
         with self.settings(GEMINI_API_KEY='test-key'):
             servicio = ServicioCuriosidadesIA()
-            with self.assertRaisesMessage(Exception, "Error al comunicarse con la API de IA: API Caída"):
+            with self.assertRaisesMessage(Exception, "API Caída"):
                 servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
 
     @patch('rutas.services.requests.get')
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_ia_tipo_invalido_usa_default(self, mock_client_class, mock_requests_get):
         """Caso borde: IA inventa un 'tipo'. El sistema hace fallback al por defecto."""
         mock_client = mock_client_class.return_value
@@ -671,7 +671,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         self.assertEqual(curiosidad.tipo, Curiosidad.TipoCuriosidad.DATO_CURIOSO)
 
     @patch('rutas.services.requests.get')
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_busqueda_imagen_falla_no_rompe_generacion(self, mock_client_class, mock_requests_get):
         """Caso borde: Falla Wikimedia pero la curiosidad text-only sobrevive."""
         mock_client = mock_client_class.return_value
@@ -691,7 +691,7 @@ class ServicioCuriosidadesIACacheTest(TestCase):
         self.assertIsNone(curiosidad.imagen_url)
 
     @patch('rutas.services.requests.get')
-    @patch('rutas.services.genai.Client')
+    @patch('google.genai.Client')
     def test_normalizacion_payload_trunca_titulos_largos(self, mock_client_class, mock_requests_get):
         """Caso borde: título exageradamente largo es truncado para caber en BD."""
         titulo_largo = "A" * 300
@@ -862,7 +862,10 @@ class RutaDetalleMetaValidationViewTests(TestCase):
             password='testpass123'
         )
         self.auth_user = AuthUser.objects.create(user=self.user)
-        self.guia = Guia.objects.create(user=self.auth_user)
+        self.guia = Guia.objects.create(
+            user=self.auth_user,
+            tipo_suscripcion=Guia.Suscripcion.PREMIUM,
+        )
         self.ruta = Ruta.objects.create(
             titulo='Ruta Meta',
             descripcion='Ruta para validar edición meta',
