@@ -14,12 +14,12 @@ import logging
 import json
 import math
 
-from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import DatabaseError, IntegrityError
 from django.db.models import Prefetch
 import requests
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
 from .models import Curiosidad, Parada, Ruta
 from tours.models import SESION_TOUR
@@ -447,7 +447,7 @@ class ServicioCuriosidadesIA:
 
     def __init__(self):
         from google import genai
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self._genai = genai
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
         """
@@ -580,34 +580,56 @@ class ServicioCuriosidadesIA:
         }}
         """
 
-        try:
-            respuesta = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            
-            texto_ia = respuesta.text.strip()
+        claves = list(iter_gemini_api_keys())
+        if not claves:
+            raise RuntimeError('No hay API key de Gemini configurada.')
 
-            if texto_ia.startswith("```json"):
-                texto_ia = texto_ia[7:-3].strip()
-            elif texto_ia.startswith("```"):
-                texto_ia = texto_ia[3:-3].strip()
+        ultimo_error_cuota: Exception | None = None
+        for indice, clave in enumerate(claves, start=1):
+            client = self._genai.Client(api_key=clave)
+            try:
+                respuesta = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
 
-            datos_curiosidad = json.loads(texto_ia)
-            busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
-            datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
-                busqueda_imagen=busqueda_imagen,
-                parada=parada,
-                ciudad=ciudad,
-            )
-            return datos_curiosidad
+                texto_ia = str(getattr(respuesta, 'text', '') or '').strip()
 
-        except json.JSONDecodeError:
-            raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
-        except (requests.RequestException, TimeoutError, ConnectionError) as e:
-            raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
-        except (AttributeError, KeyError, IndexError) as e:
-            raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+                if texto_ia.startswith("```json"):
+                    texto_ia = texto_ia[7:-3].strip()
+                elif texto_ia.startswith("```"):
+                    texto_ia = texto_ia[3:-3].strip()
+
+                datos_curiosidad = json.loads(texto_ia)
+                busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
+                datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
+                    busqueda_imagen=busqueda_imagen,
+                    parada=parada,
+                    ciudad=ciudad,
+                )
+                return datos_curiosidad
+
+            except json.JSONDecodeError:
+                raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
+            except (requests.RequestException, TimeoutError, ConnectionError) as e:
+                raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
+            except (AttributeError, KeyError, IndexError) as e:
+                raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+            except Exception as exc:
+                if is_quota_or_rate_limit_error(exception=exc):
+                    ultimo_error_cuota = exc
+                    logger.warning(
+                        'Gemini devolvió cuota/429 al generar curiosidad (clave %s/%s).',
+                        indice,
+                        len(claves),
+                    )
+                    continue
+                raise
+
+        if ultimo_error_cuota is not None:
+            raise RuntimeError('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+        raise RuntimeError('No se pudo generar curiosidad con Gemini.')
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """
