@@ -39,14 +39,18 @@
 
     {# ── Panel métricas (S2.1-29) ─────────────────────────────────────────── #}
     <div id="panel-metricas" class="ruta-metrics-panel">
-        {% if distancia_total_km != None and duracion_total_min != None %}
+        {% if distancia_total_km != None or duracion_total_min != None %}
+            {% if distancia_total_km != None %}
             <span class="metric-item">
                 📍 Distancia: <span class="metric-value" id="val-distancia">{{ distancia_total_km }} km</span>
             </span>
-            <span class="metric-sep">|</span>
+            {% endif %}
+            {% if distancia_total_km != None and duracion_total_min != None %}<span class="metric-sep">|</span>{% endif %}
+            {% if duracion_total_min != None %}
             <span class="metric-item">
                 ⏱️ Tiempo: <span class="metric-value" id="val-duracion">{{ duracion_total_min }} min</span>
             </span>
+            {% endif %}
             <span class="metric-sep">|</span>
             <span class="metric-item">
                 🚶 <span class="metric-value">{{ paradas|length }} paradas</span>
@@ -572,6 +576,13 @@ function actualizarPanelMetricas(data) {
             <span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>
             <span class="metric-sep">|</span>
             <span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>
+            <span class="metric-sep">|</span>
+            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
+    } else if (tieneDistancia || tieneDuracion) {
+        panel.innerHTML = `
+            ${tieneDistancia ? `<span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>` : ''}
+            ${tieneDistancia && tieneDuracion ? '<span class="metric-sep">|</span>' : ''}
+            ${tieneDuracion ? `<span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>` : ''}
             <span class="metric-sep">|</span>
             <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
     } else {
