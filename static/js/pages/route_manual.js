@@ -91,6 +91,43 @@
         exigenciaAyuda.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
     }
 
+    function configurarIncrementoDuracionMediaHora(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) {
+            return;
+        }
+
+        input.step = '0.5';
+        input.setAttribute('step', '0.5');
+
+        input.addEventListener('keydown', function (event) {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                return;
+            }
+
+            event.preventDefault();
+
+            const current = Number(input.value);
+            const min = Number(input.min);
+            const max = Number(input.max);
+            const base = Number.isFinite(current)
+                ? current
+                : (Number.isFinite(min) ? min : LIMITES_MANUAL.duracionMin);
+            const delta = event.key === 'ArrowUp' ? 0.5 : -0.5;
+            let next = Math.round((base + delta) * 2) / 2;
+
+            if (Number.isFinite(min)) {
+                next = Math.max(min, next);
+            }
+            if (Number.isFinite(max)) {
+                next = Math.min(max, next);
+            }
+
+            input.value = next.toFixed(1);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
     function crearTarjetaParada(index) {
         return `
             <div class="stop-card" id="stop-${index}">
@@ -465,6 +502,8 @@
         selectExigencia.addEventListener('change', actualizarAyudaExigencia);
         actualizarAyudaExigencia();
     }
+
+    configurarIncrementoDuracionMediaHora('ruta-duracion');
 
     document.querySelectorAll('#ruta-etiquetas .manual-tag-pill input[type="checkbox"]').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {
