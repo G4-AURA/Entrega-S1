@@ -39,7 +39,7 @@
 
     {# ── Panel métricas (S2.1-29) ─────────────────────────────────────────── #}
     <div id="panel-metricas" class="ruta-metrics-panel">
-        {% if distancia_total_km and duracion_total_min %}
+        {% if distancia_total_km != None and duracion_total_min != None %}
             <span class="metric-item">
                 📍 Distancia: <span class="metric-value" id="val-distancia">{{ distancia_total_km }} km</span>
             </span>
@@ -450,8 +450,20 @@ const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-json').
 const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId = parseInt('{{ ruta.id }}', 10);
 const csrfToken     = '{{ csrf_token }}';
+const RECALCULAR_MIN_STOPS = 2;
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 const uiFeedback = window.AuraFeedback;
+
+function getCsrfTokenFromCookie() {
+    const value = `; ${document.cookie}`;
+    const parts = value.split('; csrftoken=');
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+
+function getCsrfToken() {
+    return csrfToken || getCsrfTokenFromCookie();
+}
 
 async function confirmarAccion(options) {
     try {
@@ -552,7 +564,10 @@ function actualizarPanelMetricas(data) {
     const panel = document.getElementById('panel-metricas');
     if (!panel) return;
 
-    if (data.distancia_total_km && data.duracion_total_min) {
+    const tieneDistancia = data.distancia_total_km !== null && data.distancia_total_km !== undefined && data.distancia_total_km !== '';
+    const tieneDuracion = data.duracion_total_min !== null && data.duracion_total_min !== undefined;
+
+    if (tieneDistancia && tieneDuracion) {
         panel.innerHTML = `
             <span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>
             <span class="metric-sep">|</span>
@@ -568,6 +583,17 @@ function actualizarPanelMetricas(data) {
 // ── Recálculo AJAX (S2.1-32) ──────────────────────────────────────────────
 async function recalcularRutaAjax() {
     const btn = document.getElementById('btn-recalcular');
+    const totalParadas = document.querySelectorAll('.parada-item[data-parada-id]').length;
+
+    if (totalParadas < RECALCULAR_MIN_STOPS) {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '🔄 Calcular ruta';
+        }
+        setBadge('warn', '⚠️ Añade al menos 2 paradas para calcular la ruta');
+        return null;
+    }
+
     let huboError = false;
     if (btn) {
         if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
@@ -582,7 +608,7 @@ async function recalcularRutaAjax() {
     try {
         const resp = await fetch(`/api/rutas/${rutaId}/recalcular/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
         });
 
         if (!resp.ok) {
@@ -782,7 +808,11 @@ function updateRecalcularButton() {
     const paradas = document.querySelectorAll('.parada-item');
     const btn = document.getElementById('btn-recalcular');
     if (btn) {
-        btn.disabled = paradas.length < 1;
+        const canRecalculate = paradas.length >= RECALCULAR_MIN_STOPS;
+        btn.disabled = !canRecalculate;
+        btn.title = canRecalculate
+            ? 'Recalcular ruta con GraphHopper'
+            : 'Necesitas al menos 2 paradas para calcular la ruta';
     }
 }
 
