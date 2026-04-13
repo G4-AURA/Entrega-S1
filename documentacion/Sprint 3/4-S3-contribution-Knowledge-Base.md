@@ -271,6 +271,8 @@ Este contenido se **actualiza de forma semanal** a partir del feedback recibido 
 #### Otros Aspectos
 - Incorporar una **diapositiva específica de team building** dentro de la presentación.  
 
+---
+
 ### Semana 6 (12/03)- Sprint 2
 
 #### Métricas, Seguimiento y Lecciones Aprendidas
@@ -365,6 +367,140 @@ Este contenido se **actualiza de forma semanal** a partir del feedback recibido 
 - Mostrar resultados del team building.  
 - Reflexionar si se aplicarán cambios.  
 - Explicar el modelo utilizado y su funcionamiento.
+
+---
+
+### Semana 7 (26/03)- Evaluación de Sprint 2
+
+#### Feedback AURA:
+- Mantener el buen equilibrio entre imágenes y texto
+- Mantener las preguntas en la presentación
+- Marcar los fallos en rojo en la página 63
+- Presupuesto
+  - Incluir gastos consumidos de CAPEX y OPEX
+  - Revisar slide de OPEX variables:
+  - Mostrar solo ejemplo con fórmula o solo variables clave personas,uso, etc
+- Incluir evidencias de team building
+- Evaluar necesidad de recursos ejemplo micrófonos en consejería
+
+#### Cambios o novedades
+- Incluir **review guideline**:
+    - Qué feedback se recibió
+    - Qué se ha implementado
+- El Excel vuelve a EV
+- Añadir nuevo enlace a la release
+- Preparar dos **vídeos**:
+    - Vídeo 1: Casos de uso con capítulos en YouTube y  narrado de ~10 minutos
+    - Vídeo 2: Demo con historía narrada, con datos reales y con Zoom
+- Crear **storyboard** de un anuncio
+  
+#### FOCO DE LA PRESENTACIÓN
+- Definir una idea clara con killer opener
+- Presentar el stack tecnológico a alto nivel
+- Construir una demo con hilo conductor:
+- Escenario realista
+- Caso de uso concreto
+- Storytelling claro de principio a fin
+- Explicar la metodología de negocio a alto nivel, resaltando solo lo diferencial
+- Incluir visión de:
+  - ALM
+  - CI/CD
+- Más detalle en los planes de pruebas
+- Mostrar resultado del sprint a alto nivel
+- Realizar análisis de rendimiento del sistema
+- **Métricas** del equipo:
+  - Crear un análisis de rendimiento por tipo de tareas
+  - Incluir un grafo que correlacione rendimiento y métricas objetivas ejemplo commits
+  - Identificar claramente a los miembros y explicar sus siglas
+- Revisar el plan de desarrollo
+- Incluir problemas encontrados
+- Incluir lecciones aprendidas
+- Presentar usuarios piloto a alto nivel
+- Explicar cómo escalar o extender el producto
+- Mostrar el estado de recogida de feedback
+- Explicar de forma explícita:
+  - Cómo se recoge el feedback
+  - Qué acciones se han tomado
+
+#### NO ES FOCO PERO DEBE ESTAR
+- Incluir análisis de competidores
+- Incluir **presupuesto** CAPEX y OPEX:
+  - Evolución de usuarios
+  - Marco temporal
+  - Coste de todos los servicios externos
+  - Tener en cuenta la inversión realizada hasta ahora break-even
+  - Listado completo de servicios
+- Incluir CA
+- Incluir **team building**:
+  - Resultados
+ - Reflexión sobre continuidad o mejora
+- FEEDBACK ESPECÍFICO Estrategia y negocio
+- Usuarios Pilotos: Aclarar pivotaje sí o no y justificarlo
+- Incluir **estimación económica**:
+  - Coste hasta ahora
+  - Coste en operación
+  - Explicar condiciones de estimación:
+     - Hipótesis
+     - Variables consideradas
+- Demo y entregable
+
+---
+
+### Semana 8 (9/03) - Sprint 3
+
+#### Feedback AURA:
+- Inicio efectivo mal planteado, no hay killer opener real. Buscar hacerlo más corto e impactante.
+- StoryBoard del anuncio (obligatorio)
+- Mal seguimiento del hilo argumental de la demo. Historia completa.
+- Checkear zoom del proyector, ha recortado contenido de la presentación.
+- Pruebas, gestión de proyecto, tecnología... bien.
+- Matizar que los failures del CI/CD son en total y no solo en el sprint actual.
+- Cuadrante con métricas asociadas al rendimiento (obligatorio).
+- Explicitar los umbrales objetivos.
+- Que significa un volumen de respuesta alto?, dar datos mas concretos sobre respuestas.
+- El plan de captacion esta funcionando?
+- Habéis pensado que el guía llegue a acuerdos con bares, o actividades para obtener descuentos u ofertas por el uso de la aplicación?
+- Falta de claridad en la información presentada.
+- No queda claro temporalidad, número de usuarios.
+- Concretar que el pago sea mensual, no hay claridad.
+- Hacerse una foto para el team building donde estemos todos.
+- Satisfacción antes y después del team bulding
+- Cual es la acción que me va a permitir que se cumpla con el commitment agreement?
+- Mantener la historia durante toda la presentación. Acabar con la idea del guía Paco
+
+#### Feedback general:
+- No hay reflexión acerca del team building
+- Los usuarios piloto usan la aplicación realmente?
+- Nivel de detalle en las transparencias es muy importante
+- Demo con historia
+- Cuadrante de rendimiento
+- Listado servicios externos (git, plataforma de ia...)
+- Storyboard
+
+#### Foco de la presentación:
+- Idea del proyecto
+- Killer opener
+- Demo de los casos de uso con historia (priorizando los core) con hilo conductor realista
+- Que aparezcan en todo momento datos reales
+- Visión de muy alto nivel del alm donde se comente parcialmente el sistema de integración y despliegue continuo
+- Y se especifique el sistema de pruebas de integración y e2e
+- Análisis de alto nivel de resultados del sprint respecto a lo esperado
+- Análisis de rendimiento de tareas con algún tipo de grafico visual cuadrante que relacione el rendimiento del grupo con algún tipo de métricas objetivas
+- Análisis detallado de los problemas encontrados incluyendo estado, planes de contingencia, método para solucionarlo, métricas sobre si esta funcionando, periodo objetivo...
+- Usuarios piloto, número y tipo
+- Que acciones de pivotaje según el feedback
+- Plan para aumentar el numero de pilotos y si esta funcionando
+- Que acciones vamos a hacer en función del lanzamiento del producto (plan de marketing)
+
+#### No Foco de la presentación:
+- Estructura del equipo
+- Slide de resumen de alto nivel de competidores
+- Análisis económico del proyecto
+- Modelo de precios según los usuarios piloto
+- Storyboard revisado
+- Storyboard adicional para un anuncio de inversores (anuncio corto de 2-3 minutos como mucho)
+- Resumen de alto nivel del cumplimiento del commitment agreement
+- No metodología (mas cosas, analizar con respecto al ultimo dia para eliminar)
 
 ---
 
