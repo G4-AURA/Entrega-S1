@@ -298,9 +298,9 @@
                                 class="btn btn-outline-info btn-sm btn-generar-curiosidad-ia"
                                 data-parada-id="{{ parada.id }}">
                             {% if parada.id in paradas_con_curiosidad %}
-                                ✏️ Editar Curiosidad
+                                Editar Curiosidad
                             {% else %}
-                                ➕ Añadir Curiosidad
+                                Añadir Curiosidad
                             {% endif %}
                         </button>
                         <form method="post" class="d-inline">
@@ -328,7 +328,7 @@
                          id="panel-generar-curiosidad-{{ parada.id }}" aria-live="polite">
                         <div class="border rounded p-3 bg-light">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <strong class="small">
+                                <strong class="small" id="titulo-panel-curiosidad-{{ parada.id }}">
                                     {% if parada.id in paradas_con_curiosidad %}
                                         Editar Curiosidad
                                     {% else %}
@@ -342,7 +342,7 @@
                             <div id="acciones-curiosidad-{{ parada.id }}" class="mb-2 d-none">
                                 <button type="button" class="btn btn-danger btn-sm btn-eliminar-curiosidad-existente"
                                         data-parada-id="{{ parada.id }}">
-                                    🗑️ Eliminar curiosidad existente
+                                    Eliminar curiosidad existente
                                 </button>
                             </div>
                             <form id="form-guardar-curiosidad-{{ parada.id }}"
@@ -1010,6 +1010,8 @@ if (listaParadas) {
 }
 
 // ── Generación de Curiosidades (S3.1-11) ──────────────────────────────────
+const curiosidadPreviewCache = new Map();
+
 /**
  * Cierra todos los paneles de generación de curiosidad.
  */
@@ -1017,6 +1019,36 @@ function cerrarTodosLosPannelesCuriosidad() {
     document.querySelectorAll('.ia-curiosidad-panel').forEach((panel) => {
         panel.classList.add('d-none');
     });
+}
+
+function descartarBorradorCuriosidad(paradaId) {
+    curiosidadPreviewCache.delete(String(paradaId));
+
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (form) {
+        form.reset();
+        form.classList.add('d-none');
+    }
+
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    if (estado) {
+        estado.textContent = '';
+    }
+}
+
+/**
+ * Sincroniza el estado visual del botón/panel de curiosidad sin recargar la página.
+ */
+function actualizarEstadoUIBotonCuriosidad(paradaId, tieneCuriosidad) {
+    const triggerButton = document.querySelector(`.btn-generar-curiosidad-ia[data-parada-id="${paradaId}"]`);
+    if (triggerButton) {
+        triggerButton.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Añadir Curiosidad';
+    }
+
+    const tituloPanel = document.getElementById(`titulo-panel-curiosidad-${paradaId}`);
+    if (tituloPanel) {
+        tituloPanel.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Generar Curiosidad IA';
+    }
 }
 
 /**
@@ -1031,7 +1063,24 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
 
     cerrarTodosLosPannelesCuriosidad();
     panel.classList.remove('d-none');
-    estado.textContent = 'Generando curiosidad... ⏳';
+    const previewCacheada = curiosidadPreviewCache.get(String(paradaId));
+    if (previewCacheada) {
+        const tituloInput = form.querySelector('input[name="titulo"]');
+        const textoInput = form.querySelector('textarea[name="texto"]');
+        const tipoInput = form.querySelector('select[name="tipo"]');
+        const imagenInput = form.querySelector('input[name="imagen_url"]');
+
+        if (tituloInput) tituloInput.value = previewCacheada.titulo || '';
+        if (textoInput) textoInput.value = previewCacheada.texto || '';
+        if (tipoInput) tipoInput.value = previewCacheada.tipo || '';
+        if (imagenInput) imagenInput.value = previewCacheada.imagen_url || '';
+
+        form.classList.remove('d-none');
+        estado.textContent = 'Previsualización recuperada. No se guardará hasta pulsar Guardar.';
+        return;
+    }
+
+    estado.textContent = 'Generando curiosidad...';
     form.classList.add('d-none');
     triggerButton.disabled = true;
 
@@ -1045,7 +1094,16 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
         });
 
         if (!response.ok) {
-            estado.textContent = `Error ${response.status}`;
+            let mensajeError = `Error ${response.status}`;
+            try {
+                const dataError = await response.json();
+                if (dataError && dataError.mensaje) {
+                    mensajeError = dataError.mensaje;
+                }
+            } catch (_err) {
+                // Si no hay JSON, mantenemos el código HTTP.
+            }
+            estado.textContent = mensajeError;
             return;
         }
 
@@ -1071,15 +1129,22 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
         if (data.persistida) {
             const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
             if (accionesDiv) accionesDiv.classList.remove('d-none');
+            actualizarEstadoUIBotonCuriosidad(paradaId, true);
             
             estado.textContent = data.generada
-                ? '✅ Curiosidad generada y guardada. Edita y guarda si deseas cambios.'
-                : '✅ Curiosidad existente cargada. Edita y guarda si deseas cambios.';
+                ? 'Curiosidad generada y guardada. Edita y guarda si deseas cambios.'
+                : 'Curiosidad existente cargada. Edita y guarda si deseas cambios.';
         } else {
             const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
             if (accionesDiv) accionesDiv.classList.add('d-none');
+            curiosidadPreviewCache.set(String(paradaId), {
+                titulo: curiosidad.titulo || '',
+                texto: curiosidad.texto || '',
+                tipo: curiosidad.tipo || '',
+                imagen_url: curiosidad.imagen_url || '',
+            });
             
-            estado.textContent = '✅ Previsualización generada. No se guardará hasta pulsar Guardar.';
+            estado.textContent = 'Previsualización generada. No se guardará hasta pulsar Guardar.';
         }
         
         form.classList.remove('d-none');
@@ -1128,9 +1193,11 @@ async function eliminarCuriosidadExistente(paradaId, triggerButton) {
         const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
         const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
 
-        if (estado) estado.textContent = '✅ Curiosidad eliminada. Puedes generar una nueva.';
+        if (estado) estado.textContent = 'Curiosidad eliminada. Puedes generar una nueva.';
         if (accionesDiv) accionesDiv.classList.add('d-none');
         if (form) form.classList.add('d-none');
+        curiosidadPreviewCache.delete(String(paradaId));
+        actualizarEstadoUIBotonCuriosidad(paradaId, false);
 
     } catch (err) {
         console.error('[AURA] Error eliminando curiosidad:', err);
@@ -1164,7 +1231,7 @@ async function guardarCuriosidad(paradaId, event) {
     const submitBtn = form.querySelector('button[type="submit"]');
     
     if (submitBtn) submitBtn.disabled = true;
-    if (estado) estado.textContent = 'Guardando... ⏳';
+    if (estado) estado.textContent = 'Guardando...';
 
     try {
         const payload = {
@@ -1190,7 +1257,12 @@ async function guardarCuriosidad(paradaId, event) {
             return;
         }
 
-        if (estado) estado.textContent = '✅ Curiosidad guardada correctamente.';
+        const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+        if (accionesDiv) accionesDiv.classList.remove('d-none');
+        curiosidadPreviewCache.delete(String(paradaId));
+        actualizarEstadoUIBotonCuriosidad(paradaId, true);
+
+        if (estado) estado.textContent = 'Curiosidad guardada correctamente.';
         if (panel) setTimeout(() => panel.classList.add('d-none'), 2000);
 
     } catch (err) {
@@ -1208,14 +1280,18 @@ document.querySelectorAll('.btn-generar-curiosidad-ia').forEach((btn) => {
 
 document.querySelectorAll('.btn-cerrar-curiosidad').forEach((btn) => {
     btn.addEventListener('click', () => {
-        const panel = document.getElementById(`panel-generar-curiosidad-${btn.dataset.paradaId}`);
+        const paradaId = btn.dataset.paradaId;
+        descartarBorradorCuriosidad(paradaId);
+        const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
         if (panel) panel.classList.add('d-none');
     });
 });
 
 document.querySelectorAll('.btn-cancelar-curiosidad').forEach((btn) => {
     btn.addEventListener('click', () => {
-        const panel = document.getElementById(`panel-generar-curiosidad-${btn.dataset.paradaId}`);
+        const paradaId = btn.dataset.paradaId;
+        descartarBorradorCuriosidad(paradaId);
+        const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
         if (panel) panel.classList.add('d-none');
     });
 });
