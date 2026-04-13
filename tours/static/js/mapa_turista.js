@@ -757,6 +757,17 @@ function _initChat() {
     let chatVisible     = false;
     let selectedFile    = null;
     let previewObjectUrl = null;
+    const MAX_CHAT_IMAGE_SIZE = 5 * 1024 * 1024;
+    const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+    const notifyChat = (message, type = 'warning') => {
+        const feedback = window.AuraFeedback;
+        if (feedback && typeof feedback.toast === 'function') {
+            feedback.toast(message, { type, duration: 3600 });
+            return;
+        }
+        console.warn('[AURA chat]', message);
+    };
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
 
@@ -795,6 +806,19 @@ function _initChat() {
         selectedFile = null;
         chatImageInput.value = '';
         chatPreviewContainer.innerHTML = '';
+    }
+
+    async function readJsonOrText(response) {
+        const raw = await response.text();
+        try {
+            return raw ? JSON.parse(raw) : null;
+        } catch (_error) {
+            return { raw };
+        }
+    }
+
+    function extraerMensajeDeError(payload, fallback) {
+        return payload?.error || payload?.mensaje || payload?.detail || fallback;
     }
 
     function renderPreview(file) {
@@ -930,7 +954,10 @@ function _initChat() {
         if (!_sesionEnCurso()) return;
 
         const texto = chatInput.value.trim();
-        if (!texto && !selectedFile) return;
+        if (!texto && !selectedFile) {
+            notifyChat('El mensaje no puede estar vacío.', 'warning');
+            return;
+        }
 
         chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = true;
 
@@ -945,14 +972,19 @@ function _initChat() {
             headers: { 'X-CSRFToken': _getCsrf() },
             body:    payload,
         })
-        .then(r => r.json())
-        .then((data) => {
-            if (data.status !== 'ok') return;
+        .then(async (r) => {
+            const data = await readJsonOrText(r);
+            if (!r.ok || data?.status !== 'ok') {
+                throw new Error(extraerMensajeDeError(data, 'No se pudo enviar el mensaje.'));
+            }
+
             chatInput.value = '';
             clearPreview();
             fetchMessages();
         })
-        .catch(() => {})
+        .catch((error) => {
+            notifyChat(error?.message || 'No se pudo enviar el mensaje.', 'error');
+        })
         .finally(() => {
             chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = false;
             chatInput.focus();
@@ -969,8 +1001,14 @@ function _initChat() {
         }
 
         const file = chatImageInput.files[0];
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
+        if (!ALLOWED_CHAT_IMAGE_TYPES.has(file.type)) {
+            notifyChat('Formato de imagen no permitido. Usa JPEG, PNG o WebP.', 'warning');
+            clearPreview();
+            return;
+        }
+
+        if (file.size > MAX_CHAT_IMAGE_SIZE) {
+            notifyChat('La imagen supera el tamaño máximo de 5MB.', 'warning');
             clearPreview();
             return;
         }
