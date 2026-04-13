@@ -734,10 +734,16 @@ def ruta_detalle_view(request, ruta_id):
     if not moods_actuales_visibles and moods_actuales_norm:
         moods_actuales_visibles = [m for m in moods_actuales_norm if m in mood_choices_disponibles_set]
 
+    # Obtener IDs de paradas que ya tienen curiosidad
+    paradas_con_curiosidad = set(
+        Curiosidad.objects.filter(parada__ruta_id=ruta_id).values_list("parada_id", flat=True)
+    )
+
     context = {
         "ruta": ruta,
         "paradas": paradas,
         "paradas_json": paradas_json,
+        "paradas_con_curiosidad": paradas_con_curiosidad,
         # Geometría en formato Leaflet [[lat, lon], ...] (S2.1-31)
         "geometria_ruta_json": ruta.geometria_ruta_coords,
         # Métricas totales para el panel (S2.1-29)
@@ -806,10 +812,15 @@ def recalcular_ruta_api(request, ruta_id):
 @user_passes_test(es_guia)
 def obtener_curiosidad_parada_api(request, parada_id):
     """
-    Obtiene la curiosidad de una parada.
+        Obtiene la curiosidad de una parada.
 
-    Si la curiosidad ya existe en BD, se devuelve directamente.
-    Si no existe, se genera con IA, se persiste y se devuelve.
+        Modo por defecto:
+            - Si existe en BD, se devuelve.
+            - Si no existe, se genera con IA, se persiste y se devuelve.
+
+        Modo preview (?preview=1):
+            - Si existe en BD, se devuelve.
+            - Si no existe, se genera con IA sin persistir.
     """
     paradas_qs = Parada.objects.select_related("ruta", "ruta__guia", "ruta__guia__user", "ruta__guia__user__user")
 
@@ -828,6 +839,62 @@ def obtener_curiosidad_parada_api(request, parada_id):
         return tier_error_response(exc)
 
     ciudad = (request.GET.get("ciudad") or "Sevilla").strip() or "Sevilla"
+    preview_mode = str(request.GET.get("preview") or "").strip().lower() in {"1", "true", "yes"}
+
+    if preview_mode:
+        curiosidad_existente = Curiosidad.objects.filter(parada=parada).first()
+        if curiosidad_existente:
+            return JsonResponse(
+                {
+                    "status": "ok",
+                    "generada": False,
+                    "persistida": True,
+                    "curiosidad": {
+                        "id": curiosidad_existente.id,
+                        "parada_id": curiosidad_existente.parada_id,
+                        "ciudad": curiosidad_existente.ciudad,
+                        "titulo": curiosidad_existente.titulo,
+                        "texto": curiosidad_existente.texto,
+                        "tipo": curiosidad_existente.tipo,
+                        "imagen_url": curiosidad_existente.imagen_url,
+                        "fecha_generacion": curiosidad_existente.fecha_generacion.isoformat(),
+                    },
+                },
+                json_dumps_params={"ensure_ascii": False},
+            )
+
+        try:
+            curiosidad_preview = services.generar_curiosidad_parada_preview(
+                parada=parada,
+                ciudad=ciudad,
+            )
+        except Exception as exc:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "mensaje": f"No se pudo generar la curiosidad: {exc}",
+                },
+                status=502,
+            )
+
+        return JsonResponse(
+            {
+                "status": "ok",
+                "generada": True,
+                "persistida": False,
+                "curiosidad": {
+                    "id": None,
+                    "parada_id": curiosidad_preview["parada_id"],
+                    "ciudad": curiosidad_preview["ciudad"],
+                    "titulo": curiosidad_preview["titulo"],
+                    "texto": curiosidad_preview["texto"],
+                    "tipo": curiosidad_preview["tipo"],
+                    "imagen_url": curiosidad_preview["imagen_url"],
+                    "fecha_generacion": None,
+                },
+            },
+            json_dumps_params={"ensure_ascii": False},
+        )
 
     try:
         curiosidad, generada = services.obtener_o_generar_curiosidad_parada(
@@ -847,6 +914,7 @@ def obtener_curiosidad_parada_api(request, parada_id):
         {
             "status": "ok",
             "generada": generada,
+            "persistida": True,
             "curiosidad": {
                 "id": curiosidad.id,
                 "parada_id": curiosidad.parada_id,
@@ -961,6 +1029,48 @@ def guardar_curiosidad_parada_api(request, parada_id):
                 "imagen_url": curiosidad.imagen_url,
                 "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
             },
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
+
+
+@login_required
+@require_http_methods(["DELETE"])
+@user_passes_test(es_guia)
+def eliminar_curiosidad_parada_api(request, parada_id):
+    """Elimina la curiosidad asociada a una parada."""
+    parada_qs = Parada.objects.select_related(
+        "ruta", "ruta__guia", "ruta__guia__user", "ruta__guia__user__user"
+    )
+    try:
+        parada = parada_qs.get(id=parada_id)
+    except Parada.DoesNotExist:
+        return JsonResponse(
+            {"status": "error", "mensaje": "Parada no encontrada."},
+            status=404,
+        )
+
+    if not request.user.is_superuser and parada.ruta.guia.user.user != request.user:
+        return JsonResponse(
+            {"status": "error", "mensaje": "No tienes permisos para editar esta parada."},
+            status=403,
+        )
+
+    curiosidad = Curiosidad.objects.filter(parada=parada).first()
+    if not curiosidad:
+        return JsonResponse(
+            {"status": "error", "mensaje": "No existe curiosidad para esta parada."},
+            status=404,
+        )
+
+    curiosidad_id = curiosidad.id
+    curiosidad.delete()
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "mensaje": "Curiosidad eliminada correctamente.",
+            "curiosidad_id": curiosidad_id,
         },
         json_dumps_params={"ensure_ascii": False},
     )

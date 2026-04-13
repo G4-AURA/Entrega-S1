@@ -294,6 +294,15 @@
                             ✨ IA
                         </button>
                         {% endif %}
+                        <button type="button"
+                                class="btn btn-outline-info btn-sm btn-generar-curiosidad-ia"
+                                data-parada-id="{{ parada.id }}">
+                            {% if parada.id in paradas_con_curiosidad %}
+                                Editar Curiosidad
+                            {% else %}
+                                Añadir Curiosidad
+                            {% endif %}
+                        </button>
                         <form method="post" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
@@ -314,6 +323,66 @@
                             <div id="lista-sugerencias-ia-{{ parada.id }}"></div>
                         </div>
                     {% endif %}
+
+                    <div class="ia-curiosidad-panel d-none mt-2"
+                         id="panel-generar-curiosidad-{{ parada.id }}" aria-live="polite">
+                        <div class="border rounded p-3 bg-light">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <strong class="small" id="titulo-panel-curiosidad-{{ parada.id }}">
+                                    {% if parada.id in paradas_con_curiosidad %}
+                                        Editar Curiosidad
+                                    {% else %}
+                                        Generar Curiosidad IA
+                                    {% endif %}
+                                </strong>
+                                <button type="button" class="btn btn-sm btn-link btn-cerrar-curiosidad"
+                                        data-parada-id="{{ parada.id }}">✕</button>
+                            </div>
+                            <div id="estado-generar-curiosidad-{{ parada.id }}" class="small text-muted mb-2"></div>
+                            <div id="acciones-curiosidad-{{ parada.id }}" class="mb-2 d-none">
+                                <button type="button" class="btn btn-danger btn-sm btn-eliminar-curiosidad-existente"
+                                        data-parada-id="{{ parada.id }}">
+                                    Eliminar curiosidad existente
+                                </button>
+                            </div>
+                            <form id="form-guardar-curiosidad-{{ parada.id }}"
+                                  class="curiosidad-form d-none">
+                                {% csrf_token %}
+                                <input type="hidden" name="parada_id" value="{{ parada.id }}">
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Título</label>
+                                    <input type="text" name="titulo" class="form-control form-control-sm"
+                                           placeholder="Título de la curiosidad" required>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Texto</label>
+                                    <textarea name="texto" class="form-control form-control-sm" rows="3"
+                                              placeholder="Descripción de la curiosidad" required></textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Tipo</label>
+                                    <select name="tipo" class="form-control form-control-sm" required>
+                                        <option value="">-- Selecciona un tipo --</option>
+                                        <option value="Historia">Historia</option>
+                                        <option value="Arquitectura">Arquitectura</option>
+                                        <option value="Personaje">Personaje</option>
+                                        <option value="Evento">Evento</option>
+                                        <option value="Dato Curioso">Dato Curioso</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">URL de Imagen (opcional)</label>
+                                    <input type="url" name="imagen_url" class="form-control form-control-sm"
+                                           placeholder="https://...">
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" class="btn btn-success btn-sm">Guardar</button>
+                                    <button type="button" class="btn btn-secondary btn-sm btn-cancelar-curiosidad"
+                                            data-parada-id="{{ parada.id }}">Cancelar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
 
                     <form method="post" class="parada-edit-form d-none"
                           id="form-editar-parada-{{ parada.id }}">
@@ -939,5 +1008,305 @@ if (listaParadas) {
         item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
     });
 }
+
+// ── Generación de Curiosidades (S3.1-11) ──────────────────────────────────
+const curiosidadPreviewCache = new Map();
+
+/**
+ * Cierra todos los paneles de generación de curiosidad.
+ */
+function cerrarTodosLosPannelesCuriosidad() {
+    document.querySelectorAll('.ia-curiosidad-panel').forEach((panel) => {
+        panel.classList.add('d-none');
+    });
+}
+
+function descartarBorradorCuriosidad(paradaId) {
+    curiosidadPreviewCache.delete(String(paradaId));
+
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (form) {
+        form.reset();
+        form.classList.add('d-none');
+    }
+
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    if (estado) {
+        estado.textContent = '';
+    }
+}
+
+/**
+ * Sincroniza el estado visual del botón/panel de curiosidad sin recargar la página.
+ */
+function actualizarEstadoUIBotonCuriosidad(paradaId, tieneCuriosidad) {
+    const triggerButton = document.querySelector(`.btn-generar-curiosidad-ia[data-parada-id="${paradaId}"]`);
+    if (triggerButton) {
+        triggerButton.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Añadir Curiosidad';
+    }
+
+    const tituloPanel = document.getElementById(`titulo-panel-curiosidad-${paradaId}`);
+    if (tituloPanel) {
+        tituloPanel.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Generar Curiosidad IA';
+    }
+}
+
+/**
+ * Genera una curiosidad IA para una parada.
+ */
+async function generarCuriosidadIA(paradaId, triggerButton) {
+    const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    
+    if (!panel || !estado || !form || !triggerButton) return;
+
+    cerrarTodosLosPannelesCuriosidad();
+    panel.classList.remove('d-none');
+    const previewCacheada = curiosidadPreviewCache.get(String(paradaId));
+    if (previewCacheada) {
+        const tituloInput = form.querySelector('input[name="titulo"]');
+        const textoInput = form.querySelector('textarea[name="texto"]');
+        const tipoInput = form.querySelector('select[name="tipo"]');
+        const imagenInput = form.querySelector('input[name="imagen_url"]');
+
+        if (tituloInput) tituloInput.value = previewCacheada.titulo || '';
+        if (textoInput) textoInput.value = previewCacheada.texto || '';
+        if (tipoInput) tipoInput.value = previewCacheada.tipo || '';
+        if (imagenInput) imagenInput.value = previewCacheada.imagen_url || '';
+
+        form.classList.remove('d-none');
+        estado.textContent = 'Previsualización recuperada. No se guardará hasta pulsar Guardar.';
+        return;
+    }
+
+    estado.textContent = 'Generando curiosidad...';
+    form.classList.add('d-none');
+    triggerButton.disabled = true;
+
+    try {
+        const response = await fetch(`/api/paradas/${paradaId}/curiosidad/?preview=1`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+        });
+
+        if (!response.ok) {
+            let mensajeError = `Error ${response.status}`;
+            try {
+                const dataError = await response.json();
+                if (dataError && dataError.mensaje) {
+                    mensajeError = dataError.mensaje;
+                }
+            } catch (_err) {
+                // Si no hay JSON, mantenemos el código HTTP.
+            }
+            estado.textContent = mensajeError;
+            return;
+        }
+
+        const data = await response.json();
+
+        if (data.status !== 'ok' || !data.curiosidad) {
+            estado.textContent = data.mensaje || 'No se pudo generar la curiosidad.';
+            return;
+        }
+
+        // Rellenar el formulario con los datos generados
+        const curiosidad = data.curiosidad;
+        const tituloInput = form.querySelector('input[name="titulo"]');
+        const textoInput = form.querySelector('textarea[name="texto"]');
+        const tipoInput = form.querySelector('select[name="tipo"]');
+        const imagenInput = form.querySelector('input[name="imagen_url"]');
+
+        if (tituloInput) tituloInput.value = curiosidad.titulo || '';
+        if (textoInput) textoInput.value = curiosidad.texto || '';
+        if (tipoInput) tipoInput.value = curiosidad.tipo || '';
+        if (imagenInput) imagenInput.value = curiosidad.imagen_url || '';
+
+        if (data.persistida) {
+            const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+            if (accionesDiv) accionesDiv.classList.remove('d-none');
+            actualizarEstadoUIBotonCuriosidad(paradaId, true);
+            
+            estado.textContent = data.generada
+                ? 'Curiosidad generada y guardada. Edita y guarda si deseas cambios.'
+                : 'Curiosidad existente cargada. Edita y guarda si deseas cambios.';
+        } else {
+            const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+            if (accionesDiv) accionesDiv.classList.add('d-none');
+            curiosidadPreviewCache.set(String(paradaId), {
+                titulo: curiosidad.titulo || '',
+                texto: curiosidad.texto || '',
+                tipo: curiosidad.tipo || '',
+                imagen_url: curiosidad.imagen_url || '',
+            });
+            
+            estado.textContent = 'Previsualización generada. No se guardará hasta pulsar Guardar.';
+        }
+        
+        form.classList.remove('d-none');
+
+    } catch (err) {
+        console.error('[AURA] Error generando curiosidad:', err);
+        estado.textContent = 'Error de conexión al servidor.';
+    } finally {
+        triggerButton.disabled = false;
+    }
+}
+
+/**
+ * Elimina una curiosidad existente para poder regenerarla.
+ */
+async function eliminarCuriosidadExistente(paradaId, triggerButton) {
+    const confirmacion = await confirmarAccion({
+        title: 'Eliminar curiosidad',
+        message: '¿Estás seguro de que quieres eliminar esta curiosidad? Podrás generar una nueva.',
+        confirmText: 'Eliminar',
+        cancelText: 'Cancelar',
+        type: 'danger',
+    });
+    
+    if (!confirmacion) return;
+
+    triggerButton.disabled = true;
+
+    try {
+        const response = await fetch(`/api/paradas/${paradaId}/curiosidad/eliminar/`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.status !== 'ok') {
+            alert(data.mensaje || 'Error al eliminar la curiosidad.');
+            return;
+        }
+
+        const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+        const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+        const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+
+        if (estado) estado.textContent = 'Curiosidad eliminada. Puedes generar una nueva.';
+        if (accionesDiv) accionesDiv.classList.add('d-none');
+        if (form) form.classList.add('d-none');
+        curiosidadPreviewCache.delete(String(paradaId));
+        actualizarEstadoUIBotonCuriosidad(paradaId, false);
+
+    } catch (err) {
+        console.error('[AURA] Error eliminando curiosidad:', err);
+        alert('Error de conexión al servidor.');
+    } finally {
+        triggerButton.disabled = false;
+    }
+}
+
+/**
+ * Guarda una curiosidad a través de la API.
+ */
+async function guardarCuriosidad(paradaId, event) {
+    event.preventDefault();
+    
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (!form) return;
+
+    const titulo = form.querySelector('input[name="titulo"]').value.trim();
+    const texto = form.querySelector('textarea[name="texto"]').value.trim();
+    const tipo = form.querySelector('select[name="tipo"]').value.trim();
+    const imagen_url = form.querySelector('input[name="imagen_url"]').value.trim();
+
+    if (!titulo || !texto || !tipo) {
+        alert('Por favor, completa todos los campos requeridos.');
+        return;
+    }
+
+    const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    
+    if (submitBtn) submitBtn.disabled = true;
+    if (estado) estado.textContent = 'Guardando...';
+
+    try {
+        const payload = {
+            titulo: titulo,
+            texto: texto,
+            tipo: tipo,
+            imagen_url: imagen_url || null,
+        };
+
+        const response = await fetch(`/api/paradas/${paradaId}/curiosidad/guardar/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.status !== 'ok') {
+            if (estado) estado.textContent = `Error: ${data.mensaje || 'No se pudo guardar.'}`;
+            return;
+        }
+
+        const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+        if (accionesDiv) accionesDiv.classList.remove('d-none');
+        curiosidadPreviewCache.delete(String(paradaId));
+        actualizarEstadoUIBotonCuriosidad(paradaId, true);
+
+        if (estado) estado.textContent = 'Curiosidad guardada correctamente.';
+        if (panel) setTimeout(() => panel.classList.add('d-none'), 2000);
+
+    } catch (err) {
+        console.error('[AURA] Error guardando curiosidad:', err);
+        if (estado) estado.textContent = 'Error de conexión.';
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Event listeners para botones de curiosidad
+document.querySelectorAll('.btn-generar-curiosidad-ia').forEach((btn) => {
+    btn.addEventListener('click', () => generarCuriosidadIA(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-cerrar-curiosidad').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const paradaId = btn.dataset.paradaId;
+        descartarBorradorCuriosidad(paradaId);
+        const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+        if (panel) panel.classList.add('d-none');
+    });
+});
+
+document.querySelectorAll('.btn-cancelar-curiosidad').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const paradaId = btn.dataset.paradaId;
+        descartarBorradorCuriosidad(paradaId);
+        const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+        if (panel) panel.classList.add('d-none');
+    });
+});
+
+document.querySelectorAll('.btn-eliminar-curiosidad-existente').forEach((btn) => {
+    btn.addEventListener('click', () => eliminarCuriosidadExistente(btn.dataset.paradaId, btn));
+});
+
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (form.id.startsWith('form-guardar-curiosidad-')) {
+        event.preventDefault();
+        const paradaId = form.querySelector('input[name="parada_id"]').value;
+        guardarCuriosidad(paradaId, event);
+    }
+});
 </script>
 {% endblock %}
