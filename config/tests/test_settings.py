@@ -83,6 +83,22 @@ class SettingsConditionalBranchesTest(SimpleTestCase):
         mod = self._reload_with({'CSRF_TRUSTED_ORIGINS': 'https://mysite.com'})
         self.assertIn('https://mysite.com', mod.CSRF_TRUSTED_ORIGINS)
 
+    def test_gemini_api_keys_usa_lista_ordenada(self):
+        mod = self._reload_with({
+            'GEMINI_API_KEYS': 'key-a, key-b,key-c',
+            'GEMINI_API_KEY': '',
+        })
+        self.assertEqual(mod.GEMINI_API_KEYS, ('key-a', 'key-b', 'key-c'))
+        self.assertEqual(mod.GEMINI_API_KEY, 'key-a')
+
+    def test_gemini_api_keys_hace_fallback_a_legacy(self):
+        mod = self._reload_with({
+            'GEMINI_API_KEYS': '',
+            'GEMINI_API_KEY': 'legacy-key',
+        })
+        self.assertEqual(mod.GEMINI_API_KEYS, ('legacy-key',))
+        self.assertEqual(mod.GEMINI_API_KEY, 'legacy-key')
+
     def test_debug_verdadero_desde_variable_entorno(self):
         mod = self._reload_with({'DEBUG': 'True'})
         self.assertTrue(mod.DEBUG)
