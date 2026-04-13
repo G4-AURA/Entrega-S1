@@ -47,7 +47,11 @@
 
     async function pollEstado() {
         try {
-            const resp = await fetch(cronometroUrl, { headers: { 'Accept': 'application/json' } });
+            const url = `${cronometroUrl}${cronometroUrl.includes('?') ? '&' : '?'}_=${Date.now()}`;
+            const resp = await fetch(url, {
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store',
+            });
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.estado === 'en_curso') activateTour();
