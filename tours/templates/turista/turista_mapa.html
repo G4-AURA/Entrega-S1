@@ -12,7 +12,7 @@
 {% csrf_token %}
 
 {% if es_guia %}
-<a href="{% url 'catalogo' %}" class="btn-back">
+<a href="{% url 'tours:guia_sesion' sesion.id %}" class="btn-back">
     <span class="material-icons-round">arrow_back</span>
 </a>
 {% else %}
