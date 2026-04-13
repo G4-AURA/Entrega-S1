@@ -296,7 +296,8 @@
                         {% endif %}
                         <button type="button"
                                 class="btn btn-outline-info btn-sm btn-generar-curiosidad-ia"
-                                data-parada-id="{{ parada.id }}">
+                            data-parada-id="{{ parada.id }}"
+                            data-tiene-curiosidad="{% if parada.id in paradas_con_curiosidad %}1{% else %}0{% endif %}">
                             {% if parada.id in paradas_con_curiosidad %}
                                 Editar Curiosidad
                             {% else %}
@@ -332,7 +333,7 @@
                                     {% if parada.id in paradas_con_curiosidad %}
                                         Editar Curiosidad
                                     {% else %}
-                                        Generar Curiosidad IA
+                                        Añadir Curiosidad Manual
                                     {% endif %}
                                 </strong>
                                 <button type="button" class="btn btn-sm btn-link btn-cerrar-curiosidad"
@@ -375,8 +376,23 @@
                                     <input type="url" name="imagen_url" class="form-control form-control-sm"
                                            placeholder="https://...">
                                 </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Imagen local (opcional)</label>
+                                    <input type="file" name="imagen_manual" class="form-control form-control-sm"
+                                           accept="image/png,image/jpeg,image/webp">
+                                    <div class="form-text">Si subes archivo, tendrá prioridad sobre la URL.</div>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" name="eliminar_imagen_manual"
+                                           id="eliminar-imagen-manual-{{ parada.id }}" value="1">
+                                    <label class="form-check-label small" for="eliminar-imagen-manual-{{ parada.id }}">
+                                        Quitar imagen local actual
+                                    </label>
+                                </div>
                                 <div class="d-flex gap-2">
                                     <button type="submit" class="btn btn-success btn-sm">Guardar</button>
+                                    <button type="button" class="btn btn-outline-info btn-sm btn-generar-curiosidad-desde-ia"
+                                            data-parada-id="{{ parada.id }}">Generar con IA</button>
                                     <button type="button" class="btn btn-secondary btn-sm btn-cancelar-curiosidad"
                                             data-parada-id="{{ parada.id }}">Cancelar</button>
                                 </div>
@@ -1021,6 +1037,19 @@ function cerrarTodosLosPannelesCuriosidad() {
     });
 }
 
+function limpiarEstadoCuriosidad(estado) {
+    if (!estado) return;
+    estado.textContent = '';
+    estado.classList.remove('curiosidad-estado', 'curiosidad-estado--info', 'curiosidad-estado--success', 'curiosidad-estado--error');
+}
+
+function mostrarEstadoCuriosidad(estado, mensaje, tipo = 'info') {
+    if (!estado) return;
+    estado.textContent = mensaje;
+    estado.classList.remove('curiosidad-estado', 'curiosidad-estado--info', 'curiosidad-estado--success', 'curiosidad-estado--error');
+    estado.classList.add('curiosidad-estado', `curiosidad-estado--${tipo}`);
+}
+
 function descartarBorradorCuriosidad(paradaId) {
     curiosidadPreviewCache.delete(String(paradaId));
 
@@ -1032,7 +1061,7 @@ function descartarBorradorCuriosidad(paradaId) {
 
     const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
     if (estado) {
-        estado.textContent = '';
+        limpiarEstadoCuriosidad(estado);
     }
 }
 
@@ -1043,25 +1072,63 @@ function actualizarEstadoUIBotonCuriosidad(paradaId, tieneCuriosidad) {
     const triggerButton = document.querySelector(`.btn-generar-curiosidad-ia[data-parada-id="${paradaId}"]`);
     if (triggerButton) {
         triggerButton.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Añadir Curiosidad';
+        triggerButton.dataset.tieneCuriosidad = tieneCuriosidad ? '1' : '0';
     }
 
     const tituloPanel = document.getElementById(`titulo-panel-curiosidad-${paradaId}`);
     if (tituloPanel) {
-        tituloPanel.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Generar Curiosidad IA';
+        tituloPanel.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Añadir Curiosidad Manual';
     }
+}
+
+function abrirFormularioManualCuriosidad(paradaId, triggerButton) {
+    const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (!panel || !estado || !form) return;
+
+    cerrarTodosLosPannelesCuriosidad();
+    panel.classList.remove('d-none');
+    form.classList.remove('d-none');
+
+    const tituloInput = form.querySelector('input[name="titulo"]');
+    const textoInput = form.querySelector('textarea[name="texto"]');
+    const tipoInput = form.querySelector('select[name="tipo"]');
+    const imagenInput = form.querySelector('input[name="imagen_url"]');
+    const imagenManualInput = form.querySelector('input[name="imagen_manual"]');
+    const eliminarImagenManualInput = form.querySelector('input[name="eliminar_imagen_manual"]');
+    const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+
+    if (imagenManualInput) imagenManualInput.value = '';
+    if (eliminarImagenManualInput) eliminarImagenManualInput.checked = false;
+
+    const tieneCuriosidad = triggerButton?.dataset?.tieneCuriosidad === '1';
+    if (tieneCuriosidad) {
+        generarCuriosidadIA(paradaId, null, true);
+        return;
+    }
+
+    if (tituloInput) tituloInput.value = '';
+    if (textoInput) textoInput.value = '';
+    if (tipoInput) tipoInput.value = '';
+    if (imagenInput) imagenInput.value = '';
+    if (accionesDiv) accionesDiv.classList.add('d-none');
+    mostrarEstadoCuriosidad(estado, 'Completa la curiosidad manualmente o usa Generar con IA.', 'info');
 }
 
 /**
  * Genera una curiosidad IA para una parada.
  */
-async function generarCuriosidadIA(paradaId, triggerButton) {
+async function generarCuriosidadIA(paradaId, triggerButton, soloCargarExistente = false) {
     const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
     const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
     const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
     
-    if (!panel || !estado || !form || !triggerButton) return;
+    if (!panel || !estado || !form) return;
 
-    cerrarTodosLosPannelesCuriosidad();
+    if (!soloCargarExistente) {
+        cerrarTodosLosPannelesCuriosidad();
+    }
     panel.classList.remove('d-none');
     const previewCacheada = curiosidadPreviewCache.get(String(paradaId));
     if (previewCacheada) {
@@ -1069,20 +1136,24 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
         const textoInput = form.querySelector('textarea[name="texto"]');
         const tipoInput = form.querySelector('select[name="tipo"]');
         const imagenInput = form.querySelector('input[name="imagen_url"]');
+        const imagenManualInput = form.querySelector('input[name="imagen_manual"]');
+        const eliminarImagenManualInput = form.querySelector('input[name="eliminar_imagen_manual"]');
 
         if (tituloInput) tituloInput.value = previewCacheada.titulo || '';
         if (textoInput) textoInput.value = previewCacheada.texto || '';
         if (tipoInput) tipoInput.value = previewCacheada.tipo || '';
         if (imagenInput) imagenInput.value = previewCacheada.imagen_url || '';
+        if (imagenManualInput) imagenManualInput.value = '';
+        if (eliminarImagenManualInput) eliminarImagenManualInput.checked = false;
 
         form.classList.remove('d-none');
-        estado.textContent = 'Previsualización recuperada. No se guardará hasta pulsar Guardar.';
+        mostrarEstadoCuriosidad(estado, 'Previsualización recuperada. No se guardará hasta pulsar Guardar.', 'info');
         return;
     }
 
-    estado.textContent = 'Generando curiosidad...';
+    mostrarEstadoCuriosidad(estado, 'Generando curiosidad...', 'info');
     form.classList.add('d-none');
-    triggerButton.disabled = true;
+    if (triggerButton) triggerButton.disabled = true;
 
     try {
         const response = await fetch(`/api/paradas/${paradaId}/curiosidad/?preview=1`, {
@@ -1103,14 +1174,14 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
             } catch (_err) {
                 // Si no hay JSON, mantenemos el código HTTP.
             }
-            estado.textContent = mensajeError;
+            mostrarEstadoCuriosidad(estado, mensajeError, 'error');
             return;
         }
 
         const data = await response.json();
 
         if (data.status !== 'ok' || !data.curiosidad) {
-            estado.textContent = data.mensaje || 'No se pudo generar la curiosidad.';
+            mostrarEstadoCuriosidad(estado, data.mensaje || 'No se pudo generar la curiosidad.', 'error');
             return;
         }
 
@@ -1120,21 +1191,36 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
         const textoInput = form.querySelector('textarea[name="texto"]');
         const tipoInput = form.querySelector('select[name="tipo"]');
         const imagenInput = form.querySelector('input[name="imagen_url"]');
+        const imagenManualInput = form.querySelector('input[name="imagen_manual"]');
+        const eliminarImagenManualInput = form.querySelector('input[name="eliminar_imagen_manual"]');
 
         if (tituloInput) tituloInput.value = curiosidad.titulo || '';
         if (textoInput) textoInput.value = curiosidad.texto || '';
         if (tipoInput) tipoInput.value = curiosidad.tipo || '';
         if (imagenInput) imagenInput.value = curiosidad.imagen_url || '';
+        if (imagenManualInput) imagenManualInput.value = '';
+        if (eliminarImagenManualInput) eliminarImagenManualInput.checked = false;
 
         if (data.persistida) {
             const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
             if (accionesDiv) accionesDiv.classList.remove('d-none');
             actualizarEstadoUIBotonCuriosidad(paradaId, true);
             
-            estado.textContent = data.generada
+            mostrarEstadoCuriosidad(estado, data.generada
                 ? 'Curiosidad generada y guardada. Edita y guarda si deseas cambios.'
-                : 'Curiosidad existente cargada. Edita y guarda si deseas cambios.';
+                : 'Curiosidad existente cargada. Edita y guarda si deseas cambios.', 'success');
         } else {
+            if (soloCargarExistente) {
+                const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+                if (accionesDiv) accionesDiv.classList.add('d-none');
+                if (tituloInput) tituloInput.value = '';
+                if (textoInput) textoInput.value = '';
+                if (tipoInput) tipoInput.value = '';
+                if (imagenInput) imagenInput.value = '';
+                mostrarEstadoCuriosidad(estado, 'Completa la curiosidad manualmente o usa Generar con IA.', 'info');
+                form.classList.remove('d-none');
+                return;
+            }
             const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
             if (accionesDiv) accionesDiv.classList.add('d-none');
             curiosidadPreviewCache.set(String(paradaId), {
@@ -1144,16 +1230,16 @@ async function generarCuriosidadIA(paradaId, triggerButton) {
                 imagen_url: curiosidad.imagen_url || '',
             });
             
-            estado.textContent = 'Previsualización generada. No se guardará hasta pulsar Guardar.';
+            mostrarEstadoCuriosidad(estado, 'Previsualización generada. No se guardará hasta pulsar Guardar.', 'info');
         }
         
         form.classList.remove('d-none');
 
     } catch (err) {
         console.error('[AURA] Error generando curiosidad:', err);
-        estado.textContent = 'Error de conexión al servidor.';
+        mostrarEstadoCuriosidad(estado, 'Error de conexión al servidor.', 'error');
     } finally {
-        triggerButton.disabled = false;
+        if (triggerButton) triggerButton.disabled = false;
     }
 }
 
@@ -1193,7 +1279,7 @@ async function eliminarCuriosidadExistente(paradaId, triggerButton) {
         const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
         const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
 
-        if (estado) estado.textContent = 'Curiosidad eliminada. Puedes generar una nueva.';
+        if (estado) mostrarEstadoCuriosidad(estado, 'Curiosidad eliminada. Puedes generar una nueva.', 'info');
         if (accionesDiv) accionesDiv.classList.add('d-none');
         if (form) form.classList.add('d-none');
         curiosidadPreviewCache.delete(String(paradaId));
@@ -1220,6 +1306,8 @@ async function guardarCuriosidad(paradaId, event) {
     const texto = form.querySelector('textarea[name="texto"]').value.trim();
     const tipo = form.querySelector('select[name="tipo"]').value.trim();
     const imagen_url = form.querySelector('input[name="imagen_url"]').value.trim();
+    const imagen_manual = form.querySelector('input[name="imagen_manual"]').files[0];
+    const eliminar_imagen_manual = !!form.querySelector('input[name="eliminar_imagen_manual"]').checked;
 
     if (!titulo || !texto || !tipo) {
         alert('Por favor, completa todos los campos requeridos.');
@@ -1231,29 +1319,34 @@ async function guardarCuriosidad(paradaId, event) {
     const submitBtn = form.querySelector('button[type="submit"]');
     
     if (submitBtn) submitBtn.disabled = true;
-    if (estado) estado.textContent = 'Guardando...';
+    if (estado) mostrarEstadoCuriosidad(estado, 'Guardando...', 'info');
 
     try {
-        const payload = {
-            titulo: titulo,
-            texto: texto,
-            tipo: tipo,
-            imagen_url: imagen_url || null,
-        };
+        const formData = new FormData();
+        formData.append('titulo', titulo);
+        formData.append('texto', texto);
+        formData.append('tipo', tipo);
+        formData.append('imagen_url', imagen_url);
+        if (imagen_manual) {
+            formData.append('imagen_manual', imagen_manual);
+        }
+        if (eliminar_imagen_manual) {
+            formData.append('eliminar_imagen_manual', '1');
+        }
 
         const response = await fetch(`/api/paradas/${paradaId}/curiosidad/guardar/`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken,
             },
-            body: JSON.stringify(payload),
+            body: formData,
         });
 
         const data = await response.json();
 
         if (!response.ok || data.status !== 'ok') {
-            if (estado) estado.textContent = `Error: ${data.mensaje || 'No se pudo guardar.'}`;
+            const mensajeError = data.mensaje || 'No se pudo guardar.';
+            if (estado) mostrarEstadoCuriosidad(estado, `Error: ${mensajeError}`, 'error');
             return;
         }
 
@@ -1262,12 +1355,12 @@ async function guardarCuriosidad(paradaId, event) {
         curiosidadPreviewCache.delete(String(paradaId));
         actualizarEstadoUIBotonCuriosidad(paradaId, true);
 
-        if (estado) estado.textContent = 'Curiosidad guardada correctamente.';
+        if (estado) mostrarEstadoCuriosidad(estado, 'Curiosidad guardada correctamente.', 'success');
         if (panel) setTimeout(() => panel.classList.add('d-none'), 2000);
 
     } catch (err) {
         console.error('[AURA] Error guardando curiosidad:', err);
-        if (estado) estado.textContent = 'Error de conexión.';
+        if (estado) mostrarEstadoCuriosidad(estado, 'Error de conexión.', 'error');
     } finally {
         if (submitBtn) submitBtn.disabled = false;
     }
@@ -1275,6 +1368,10 @@ async function guardarCuriosidad(paradaId, event) {
 
 // Event listeners para botones de curiosidad
 document.querySelectorAll('.btn-generar-curiosidad-ia').forEach((btn) => {
+    btn.addEventListener('click', () => abrirFormularioManualCuriosidad(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-generar-curiosidad-desde-ia').forEach((btn) => {
     btn.addEventListener('click', () => generarCuriosidadIA(btn.dataset.paradaId, btn));
 });
 
