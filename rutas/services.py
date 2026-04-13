@@ -13,6 +13,7 @@ S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 import logging
 import json
 import math
+import time
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -29,6 +30,8 @@ MIN_DURACION_HORAS = 0.5
 MAX_DURACION_HORAS = 24.0
 MIN_NUM_PERSONAS = 1
 MAX_NUM_PERSONAS = 50
+MAX_REINTENTOS_CURIOSIDAD_IA = 3
+BACKOFF_BASE_CURIOSIDAD_IA_S = 1.0
 
 
 def _es_incremento_media_hora(valor):
@@ -580,34 +583,81 @@ class ServicioCuriosidadesIA:
         }}
         """
 
-        try:
-            respuesta = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
+        ultimo_error = None
+
+        for intento in range(1, MAX_REINTENTOS_CURIOSIDAD_IA + 1):
+            try:
+                respuesta = self.client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
+
+                texto_ia = respuesta.text.strip()
+
+                if texto_ia.startswith("```json"):
+                    texto_ia = texto_ia[7:-3].strip()
+                elif texto_ia.startswith("```"):
+                    texto_ia = texto_ia[3:-3].strip()
+
+                datos_curiosidad = json.loads(texto_ia)
+                busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
+                datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
+                    busqueda_imagen=busqueda_imagen,
+                    parada=parada,
+                    ciudad=ciudad,
+                )
+                return datos_curiosidad
+
+            except json.JSONDecodeError:
+                raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
+            except (AttributeError, KeyError, IndexError) as e:
+                raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+            except (requests.RequestException, TimeoutError, ConnectionError) as e:
+                ultimo_error = e
+                if intento >= MAX_REINTENTOS_CURIOSIDAD_IA:
+                    raise RuntimeError(
+                        "Servicio de IA no disponible temporalmente. Intenta de nuevo en unos segundos."
+                    ) from e
+            except Exception as e:
+                ultimo_error = e
+                if not self._es_error_transitorio_ia(e) or intento >= MAX_REINTENTOS_CURIOSIDAD_IA:
+                    break
+
+            espera = BACKOFF_BASE_CURIOSIDAD_IA_S * (2 ** (intento - 1))
+            logger.warning(
+                "Curiosidades IA: intento %d/%d fallido para Parada(id=%d). Reintentando en %.1fs. Error: %s",
+                intento,
+                MAX_REINTENTOS_CURIOSIDAD_IA,
+                parada.id,
+                espera,
+                ultimo_error,
             )
-            
-            texto_ia = respuesta.text.strip()
+            time.sleep(espera)
 
-            if texto_ia.startswith("```json"):
-                texto_ia = texto_ia[7:-3].strip()
-            elif texto_ia.startswith("```"):
-                texto_ia = texto_ia[3:-3].strip()
+        if ultimo_error and self._es_error_transitorio_ia(ultimo_error):
+            raise RuntimeError(
+                "Servicio de IA temporalmente saturado. Intenta de nuevo en unos segundos."
+            ) from ultimo_error
 
-            datos_curiosidad = json.loads(texto_ia)
-            busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
-            datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
-                busqueda_imagen=busqueda_imagen,
-                parada=parada,
-                ciudad=ciudad,
-            )
-            return datos_curiosidad
+        if ultimo_error:
+            raise RuntimeError(f"No se pudo generar la curiosidad con IA: {ultimo_error}") from ultimo_error
 
-        except json.JSONDecodeError:
-            raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
-        except (requests.RequestException, TimeoutError, ConnectionError) as e:
-            raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
-        except (AttributeError, KeyError, IndexError) as e:
-            raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+        raise RuntimeError("No se pudo generar la curiosidad con IA.")
+
+    @staticmethod
+    def _es_error_transitorio_ia(error: Exception) -> bool:
+        mensaje = str(error).lower()
+        patrones = (
+            "503",
+            "unavailable",
+            "high demand",
+            "429",
+            "resource_exhausted",
+            "timeout",
+            "deadline exceeded",
+            "temporarily",
+        )
+        return any(p in mensaje for p in patrones)
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """

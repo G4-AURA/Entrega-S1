@@ -293,6 +293,32 @@
     animation: fadeIn 0.3s ease-in;
 }
 
+.curiosidad-estado {
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid transparent;
+    font-weight: 600;
+}
+
+.curiosidad-estado--info {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.curiosidad-estado--success {
+    color: #166534;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.curiosidad-estado--error {
+    color: #991b1b;
+    background: #fef2f2;
+    border-color: #fecaca;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.08);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

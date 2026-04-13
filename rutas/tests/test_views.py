@@ -620,6 +620,35 @@ class RutasViewsTest(TestCase):
         self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
         self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
 
+    def test_obtener_curiosidad_parada_api_preview_existente_prioriza_imagen_manual(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosa preview',
+            texto='Texto preview',
+            tipo='Historia',
+            imagen_url='https://externa.example/preview.jpg',
+        )
+        curiosidad.imagen_manual.save(
+            'manual_preview.png',
+            SimpleUploadedFile(
+                'manual_preview.png',
+                b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+                content_type='image/png',
+            ),
+        )
+
+        url = reverse('parada-curiosidad', args=[self.parada.id])
+        response = self.client.get(f'{url}?preview=1')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['persistida'])
+        self.assertFalse(data['generada'])
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
+
     def test_guardar_curiosidad_parada_api_freemium_bloquea_cuarta_ruta(self):
         for index in range(2, 5):
             ruta_extra = Ruta.objects.create(

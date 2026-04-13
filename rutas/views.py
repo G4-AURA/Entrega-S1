@@ -866,16 +866,7 @@ def obtener_curiosidad_parada_api(request, parada_id):
                     "status": "ok",
                     "generada": False,
                     "persistida": True,
-                    "curiosidad": {
-                        "id": curiosidad_existente.id,
-                        "parada_id": curiosidad_existente.parada_id,
-                        "ciudad": curiosidad_existente.ciudad,
-                        "titulo": curiosidad_existente.titulo,
-                        "texto": curiosidad_existente.texto,
-                        "tipo": curiosidad_existente.tipo,
-                        "imagen_url": curiosidad_existente.imagen_url,
-                        "fecha_generacion": curiosidad_existente.fecha_generacion.isoformat(),
-                    },
+                    "curiosidad": _serializar_curiosidad(curiosidad_existente),
                 },
                 json_dumps_params={"ensure_ascii": False},
             )
