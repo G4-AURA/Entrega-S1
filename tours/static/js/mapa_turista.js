@@ -112,14 +112,101 @@ document.addEventListener('DOMContentLoaded', function () {
         ubicacionPollId = setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
-    // ── Panel expandible ──────────────────────────────────────────────────
-    const panelHeader = document.querySelector('.panel-header');
-    const tourPanel   = document.querySelector('.tour-panel');
-    if (panelHeader && tourPanel) {
-        panelHeader.addEventListener('click', () => tourPanel.classList.toggle('expanded'));
-    }
+    // ── Overlay de sesión + navegación inferior ────────────────────────────
+    const tourPanel = document.querySelector('.tour-panel');
+    const sessionPanelTitle = document.getElementById('session-panel-title');
+    const sessionNavButtons = document.querySelectorAll('.session-nav-btn');
+    const chatSwitch = document.getElementById('session-chat-switch');
+    const chatSwitchButtons = document.querySelectorAll('.session-chat-switch-btn');
+    let lastChatTab = privateChatEnabled ? 'chat' : 'chat';
+    document.body.classList.remove('session-overlay-open');
 
-    // ── Tabs Itinerario / Chat ─────────────────────────────────────────────
+    const setActiveTab = (target) => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${target}"]`);
+        if (!btn) return;
+        btn.click();
+    };
+
+    const getActiveTab = () => {
+        const activeBtn = document.querySelector('.tab-btn.active');
+        return activeBtn ? activeBtn.getAttribute('data-tab') : null;
+    };
+
+    const syncSessionChrome = () => {
+        const activeTab = getActiveTab();
+        const panelOpen = Boolean(tourPanel && tourPanel.classList.contains('session-open'));
+
+        if (activeTab === 'chat' || activeTab === 'chat-privado') {
+            lastChatTab = activeTab;
+        }
+
+        if (sessionPanelTitle) {
+            if (activeTab === 'notificaciones') sessionPanelTitle.textContent = 'Alertas';
+            else if (activeTab === 'chat' || activeTab === 'chat-privado') sessionPanelTitle.textContent = 'Chats';
+            else sessionPanelTitle.textContent = 'Itinerario';
+        }
+
+        sessionNavButtons.forEach((btn) => {
+            const target = btn.getAttribute('data-open-tab');
+            const isChatNav = target === 'chat' && (activeTab === 'chat' || activeTab === 'chat-privado');
+            const isCurrent = target === activeTab || isChatNav;
+            btn.classList.toggle('active', panelOpen && isCurrent);
+        });
+
+        const showChatSwitch = panelOpen && privateChatEnabled
+            && (activeTab === 'chat' || activeTab === 'chat-privado');
+        if (chatSwitch) {
+            chatSwitch.style.display = showChatSwitch ? 'inline-flex' : 'none';
+        }
+        chatSwitchButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.getAttribute('data-chat-tab') === activeTab);
+        });
+    };
+
+    const closeSessionPanel = () => {
+        if (!tourPanel) return;
+        tourPanel.classList.remove('session-open');
+        document.body.classList.remove('session-overlay-open');
+        document.dispatchEvent(new CustomEvent('chatClosed'));
+        document.dispatchEvent(new CustomEvent('privateChatClosed'));
+        syncSessionChrome();
+    };
+
+    const openSessionPanel = (tabRequested) => {
+        if (!tourPanel) return;
+        const targetTab = tabRequested === 'chat' ? lastChatTab : tabRequested;
+        tourPanel.classList.add('session-open');
+        document.body.classList.add('session-overlay-open');
+        setActiveTab(targetTab);
+        syncSessionChrome();
+    };
+
+    sessionNavButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-open-tab');
+            if (!target) return;
+            const panelOpen = Boolean(tourPanel && tourPanel.classList.contains('session-open'));
+            const activeTab = getActiveTab();
+            const isChatTarget = target === 'chat' && (activeTab === 'chat' || activeTab === 'chat-privado');
+            const isCurrent = target === activeTab || isChatTarget;
+            if (panelOpen && isCurrent) {
+                closeSessionPanel();
+                return;
+            }
+            openSessionPanel(target);
+        });
+    });
+
+    chatSwitchButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-chat-tab');
+            if (!target) return;
+            setActiveTab(target);
+            syncSessionChrome();
+        });
+    });
+
+    // ── Tabs internas (se mantienen para reutilizar lógica existente) ──────
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             const target = this.getAttribute('data-tab');
@@ -143,13 +230,18 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 document.dispatchEvent(new CustomEvent('privateChatClosed'));
             }
+
             if (target === 'notificaciones') {
                 const badge = document.getElementById('recordatorios-badge');
                 if (badge) badge.style.display = 'none';
                 document.dispatchEvent(new CustomEvent('recordatoriosOpened'));
             }
+
+            syncSessionChrome();
         });
     });
+
+    syncSessionChrome();
 
     // ── Inicializar botón de centrado ──────────────────────────────────────
     _initBotónCentraMapa();

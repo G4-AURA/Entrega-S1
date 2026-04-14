@@ -19,7 +19,9 @@
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
-  border: 1px solid transparent;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
   outline: none;
 }
 
@@ -30,8 +32,9 @@
 }
 
 .private-inbox-item.active {
-  background: var(--brand-light);
+  background: linear-gradient(145deg, #eef2ff 0%, #ffffff 100%);
   border-color: var(--brand-color);
+  box-shadow: 0 14px 26px rgba(79, 70, 229, 0.16);
 }
 
 /* Avatar circular con gradiente de marca */
@@ -125,9 +128,12 @@
   align-items: center;
   gap: 10px;
   padding: 8px 0 12px;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
   margin-bottom: 8px;
   flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 12px;
+  padding: 10px;
 }
 
 .btn-back-inbox {
@@ -171,9 +177,9 @@
   font-size: 0.65rem;
   font-weight: 700;
   font-family: 'Manrope', sans-serif;
-  background: var(--brand-light, #eef2ff);
-  color: var(--brand-color, #4f46e5);
-  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: #ffffff;
+  border: 1px solid rgba(79, 70, 229, 0.3);
   border-radius: 999px;
   padding: 2px 8px;
   letter-spacing: 0.3px;
@@ -203,8 +209,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f5f3ff;
-  border: 1px solid #ddd6fe;
+  background: rgba(238, 242, 255, 0.9);
+  border: 1px solid rgba(129, 140, 248, 0.3);
   border-radius: 8px;
   padding: 8px 12px;
   margin-bottom: 10px;

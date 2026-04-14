@@ -4,7 +4,7 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026032301">
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v={% now 'U' %}">
 <link rel="stylesheet" href="{% static 'css/chat_privado.css' %}">
 {% endblock %}
 
@@ -27,13 +27,13 @@
     <span class="material-icons-round">my_location</span>
 </button>
 
-<div class="tour-panel">
+<div class="tour-panel {% if es_guia %}role-guia{% else %}role-turista{% endif %}">
 
-    <div class="panel-header">
+    <div class="panel-header d-none">
         <div class="panel-drag-handle"></div>
     </div>
 
-    <div class="panel-tabs">
+    <div class="panel-tabs d-none">
         <button class="tab-btn active" data-tab="itinerario">
             <span class="material-icons-round">map</span>
             Itinerario
@@ -58,6 +58,16 @@
             <span class="chat-badge" id="chat-privado-badge" style="display:none;"></span>
         </button>
         {% endif %}
+    </div>
+
+    <div class="session-panel-toolbar">
+        <h3 id="session-panel-title" class="session-panel-title">Itinerario</h3>
+        <div id="session-chat-switch" class="session-chat-switch" style="display:none;">
+            <button type="button" class="session-chat-switch-btn active" data-chat-tab="chat">Grupal</button>
+            {% if private_chat_enabled %}
+            <button type="button" class="session-chat-switch-btn" data-chat-tab="chat-privado">Privado</button>
+            {% endif %}
+        </div>
     </div>
 
     <div class="panel-content">
@@ -109,12 +119,17 @@
                 <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}"
                     data-parada-id="{{ parada.id }}">
                     <div class="timeline-item-main">
-                        <h6 class="timeline-stop-name mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
-                            style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
+                        <div class="timeline-item-topline">
+                            <span class="timeline-stop-order">Parada {{ parada.orden }}</span>
+                            {% if sesion.parada_actual_id == parada.id %}
+                            <span class="timeline-stop-live-badge">Actual</span>
+                            {% endif %}
+                        </div>
+                        <h6 class="timeline-stop-name {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">
                             {{ parada.nombre }}
                         </h6>
-                        <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
-                            Parada {{ parada.orden }} del recorrido
+                        <p class="timeline-stop-description">
+                            {{ parada.descripcion|default:"Sin descripción disponible para esta parada." }}
                         </p>
 
                         <div class="curiosidad-timeline-container" id="curiosidad-timeline-{{ parada.id }}"
@@ -276,6 +291,23 @@
 
     </div>
 </div>
+
+<nav class="session-bottom-nav" id="session-bottom-nav" aria-label="Navegación de sesión">
+    {% if scheduled_meetup_enabled %}
+    <button type="button" class="session-nav-btn" data-open-tab="notificaciones">
+        <span class="material-icons-round">notifications</span>
+        Alertas
+    </button>
+    {% endif %}
+    <button type="button" class="session-nav-btn" data-open-tab="itinerario">
+        <span class="material-icons-round">map</span>
+        Itinerario
+    </button>
+    <button type="button" class="session-nav-btn" data-open-tab="chat">
+        <span class="material-icons-round">chat</span>
+        Chats
+    </button>
+</nav>
 {% endblock %}
 
 {% block extra_js %}

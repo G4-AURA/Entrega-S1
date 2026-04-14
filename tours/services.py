@@ -112,6 +112,7 @@ def _build_route_snapshot(sesion: SesionTour) -> dict:
         {
             "id": p.id,
             "nombre": p.nombre,
+            "descripcion": p.descripcion or "",
             "orden": p.orden,
             "lat": p.coordenadas.y if p.coordenadas else None,
             "lng": p.coordenadas.x if p.coordenadas else None,
@@ -145,7 +146,10 @@ def get_route_snapshot(sesion: SesionTour) -> dict:
     key = route_snapshot_cache_key(sesion.id)
     snapshot = cache.get(key)
     if snapshot:
-        return snapshot
+        # Compatibilidad con snapshots antiguos sin "descripcion" por parada.
+        paradas = snapshot.get("paradas", [])
+        if all(isinstance(p, dict) and "descripcion" in p for p in paradas):
+            return snapshot
     return set_route_snapshot(sesion)
 
 
@@ -169,6 +173,7 @@ def serializar_paradas(sesion: SesionTour) -> str:
         {
             "id": p.id,
             "nombre": p.nombre,
+            "descripcion": p.descripcion or "",
             "orden": p.orden,
             "lat": p.coordenadas.y if p.coordenadas else None,
             "lng": p.coordenadas.x if p.coordenadas else None,
