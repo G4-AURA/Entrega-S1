@@ -238,6 +238,18 @@ main.container {
     color: #9a3412;
 }
 
+.session-countdown.paused {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.countdown-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .start-countdown-btn {
     display: inline-flex;
     align-items: center;
@@ -265,6 +277,15 @@ main.container {
 
 .start-countdown-btn .material-icons-round {
     font-size: 16px;
+}
+
+.countdown-pause-btn {
+    border-color: #f59e0b;
+    background: #f59e0b;
+}
+
+.countdown-pause-btn:hover:not(:disabled) {
+    background: #d97706;
 }
 
 .timeline-item {

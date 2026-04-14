@@ -88,10 +88,16 @@
             </div>
 
             {% if es_guia %}
-            <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
-                <span class="material-icons-round">play_arrow</span>
-                {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
-            </button>
+            <div class="countdown-controls">
+                <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
+                    <span class="material-icons-round">play_arrow</span>
+                    {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
+                </button>
+                <button id="pause-countdown-btn" class="start-countdown-btn countdown-pause-btn d-none">
+                    <span class="material-icons-round">pause</span>
+                    Pausar cronómetro
+                </button>
+            </div>
             {% endif %}
 
             <div class="timeline">
@@ -280,6 +286,8 @@
   const currentUserName      = '{{ current_user_name|escapejs }}';
   const geometriaRuta        = JSON.parse(document.getElementById('geometria-ruta-data').textContent);
   const startCountdownUrl    = '{% if es_guia %}{% url "tours:iniciar_tour" sesion.id %}{% else %}{% endif %}';
+  const pauseCountdownUrl    = '{% if es_guia %}{% url "tours:pausar_cronometro" sesion.id %}{% else %}{% endif %}';
+  const resumeCountdownUrl   = '{% if es_guia %}{% url "tours:reanudar_cronometro" sesion.id %}{% else %}{% endif %}';
   const selectCurrentStopUrl = '{% if es_guia %}{% url "tours:seleccionar_parada_actual" sesion.id %}{% else %}{% endif %}';
   const countdownStatusUrl   = '{% url "tours:estado_cronometro" sesion.id %}';
   const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";

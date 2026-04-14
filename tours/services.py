@@ -388,12 +388,25 @@ def obtener_mensajes_hilo_privado_guia(
 def iniciar_sesion(sesion: SesionTour) -> None:
     sesion.estado = SesionTour.EN_CURSO
     sesion.fecha_inicio = timezone.now()
-    sesion.save(update_fields=["estado", "fecha_inicio"])
+    sesion.cronometro_pausado = False
+    sesion.cronometro_pausado_desde = None
+    sesion.cronometro_segundos_pausa_acumulados = 0
+    sesion.save(
+        update_fields=[
+            "estado",
+            "fecha_inicio",
+            "cronometro_pausado",
+            "cronometro_pausado_desde",
+            "cronometro_segundos_pausa_acumulados",
+        ]
+    )
     set_route_snapshot(sesion)
 
 
 def cerrar_sesion(sesion: SesionTour) -> None:
     sesion.estado = SesionTour.FINALIZADO
-    sesion.save(update_fields=["estado"])
+    sesion.cronometro_pausado = False
+    sesion.cronometro_pausado_desde = None
+    sesion.save(update_fields=["estado", "cronometro_pausado", "cronometro_pausado_desde"])
     TuristaSesion.objects.filter(sesion_tour=sesion, activo=True).update(activo=False)
     set_route_snapshot(sesion)

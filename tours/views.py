@@ -13,6 +13,7 @@ import math
 import os
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
 from django.db.models import Q
@@ -46,6 +47,81 @@ from .models import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_non_negative_float(value, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if not math.isfinite(number) or number < 0:
+        return float(default)
+    return float(number)
+
+
+def _location_thresholds(is_tourist: bool) -> tuple[float, float]:
+    if is_tourist:
+        return (
+            _coerce_non_negative_float(
+                getattr(settings, "TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS", 10.0),
+                10.0,
+            ),
+            _coerce_non_negative_float(
+                getattr(settings, "TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS", 8.0),
+                8.0,
+            ),
+        )
+    return (
+        _coerce_non_negative_float(
+            getattr(settings, "TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS", 3.0),
+            3.0,
+        ),
+        _coerce_non_negative_float(
+            getattr(settings, "TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS", 4.0),
+            4.0,
+        ),
+    )
+
+
+def _should_persist_location_update(
+    *,
+    sesion: SesionTour,
+    latitud: float,
+    longitud: float,
+    timestamp,
+    min_interval_seconds: float,
+    min_distance_meters: float,
+    usuario=None,
+    turista=None,
+) -> tuple[bool, UbicacionVivo | None, float | None, float | None]:
+    qs = UbicacionVivo.objects.filter(
+        sesion_tour=sesion,
+        coordenadas__isnull=False,
+    )
+    if usuario is not None:
+        qs = qs.filter(usuario=usuario)
+    elif turista is not None:
+        qs = qs.filter(turista=turista)
+    else:
+        return True, None, None, None
+
+    ultima = qs.order_by("-timestamp").first()
+    if not ultima or not ultima.coordenadas:
+        return True, None, None, None
+
+    elapsed_seconds = max(
+        0.0,
+        float((timestamp - ultima.timestamp).total_seconds()),
+    )
+    distance_meters = _distancia_haversine_m(
+        latitud,
+        longitud,
+        ultima.coordenadas.y,
+        ultima.coordenadas.x,
+    )
+    if elapsed_seconds < min_interval_seconds and distance_meters < min_distance_meters:
+        return False, ultima, elapsed_seconds, distance_meters
+    return True, ultima, elapsed_seconds, distance_meters
 
 
 def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -199,6 +275,50 @@ def _render_sesion_no_activa_para_union(request):
         "Esta sesión aún no está activa. Espera a que el guía inicie el tour.",
         status=409,
     )
+
+
+def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
+    duracion_horas = float(sesion.ruta.duracion_horas or 0)
+    minutos_restantes = None
+    segundos_restantes = None
+
+    if (
+        sesion.estado == SesionTour.EN_CURSO
+        and sesion.fecha_inicio
+        and math.isfinite(duracion_horas)
+        and duracion_horas > 0
+    ):
+        referencia = now or timezone.now()
+        total_segundos = int(duracion_horas * 60 * 60)
+        pausa_acumulada = int(sesion.cronometro_segundos_pausa_acumulados or 0)
+        pausa_en_curso = 0
+        if sesion.cronometro_pausado and sesion.cronometro_pausado_desde:
+            pausa_en_curso = max(
+                0,
+                int((referencia - sesion.cronometro_pausado_desde).total_seconds()),
+            )
+
+        segundos_transcurridos = max(
+            0,
+            int((referencia - sesion.fecha_inicio).total_seconds()) - pausa_acumulada - pausa_en_curso,
+        )
+        segundos_restantes = max(0, total_segundos - segundos_transcurridos)
+        minutos_restantes = math.ceil(segundos_restantes / 60) if total_segundos > 0 else 0
+
+    return {
+        "estado": sesion.estado,
+        "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
+        "duracion_horas": duracion_horas,
+        "minutos_restantes": minutos_restantes,
+        "segundos_restantes": segundos_restantes,
+        "cronometro_pausado": bool(sesion.cronometro_pausado),
+        "cronometro_pausado_desde": (
+            sesion.cronometro_pausado_desde.isoformat()
+            if sesion.cronometro_pausado_desde
+            else None
+        ),
+        "parada_actual_id": sesion.parada_actual_id,
+    }
 
 
 # ===========================================================================
@@ -465,13 +585,13 @@ def iniciar_tour(request, sesion_id):
         logger.exception("Error iniciando sesión %s", sesion.id)
         return _json_internal_error()
 
+    cronometro_payload = _build_cronometro_payload(sesion)
     return JsonResponse(
         {
             "message": "Tour iniciado correctamente.",
             "sesion_id": sesion.id,
-            "estado": sesion.estado,
             "codigo_acceso": sesion.codigo_acceso,
-            "fecha_inicio": sesion.fecha_inicio.isoformat(),
+            **cronometro_payload,
         }
     )
 
@@ -486,25 +606,89 @@ def estado_cronometro(request, sesion_id):
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
-    minutos_restantes = None
-    duracion_horas = float(sesion.ruta.duracion_horas or 0)
-    if (
-        sesion.estado == SesionTour.EN_CURSO
-        and sesion.fecha_inicio
-        and math.isfinite(duracion_horas)
-        and duracion_horas > 0
-    ):
-        fecha_fin = sesion.fecha_inicio + timedelta(hours=duracion_horas)
-        segundos_restantes = max(0, int((fecha_fin - timezone.now()).total_seconds()))
-        minutos_restantes = math.ceil(segundos_restantes / 60) if segundos_restantes else 0
+    return JsonResponse(_build_cronometro_payload(sesion))
+
+
+@login_required
+@require_POST
+def pausar_cronometro(request, sesion_id):
+    """Pausa el cronómetro de una sesión en curso sin finalizar la sesión."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "No se puede pausar una sesión finalizada."}, status=400)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse(
+            {"error": "Solo se puede pausar el cronómetro en sesiones en curso."},
+            status=409,
+        )
+
+    if sesion.cronometro_pausado:
+        return JsonResponse({"error": "El cronómetro ya está pausado."}, status=409)
+
+    sesion.cronometro_pausado = True
+    sesion.cronometro_pausado_desde = timezone.now()
+    sesion.save(update_fields=["cronometro_pausado", "cronometro_pausado_desde"])
 
     return JsonResponse(
         {
-            "estado": sesion.estado,
-            "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
-            "duracion_horas": duracion_horas,
-            "minutos_restantes": minutos_restantes,
-            "parada_actual_id": sesion.parada_actual_id,
+            "message": "Cronómetro pausado correctamente.",
+            "sesion_id": sesion.id,
+            **_build_cronometro_payload(sesion),
+        }
+    )
+
+
+@login_required
+@require_POST
+def reanudar_cronometro(request, sesion_id):
+    """Reanuda el cronómetro y acumula la pausa transcurrida."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "No se puede reanudar una sesión finalizada."}, status=400)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse(
+            {"error": "Solo se puede reanudar el cronómetro en sesiones en curso."},
+            status=409,
+        )
+
+    if not sesion.cronometro_pausado:
+        return JsonResponse({"error": "El cronómetro no está pausado."}, status=409)
+
+    referencia = timezone.now()
+    pausa_desde = sesion.cronometro_pausado_desde or referencia
+    pausa_segundos = max(0, int((referencia - pausa_desde).total_seconds()))
+    sesion.cronometro_segundos_pausa_acumulados = int(
+        sesion.cronometro_segundos_pausa_acumulados or 0
+    ) + pausa_segundos
+    sesion.cronometro_pausado = False
+    sesion.cronometro_pausado_desde = None
+    sesion.save(
+        update_fields=[
+            "cronometro_segundos_pausa_acumulados",
+            "cronometro_pausado",
+            "cronometro_pausado_desde",
+        ]
+    )
+
+    return JsonResponse(
+        {
+            "message": "Cronómetro reanudado correctamente.",
+            "sesion_id": sesion.id,
+            **_build_cronometro_payload(sesion),
         }
     )
 
@@ -709,10 +893,39 @@ def registrar_ubicacion(request):
     if not sesion.esta_activa:
         return _json_error("La sesión no está activa.", status=409)
 
+    timestamp = timezone.now()
+    min_interval_seconds, min_distance_meters = _location_thresholds(is_tourist=False)
+    should_persist, ultima, elapsed_seconds, distance_meters = _should_persist_location_update(
+        sesion=sesion,
+        latitud=latitud,
+        longitud=longitud,
+        timestamp=timestamp,
+        min_interval_seconds=min_interval_seconds,
+        min_distance_meters=min_distance_meters,
+        usuario=request.user,
+    )
+
+    if not should_persist:
+        return JsonResponse(
+            {
+                "status": "ignored",
+                "reason": "deduplicated",
+                "persisted": False,
+                "ubicacion_id": ultima.id if ultima else None,
+                "sesion_id": sesion.id,
+                "latitud": latitud,
+                "longitud": longitud,
+                "timestamp": timestamp.isoformat(),
+                "elapsed_seconds_since_last": elapsed_seconds,
+                "distance_meters_since_last": distance_meters,
+            },
+            status=200,
+        )
+
     try:
         ubicacion = UbicacionVivo.objects.create(
             coordenadas=Point(longitud, latitud, srid=4326),
-            timestamp=timezone.now(),
+            timestamp=timestamp,
             sesion_tour=sesion,
             usuario=request.user,
         )
@@ -722,6 +935,8 @@ def registrar_ubicacion(request):
 
     return JsonResponse(
         {
+            "status": "ok",
+            "persisted": True,
             "ubicacion_id": ubicacion.id,
             "sesion_id":    sesion.id,
             "latitud":      latitud,
@@ -818,33 +1033,57 @@ def registrar_ubicacion_turista(request, sesion_id):
     if not (-90 <= latitud <= 90) or not (-180 <= longitud <= 180):
         return JsonResponse({"error": "Coordenadas fuera de rango válido."}, status=400)
 
-    try:
-        ubicacion = UbicacionVivo.objects.create(
-            coordenadas=Point(longitud, latitud, srid=4326),
-            timestamp=timezone.now(),
-            sesion_tour=sesion,
-            usuario=None,
-            turista=turista,
-        )
-    except Exception:
-        logger.exception("Error registrando ubicación de turista en sesión %s", sesion.id)
-        return _json_internal_error()
+    timestamp = timezone.now()
+    min_interval_seconds, min_distance_meters = _location_thresholds(is_tourist=True)
+    should_persist, ultima, elapsed_seconds, distance_meters = _should_persist_location_update(
+        sesion=sesion,
+        latitud=latitud,
+        longitud=longitud,
+        timestamp=timestamp,
+        min_interval_seconds=min_interval_seconds,
+        min_distance_meters=min_distance_meters,
+        turista=turista,
+    )
+
+    ubicacion = None
+    if should_persist:
+        try:
+            ubicacion = UbicacionVivo.objects.create(
+                coordenadas=Point(longitud, latitud, srid=4326),
+                timestamp=timestamp,
+                sesion_tour=sesion,
+                usuario=None,
+                turista=turista,
+            )
+        except Exception:
+            logger.exception("Error registrando ubicación de turista en sesión %s", sesion.id)
+            return _json_internal_error()
+    else:
+        ubicacion = ultima
 
     curiosidad_cercana = None
     if sesion.estado == SesionTour.EN_CURSO:
         curiosidad_cercana = _resolver_curiosidad_cercana(sesion, latitud, longitud)
 
+    payload = {
+        "status": "ok" if should_persist else "ignored",
+        "reason": None if should_persist else "deduplicated",
+        "persisted": bool(should_persist),
+        "ubicacion_id": ubicacion.id if ubicacion else None,
+        "sesion_id": sesion.id,
+        "turista_id": turista.id,
+        "latitud": latitud,
+        "longitud": longitud,
+        "timestamp": timestamp.isoformat(),
+        "curiosidad_cercana": curiosidad_cercana,
+    }
+    if not should_persist:
+        payload["elapsed_seconds_since_last"] = elapsed_seconds
+        payload["distance_meters_since_last"] = distance_meters
+
     return JsonResponse(
-        {
-            "ubicacion_id": ubicacion.id,
-            "sesion_id": sesion.id,
-            "turista_id": turista.id,
-            "latitud": latitud,
-            "longitud": longitud,
-            "timestamp": ubicacion.timestamp.isoformat(),
-            "curiosidad_cercana": curiosidad_cercana,
-        },
-        status=201,
+        payload,
+        status=201 if should_persist else 200,
     )
 
 

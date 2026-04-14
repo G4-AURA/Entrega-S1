@@ -29,6 +29,15 @@ let geolocationWatchId = null;
 let tourFinalizado    = false;
 let ultimaPosicionTurista = null;
 let primeraUbicacionTuristaCentrada = false;
+const LOCATION_SEND_CONFIG = {
+    guia: { minIntervalMs: 3000, minDistanceM: 4 },
+    turista: { minIntervalMs: 10000, minDistanceM: 8 },
+    hiddenIntervalMultiplier: 3,
+};
+const LAST_LOCATION_SENT = {
+    guia: { atMs: 0, lat: null, lng: null },
+    turista: { atMs: 0, lat: null, lng: null },
+};
 // ------------------------------------------------------------
 
 const paradasMarkers  = new Map();
@@ -241,31 +250,37 @@ async function _iniciarRastreoLocal() {
 
             // El guía envía su posición al servidor para que los turistas la vean
             if (esGuia) {
-                fetch('/tours/ubicacion/', {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-                    body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
-                }).catch(() => {});
+                if (_shouldSendLocationUpdate('guia', lat, lng)) {
+                    _markLocationUpdateSent('guia', lat, lng);
+                    fetch('/tours/ubicacion/', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                        body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
+                    }).catch(() => {});
+                }
             } else {
-                fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-                    body:    JSON.stringify({ latitud: lat, longitud: lng }),
-                })
-                    .then(r => r.ok ? r.json() : Promise.reject())
-                    .then(data => {
-                        const curiosidadCercana = data?.curiosidad_cercana;
-                        const parada = curiosidadCercana?.parada;
-                        const curiosidad = curiosidadCercana?.curiosidad;
-                        if (!parada?.id || !curiosidad) return;
-
-                        const paradaId = String(parada.id);
-                        if (curiosidadesMostradas.has(paradaId)) return;
-
-                        curiosidadesMostradas.add(paradaId);
-                        _mostrarCuriosidadAutomatica(parada, curiosidad);
+                if (_shouldSendLocationUpdate('turista', lat, lng)) {
+                    _markLocationUpdateSent('turista', lat, lng);
+                    fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                        body:    JSON.stringify({ latitud: lat, longitud: lng }),
                     })
-                    .catch(() => {});
+                        .then(r => r.ok ? r.json() : Promise.reject())
+                        .then(data => {
+                            const curiosidadCercana = data?.curiosidad_cercana;
+                            const parada = curiosidadCercana?.parada;
+                            const curiosidad = curiosidadCercana?.curiosidad;
+                            if (!parada?.id || !curiosidad) return;
+
+                            const paradaId = String(parada.id);
+                            if (curiosidadesMostradas.has(paradaId)) return;
+
+                            curiosidadesMostradas.add(paradaId);
+                            _mostrarCuriosidadAutomatica(parada, curiosidad);
+                        })
+                        .catch(() => {});
+                }
 
                 _detectarParadaYSolicitarCuriosidad(lat, lng);
             }
@@ -289,6 +304,40 @@ async function _iniciarRastreoLocal() {
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 },
     );
+}
+
+
+function _shouldSendLocationUpdate(role, lat, lng) {
+    const roleKey = (role === 'guia') ? 'guia' : 'turista';
+    const cfg = LOCATION_SEND_CONFIG[roleKey];
+    const state = LAST_LOCATION_SENT[roleKey];
+    if (!cfg || !state) return true;
+
+    if (!Number.isFinite(state.atMs) || state.atMs <= 0) return true;
+
+    const hiddenMultiplier = (document.visibilityState === 'hidden')
+        ? LOCATION_SEND_CONFIG.hiddenIntervalMultiplier
+        : 1;
+    const minIntervalMs = cfg.minIntervalMs * hiddenMultiplier;
+    const elapsedMs = Date.now() - state.atMs;
+
+    let distanceM = Number.POSITIVE_INFINITY;
+    if (Number.isFinite(state.lat) && Number.isFinite(state.lng)) {
+        distanceM = _distanciaMetros(lat, lng, state.lat, state.lng);
+    }
+
+    return !(elapsedMs < minIntervalMs && distanceM < cfg.minDistanceM);
+}
+
+
+function _markLocationUpdateSent(role, lat, lng) {
+    const roleKey = (role === 'guia') ? 'guia' : 'turista';
+    const state = LAST_LOCATION_SENT[roleKey];
+    if (!state) return;
+
+    state.atMs = Date.now();
+    state.lat = lat;
+    state.lng = lng;
 }
 
 
@@ -561,10 +610,17 @@ function _manejarFinDeTour() {
     // 3. Actualizar la UI del temporizador a "Finalizado"
     const timerContainer = document.getElementById('session-countdown');
     const timerValue = document.getElementById('session-countdown-time');
+    const startBtn = document.getElementById('start-countdown-btn');
+    const pauseBtn = document.getElementById('pause-countdown-btn');
     if (timerContainer && timerValue) {
-        timerContainer.classList.remove('waiting', 'en_curso');
+        timerContainer.classList.remove('waiting', 'en_curso', 'paused');
         timerContainer.classList.add('finished');
         timerValue.textContent = '00:00:00';
+    }
+    if (startBtn) startBtn.disabled = true;
+    if (pauseBtn) {
+        pauseBtn.disabled = true;
+        pauseBtn.classList.add('d-none');
     }
     const estadoBadgeContainer = document.querySelector('#tab-itinerario > div.d-flex.justify-content-between');
     if (estadoBadgeContainer) {
@@ -598,6 +654,7 @@ function _initSessionCountdown() {
     const timerContainer = document.getElementById('session-countdown');
     const timerValue = document.getElementById('session-countdown-time');
     const startBtn = document.getElementById('start-countdown-btn');
+    const pauseBtn = document.getElementById('pause-countdown-btn');
     if (!timerContainer || !timerValue) return;
 
     const MINUTE_MS = 60 * 1000;
@@ -606,23 +663,49 @@ function _initSessionCountdown() {
         : 1;
     const countdownMs = Math.round(horasBase * 60 * 60 * 1000);
     let sesionIniciada = (typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso');
+    let cronometroPausado = false;
     let startTimestamp = (typeof sesionFechaInicioEpochMs !== 'undefined' && Number.isFinite(sesionFechaInicioEpochMs))
         ? sesionFechaInicioEpochMs
         : Date.now();
+    let pauseBtnRequestInFlight = false;
 
-    const setWaitingUi = () => {
-        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
-        timerContainer.classList.remove('finished');
-        timerContainer.classList.add('waiting');
-    };
-
-    const startTicker = (remoteRemainingMinutes = null) => {
+    const stopTicker = () => {
         if (countdownTimerId) {
             clearInterval(countdownTimerId);
             countdownTimerId = null;
         }
+    };
 
-        timerContainer.classList.remove('waiting');
+    const setPauseButtonState = () => {
+        if (!pauseBtn) return;
+
+        if (!sesionIniciada) {
+            pauseBtn.classList.add('d-none');
+            pauseBtn.disabled = true;
+            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+            return;
+        }
+
+        pauseBtn.classList.remove('d-none');
+        pauseBtn.disabled = pauseBtnRequestInFlight;
+        if (cronometroPausado) {
+            pauseBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Reanudar cronómetro';
+        } else {
+            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+        }
+    };
+
+    const setWaitingUi = () => {
+        stopTicker();
+        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
+        timerContainer.classList.remove('finished', 'paused');
+        timerContainer.classList.add('waiting');
+    };
+
+    const startTicker = (remoteRemainingMinutes = null) => {
+        stopTicker();
+
+        timerContainer.classList.remove('waiting', 'paused');
         const hasRemoteMinutes = Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0;
         const normalizedRemoteMinutes = hasRemoteMinutes
             ? Math.max(0, Math.ceil(remoteRemainingMinutes))
@@ -652,6 +735,16 @@ function _initSessionCountdown() {
         }, MINUTE_MS);
     };
 
+    const setPausedUi = (remoteRemainingMinutes = null) => {
+        stopTicker();
+        timerContainer.classList.remove('waiting', 'finished');
+        timerContainer.classList.add('paused');
+
+        if (Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0) {
+            timerValue.textContent = _formatRemainingMinutes(remoteRemainingMinutes);
+        }
+    };
+
     const applyRemoteState = (data) => {
         if (!data || !data.estado) return;
         sesionEstadoActual = data.estado;
@@ -659,6 +752,7 @@ function _initSessionCountdown() {
             detail: { estado: data.estado },
         }));
         const remoteStarted = data.estado === 'en_curso';
+        cronometroPausado = Boolean(data.cronometro_pausado);
 
         if (data.parada_actual_id != null) {
             _resaltarParadaSeleccionada(String(data.parada_actual_id));
@@ -676,11 +770,21 @@ function _initSessionCountdown() {
                 startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
             }
             const remoteMinutes = Number(data.minutos_restantes);
-            startTicker(remoteMinutes);
+            if (cronometroPausado) {
+                setPausedUi(remoteMinutes);
+            } else {
+                startTicker(remoteMinutes);
+            }
         } else {
             sesionIniciada = false;
-            if (!countdownTimerId) setWaitingUi();
+            cronometroPausado = false;
+            setWaitingUi();
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Iniciar cronómetro';
+            }
         }
+        setPauseButtonState();
     };
 
     const fetchCountdownState = () => {
@@ -708,6 +812,7 @@ function _initSessionCountdown() {
 
     if (sesionIniciada) startTicker();
     else setWaitingUi();
+    setPauseButtonState();
 
     fetchCountdownState();
     countdownPollId = setInterval(fetchCountdownState, MINUTE_MS);
@@ -724,18 +829,47 @@ function _initSessionCountdown() {
             })
                 .then(r => r.ok ? r.json() : Promise.reject())
                 .then(data => {
-                    if (data && data.estado === 'en_curso' && data.fecha_inicio) {
-                        const parsed = Date.parse(data.fecha_inicio);
-                        if (Number.isFinite(parsed)) startTimestamp = parsed;
-                        sesionIniciada = true;
-                        startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
-                        const remoteMinutes = Number(data.minutos_restantes);
-                        startTicker(remoteMinutes);
+                    if (data && data.estado === 'en_curso') {
+                        applyRemoteState(data);
                     } else {
                         startBtn.disabled = false;
                     }
                 })
-                .catch(() => { startBtn.disabled = false; });
+                .catch(() => {
+                    startBtn.disabled = false;
+                });
+        });
+    }
+
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            if (!sesionIniciada || pauseBtnRequestInFlight) return;
+
+            const targetUrl = cronometroPausado ? resumeCountdownUrl : pauseCountdownUrl;
+            if (!targetUrl) return;
+
+            pauseBtnRequestInFlight = true;
+            setPauseButtonState();
+
+            fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': _getCsrf(), 'Accept': 'application/json' },
+            })
+                .then(async (response) => {
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.error || 'No se pudo actualizar el cronómetro.');
+                    }
+                    return data;
+                })
+                .then((data) => {
+                    applyRemoteState(data);
+                })
+                .catch(() => {})
+                .finally(() => {
+                    pauseBtnRequestInFlight = false;
+                    setPauseButtonState();
+                });
         });
     }
 }
