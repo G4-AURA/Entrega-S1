@@ -1,0 +1,214 @@
+{% extends 'base.html' %}
+
+{% block title %}AURA - Panel de funcionalidades{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --fa-primary: #0f766e;
+    --fa-primary-dark: #115e59;
+    --fa-primary-soft: #ccfbf1;
+    --fa-bg: #f8fafc;
+    --fa-surface: #ffffff;
+    --fa-border: #e2e8f0;
+    --fa-text: #0f172a;
+    --fa-muted: #475569;
+    --fa-success: #15803d;
+}
+
+.feature-access-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 0 2rem;
+}
+
+.feature-access-header {
+    background: linear-gradient(130deg, #ecfeff 0%, #f0fdf4 55%, #eef2ff 100%);
+    border: 1px solid var(--fa-border);
+    border-radius: 16px;
+    padding: 1.35rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.feature-access-title {
+    margin: 0;
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.55rem;
+    font-weight: 800;
+    color: var(--fa-text);
+    letter-spacing: -0.02em;
+}
+
+.feature-access-subtitle {
+    margin: 0.5rem 0 0;
+    color: var(--fa-muted);
+    font-size: 0.95rem;
+}
+
+.feature-grid {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.feature-row {
+    background: var(--fa-surface);
+    border: 1px solid var(--fa-border);
+    border-radius: 12px;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+}
+
+.feature-row-updated {
+    border-color: #86efac;
+    box-shadow: 0 0 0 2px #dcfce7;
+}
+
+.feature-name {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--fa-text);
+}
+
+.feature-key {
+    margin: 0.2rem 0 0;
+    font-size: 0.75rem;
+    color: #64748b;
+    font-family: 'DM Sans', sans-serif;
+}
+
+.feature-desc {
+    margin: 0.4rem 0 0;
+    color: var(--fa-muted);
+    font-size: 0.88rem;
+}
+
+.feature-actions {
+    display: grid;
+    gap: 0.4rem;
+    justify-items: end;
+}
+
+.feature-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: var(--fa-muted);
+    border-radius: 8px;
+    padding: 0.52rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1;
+    min-width: 200px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.feature-btn:hover {
+    border-color: var(--fa-primary);
+    color: var(--fa-primary-dark);
+    background: #f0fdfa;
+}
+
+.feature-btn-on {
+    border-color: var(--fa-primary);
+    background: var(--fa-primary);
+    color: #ffffff;
+}
+
+.feature-btn-off {
+    border-color: #fca5a5;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.feature-footer {
+    margin-top: 1rem;
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.feature-ok {
+    margin-bottom: 0.75rem;
+}
+
+@media (max-width: 840px) {
+    .feature-row {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+
+    .feature-actions {
+        justify-items: start;
+    }
+
+    .feature-btn {
+        min-width: 180px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="feature-access-wrap">
+    <header class="feature-access-header">
+        <h1 class="feature-access-title">Panel de funcionalidades por plan</h1>
+        <p class="feature-access-subtitle">
+            Cada funcionalidad tiene dos toggles independientes: Freemium y Premium.
+        </p>
+    </header>
+
+    {% if error_message %}
+    <div class="alert alert-danger" role="alert">{{ error_message }}</div>
+    {% endif %}
+
+    {% if updated_key %}
+    <div class="alert alert-success feature-ok" role="alert">
+        Configuracion actualizada correctamente.
+    </div>
+    {% endif %}
+
+    <div class="feature-grid">
+        {% for row in feature_rows %}
+        <article class="feature-row {% if row.key == updated_key %}feature-row-updated{% endif %}">
+            <div>
+                <h2 class="feature-name">{{ row.name }}</h2>
+                <p class="feature-key">{{ row.key }}</p>
+                <p class="feature-desc">{{ row.description }}</p>
+            </div>
+            <div class="feature-actions">
+                <form method="post" action="{% url 'billing:feature_access_update' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="key" value="{{ row.key }}">
+                    <input type="hidden" name="tier" value="freemium">
+                    <input type="hidden" name="enabled" value="{% if row.enabled_freemium %}0{% else %}1{% endif %}">
+                    <button
+                        type="submit"
+                        class="feature-btn {% if row.enabled_freemium %}feature-btn-on{% else %}feature-btn-off{% endif %}">
+                        Freemium: {% if row.enabled_freemium %}ON{% else %}OFF{% endif %}
+                    </button>
+                </form>
+                <form method="post" action="{% url 'billing:feature_access_update' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="key" value="{{ row.key }}">
+                    <input type="hidden" name="tier" value="premium">
+                    <input type="hidden" name="enabled" value="{% if row.enabled_premium %}0{% else %}1{% endif %}">
+                    <button
+                        type="submit"
+                        class="feature-btn {% if row.enabled_premium %}feature-btn-on{% else %}feature-btn-off{% endif %}">
+                        Premium: {% if row.enabled_premium %}ON{% else %}OFF{% endif %}
+                    </button>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+
+    <p class="feature-footer">
+        Solo superusuarios pueden ver y modificar este panel.
+    </p>
+</section>
+{% endblock %}

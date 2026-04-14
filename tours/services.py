@@ -322,7 +322,11 @@ def obtener_mensajes_privados_turista(
     if desde is not None:
         qs = qs.filter(momento__gt=desde)
  
-    return list(qs.order_by("momento")[:limite])
+    # Queremos contexto reciente al abrir hilos largos: tomamos los últimos N
+    # por orden descendente y luego invertimos para devolver cronológico ASC.
+    ultimos = list(qs.order_by("-momento", "-id")[:limite])
+    ultimos.reverse()
+    return ultimos
  
  
 def obtener_bandeja_privada_guia(sesion: SesionTour) -> list[dict]:

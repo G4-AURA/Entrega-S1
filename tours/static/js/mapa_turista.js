@@ -1052,6 +1052,11 @@ function _initChat() {
 
 
 function _initRecordatorios() {
+    const recordatoriosEnabled = (typeof scheduledMeetupEnabled === 'undefined')
+        ? true
+        : Boolean(scheduledMeetupEnabled);
+    if (!recordatoriosEnabled) return;
+
     const listEl = document.getElementById('recordatorios-list');
     if (!listEl) return;
 

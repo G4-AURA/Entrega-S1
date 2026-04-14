@@ -13,6 +13,12 @@
 {% url 'creacion:creacion_manual' as manual_url %}
 
 <div style="max-width:1080px;margin:0 auto;">
+    {% if ia_disabled_notice %}
+    <div class="alert alert-warning mb-3" role="alert">
+        La generación de rutas con IA no está habilitada para tu plan actual.
+    </div>
+    {% endif %}
+
     <div class="creation-hero">
         <h1 class="creation-hero-title">Elige cómo crear tu ruta</h1>
         <p class="creation-hero-sub">
@@ -31,6 +37,7 @@
             </span>
         </a>
 
+        {% if show_ai_option %}
         <a class="creation-card card-ai" href="{{ ia_url }}">
             <span class="badge-recommended">Recomendado</span>
             <div class="creation-icon">
@@ -41,6 +48,7 @@
                 Introduce los intereses de tu grupo y deja que AURA genere una ruta optimizada al instante.
             </span>
         </a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

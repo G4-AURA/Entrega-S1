@@ -70,6 +70,7 @@
                     </div>
                 </div>
 
+                {% if payload_wishes_enabled %}
                 <div class="col-12">
                     <div class="deseos-section">
                         <div class="deseos-header">
@@ -87,6 +88,7 @@
                         </button>
                     </div>
                 </div>
+                {% endif %}
 
                 <div class="col-12 d-flex justify-content-end">
                     <button id="btn-generar-ruta" type="submit" class="btn btn-brand px-5">Generar la ruta</button>
