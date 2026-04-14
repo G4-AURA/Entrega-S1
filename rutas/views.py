@@ -717,8 +717,11 @@ def ruta_detalle_view(request, ruta_id):
                 return redirect(f"{request.path}?stop_error=1")
 
             # Validar que los IDs coinciden con las paradas de esta ruta
-            current_ids = set(ruta.paradas.values_list("id", flat=True))
-            if not ordered_ids or set(ordered_ids) != current_ids:
+            current_paradas = list(ruta.paradas.order_by("orden", "id"))
+            current_ids = {parada.id for parada in current_paradas}
+            if not ordered_ids:
+                ordered_ids = [parada.id for parada in current_paradas]
+            if set(ordered_ids) != current_ids:
                 return redirect(f"{request.path}?stop_error=1")
 
             try:
