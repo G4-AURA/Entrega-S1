@@ -99,6 +99,20 @@
 .parada-item {
     border-radius: 8px;
     transition: background 0.15s;
+    overflow-x: hidden;
+}
+
+.parada-item .fw-bold > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.parada-descripcion {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
 }
 
 .parada-item.drag-over {
