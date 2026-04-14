@@ -1,10 +1,10 @@
 document.addEventListener("DOMContentLoaded", function() {
     // Aplicar estilos a inputs de formularios sin estilos
-    document.querySelectorAll('.auth-card input:not([type="hidden"]), .auth-card select').forEach(function(el) {
+    document.querySelectorAll('.auth-card input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), .auth-card select').forEach(function(el) {
         el.classList.add('form-control');
     });
 
-    document.querySelectorAll('.django-form input:not([type="hidden"]), .django-form select').forEach(function(el) {
+    document.querySelectorAll('.django-form input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), .django-form select').forEach(function(el) {
         el.classList.add('form-control');
     });
 

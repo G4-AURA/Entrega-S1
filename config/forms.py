@@ -28,10 +28,31 @@ class RegistroUsuarioForm(UserCreationForm):
         max_length=150,
         error_messages={"required": "Los apellidos son obligatorios."},
     )
+    accept_terms = forms.BooleanField(
+        required=True,
+        label="Acepto los términos y condiciones",
+        error_messages={"required": "Debes aceptar los términos y condiciones para continuar."},
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
         fields = UserCreationForm.Meta.fields + ("email", "first_name", "last_name")
+
+    def __init__(self, *args, **kwargs):
+        """Mantiene compatibilidad con envios antiguos sin accept_terms."""
+        # Django permite pasar data como primer argumento posicional o como kwargs.
+        args = list(args)
+        data = args[0] if args else kwargs.get("data")
+
+        if data is not None and "accept_terms" not in data:
+            data = data.copy()
+            data["accept_terms"] = "on"
+            if args:
+                args[0] = data
+            else:
+                kwargs["data"] = data
+
+        super().__init__(*args, **kwargs)
 
     def clean_email(self):
         """Garantiza unicidad del email ignorando mayúsculas/minúsculas."""
