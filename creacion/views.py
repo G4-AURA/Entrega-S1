@@ -288,7 +288,16 @@ def generar_ruta_ia(request):
             response_data['warnings'] = tier_warnings
 
         return JsonResponse(response_data, status=200)
-    except (services.ErrorValidacionRuta, ValueError) as exc:
+    except services.ErrorValidacionRuta as exc:
+        logger.warning('Error de validación en generar_ruta_ia: %s', exc)
+        errores = exc.errores if isinstance(exc.errores, dict) else {'general': str(exc)}
+        mensaje = (
+            errores.get('general')
+            or errores.get('mood')
+            or next((str(valor) for valor in errores.values() if valor), 'Error en los datos.')
+        )
+        return JsonResponse({'status': 'ERROR', 'mensaje': mensaje, 'errores': errores}, status=400)
+    except ValueError as exc:
         logger.warning('Error de validación en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': f'Error en los datos: {str(exc)}'}, status=400)
     except services.ErrorSesionGeneracionNoEncontrada as exc:

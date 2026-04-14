@@ -93,6 +93,28 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         mock_consultar.assert_not_called()
 
+    @patch('creacion.views.consultar_langgraph')
+    def test_devuelve_error_de_mood_en_errores_cuando_no_hay_etiquetas(self, mock_consultar):
+        user = User.objects.create_user(username='guia_sin_mood', password='1234')
+        self.client.force_login(user)
+
+        sin_etiquetas = {
+            'ciudad': 'Sevilla',
+            'duracion': 2,
+            'personas': 4,
+            'exigencia': 'media',
+            'mood': [],
+        }
+        response = self.client.post(self.url, data=json.dumps(sin_etiquetas), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data.get('status'), 'ERROR')
+        self.assertIn('errores', data)
+        self.assertIn('mood', data.get('errores', {}))
+        self.assertIn('etiqueta temática', data['errores']['mood'])
+        mock_consultar.assert_not_called()
+
     @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph', side_effect=ValueError('datos inválidos'))
     def test_error_validacion_retorna_400(self, _mock_consultar, mock_get_guia):

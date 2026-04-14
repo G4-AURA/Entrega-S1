@@ -19,6 +19,8 @@
     const btnConfirmarSeleccion = document.getElementById('btn-confirmar-seleccion');
     const btnGenerarAdicionales = document.getElementById('btn-generar-adicionales');
     const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
+    const moodButtonsContainer = form?.querySelector('.mood-buttons');
+    const moodError = document.getElementById('mood-error');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
     const feedback = window.AuraFeedback;
 
@@ -297,6 +299,37 @@
         };
     }
 
+    function normalizarMensajeError(errorValue) {
+        if (Array.isArray(errorValue)) {
+            return errorValue.map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+        }
+        if (errorValue == null) return '';
+        return String(errorValue).trim();
+    }
+
+    function limpiarErrorMood() {
+        if (moodError) {
+            moodError.textContent = '';
+            moodError.classList.add('d-none');
+        }
+        moodButtonsContainer?.classList.remove('mood-buttons--error');
+    }
+
+    function limpiarErroresFormulario() {
+        limpiarErrorMood();
+    }
+
+    function aplicarErroresDeCampo(errores) {
+        const moodMensaje = normalizarMensajeError(errores?.mood);
+        if (moodMensaje && moodError) {
+            moodError.textContent = moodMensaje;
+            moodError.classList.remove('d-none');
+            moodButtonsContainer?.classList.add('mood-buttons--error');
+            return true;
+        }
+        return false;
+    }
+
     async function enviarPeticion(payload) {
         const response = await fetch(config.urls.generar, {
             method: 'POST',
@@ -325,7 +358,11 @@
         }
 
         if (!response.ok || data.status !== 'OK') {
-            throw new Error(data.mensaje || 'Error desconocido al generar la ruta');
+            const error = new Error(data.mensaje || 'Error desconocido al generar la ruta');
+            if (data?.errores && typeof data.errores === 'object') {
+                error.fieldErrors = data.errores;
+            }
+            throw error;
         }
 
         return data;
@@ -396,9 +433,17 @@
         window.MapaCreacion.renderizarParadasEnMapa(leafletMap, paradas || []);
     }
 
-    function renderizarErrores(mensaje) {
+    function renderizarErrores(mensaje, errores = null) {
+        const hayErrorMood = aplicarErroresDeCampo(errores);
+        const mensajeGeneral = normalizarMensajeError(mensaje);
+
+        if (hayErrorMood && !normalizarMensajeError(errores?.general)) {
+            estado.classList.add('d-none');
+            return;
+        }
+
         estado.className = 'alert alert-danger mt-3';
-        estado.textContent = `Error: ${mensaje}`;
+        estado.textContent = `Error: ${mensajeGeneral || 'Revisa los datos introducidos.'}`;
         estado.classList.remove('d-none');
     }
 
@@ -556,6 +601,9 @@
     document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {
             this.closest('.mood-btn').classList.toggle('active', this.checked);
+            if (this.checked) {
+                limpiarErrorMood();
+            }
         });
     });
 
@@ -567,6 +615,7 @@
     form.addEventListener('submit', async function (event) {
         event.preventDefault();
         estado.classList.add('d-none');
+        limpiarErroresFormulario();
         setCargando(true);
         iniciarMensajesProgreso('generar');
 
@@ -588,7 +637,7 @@
             estado.classList.remove('d-none');
         } catch (error) {
             console.error(error);
-            renderizarErrores(error.message);
+            renderizarErrores(error.message, error.fieldErrors || null);
         } finally {
             setCargando(false);
         }
