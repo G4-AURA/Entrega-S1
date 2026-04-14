@@ -26,6 +26,7 @@ from billing.tier_guard import (
     TierRuleViolation,
     ensure_chat_mode_allowed,
     ensure_curiosity_route_allowed,
+    ensure_premium_for_quedada,
     is_feature_enabled_for_guia,
     ensure_session_capacity_available,
     ensure_session_creation_allowed,
@@ -52,6 +53,13 @@ logger = logging.getLogger(__name__)
 def _is_private_chat_enabled_for_sesion(sesion: SesionTour) -> bool:
     try:
         return is_feature_enabled_for_guia(sesion.ruta.guia, 'chat_mode_separate')
+    except Exception:
+        return False
+
+
+def _is_scheduled_meetup_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'scheduled_meetup')
     except Exception:
         return False
 
@@ -377,6 +385,7 @@ def mapa_turista_anonimo(request, token):
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "current_user_name":   turista.alias,
             "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
+            "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
         },
     )
 
@@ -653,6 +662,7 @@ def mapa_guia(request, sesion_id):
             "es_guia":             True,
             "current_user_name":   request.user.username,
             "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
+            "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
         },
     )
 
@@ -961,6 +971,10 @@ def recordatorios_sesion(request, sesion_id):
     sesion, error_response = _get_sesion_or_json_404(sesion_id)
     if error_response:
         return error_response
+    try:
+        ensure_premium_for_quedada(sesion)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     if request.method == "GET":
         if not services.tiene_acceso_a_sesion(request, sesion):
@@ -1064,6 +1078,10 @@ def alertas_recordatorios(request, sesion_id):
     sesion, error_response = _get_sesion_or_json_404(sesion_id)
     if error_response:
         return error_response
+    try:
+        ensure_premium_for_quedada(sesion)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     turista = services.obtener_turista_request(request)
     if not turista:

@@ -35,6 +35,7 @@ from billing.tier_guard import (
     ensure_route_stop_add_allowed,
     get_allowed_moods_for_guia,
     get_session_capacity_limit,
+    is_feature_enabled_for_guia,
     get_usage_cycle_window,
     normalize_mood_values,
     tier_error_response,
@@ -760,6 +761,9 @@ def ruta_detalle_view(request, ruta_id):
         "ruta": ruta,
         "paradas": paradas,
         "paradas_json": paradas_json,
+        "ai_stop_replacement_enabled": is_feature_enabled_for_guia(
+            ruta.guia, 'ai_stop_replacement'
+        ),
         "paradas_con_curiosidad": paradas_con_curiosidad,
         # Geometría en formato Leaflet [[lat, lon], ...] (S2.1-31)
         "geometria_ruta_json": ruta.geometria_ruta_coords,

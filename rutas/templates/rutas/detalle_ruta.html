@@ -287,7 +287,7 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm btn-editar-parada"
                                 data-parada-id="{{ parada.id }}">Editar</button>
-                        {% if ruta.es_generada_ia %}
+                        {% if ruta.es_generada_ia and ai_stop_replacement_enabled %}
                         <button type="button"
                                 class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
                                 data-parada-id="{{ parada.id }}">
@@ -314,7 +314,7 @@
                         </form>
                     </div>
 
-                    {% if ruta.es_generada_ia %}
+                    {% if ruta.es_generada_ia and ai_stop_replacement_enabled %}
                         <div class="ia-suggestions-panel ia-suggestions-inline d-none"
                              id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
                             <div class="d-flex align-items-center justify-content-between">
