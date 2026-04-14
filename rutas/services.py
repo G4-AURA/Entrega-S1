@@ -15,12 +15,12 @@ import json
 import math
 import time
 
-from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import DatabaseError, IntegrityError
 from django.db.models import Prefetch
 import requests
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
 from .models import Curiosidad, Parada, Ruta
 from tours.models import SESION_TOUR
@@ -452,7 +452,7 @@ class ServicioCuriosidadesIA:
 
     def __init__(self):
         from google import genai
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self._genai = genai
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
         """
@@ -477,6 +477,23 @@ class ServicioCuriosidadesIA:
     def _obtener_curiosidad_cache(self, parada: Parada) -> Curiosidad | None:
         return Curiosidad.objects.filter(parada=parada).first()
 
+    def obtener_o_crear_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> tuple[Curiosidad, bool]:
+        """
+        Devuelve (Curiosidad, fue_generada). Reutiliza caché si existe.
+        A diferencia de generar_curiosidad(), devuelve el objeto del modelo, no un dict.
+        """
+        curiosidad_cacheada = self._obtener_curiosidad_cache(parada)
+        if curiosidad_cacheada:
+            return curiosidad_cacheada, False
+
+        datos_curiosidad = self._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+        curiosidad_guardada = self._guardar_curiosidad_en_cache(
+            parada=parada,
+            ciudad=ciudad,
+            datos_curiosidad=datos_curiosidad,
+        )
+        return curiosidad_guardada, True
+
     def _serializar_curiosidad(self, curiosidad: Curiosidad) -> dict:
         return {
             "parada_id": curiosidad.parada_id,
@@ -485,7 +502,6 @@ class ServicioCuriosidadesIA:
             "texto": curiosidad.texto,
             "tipo": curiosidad.tipo,
             "imagen_url": curiosidad.imagen_url,
-            "busqueda_imagen": curiosidad.imagen_url,
         }
 
     def _normalizar_payload_curiosidad(self, parada: Parada, datos_curiosidad: dict) -> dict:
@@ -585,16 +601,20 @@ class ServicioCuriosidadesIA:
         }}
         """
 
-        ultimo_error = None
+        claves = list(iter_gemini_api_keys())
+        if not claves:
+            raise RuntimeError('No hay API key de Gemini configurada.')
 
-        for intento in range(1, MAX_REINTENTOS_CURIOSIDAD_IA + 1):
+        ultimo_error_cuota: Exception | None = None
+        for indice, clave in enumerate(claves, start=1):
+            client = self._genai.Client(api_key=clave)
             try:
-                respuesta = self.client.models.generate_content(
+                respuesta = client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=prompt,
                 )
 
-                texto_ia = respuesta.text.strip()
+                texto_ia = str(getattr(respuesta, 'text', '') or '').strip()
 
                 if texto_ia.startswith("```json"):
                     texto_ia = texto_ia[7:-3].strip()
@@ -612,54 +632,25 @@ class ServicioCuriosidadesIA:
 
             except json.JSONDecodeError:
                 raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
+            except (requests.RequestException, TimeoutError, ConnectionError) as e:
+                raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
             except (AttributeError, KeyError, IndexError) as e:
                 raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
-            except (requests.RequestException, TimeoutError, ConnectionError) as e:
-                ultimo_error = e
-                if intento >= MAX_REINTENTOS_CURIOSIDAD_IA:
-                    raise RuntimeError(
-                        "Servicio de IA no disponible temporalmente. Intenta de nuevo en unos segundos."
-                    ) from e
-            except Exception as e:
-                ultimo_error = e
-                if not self._es_error_transitorio_ia(e) or intento >= MAX_REINTENTOS_CURIOSIDAD_IA:
-                    break
+            except Exception as exc:
+                if is_quota_or_rate_limit_error(exception=exc):
+                    ultimo_error_cuota = exc
+                    logger.warning(
+                        'Gemini devolvió cuota/429 al generar curiosidad (clave %s/%s).',
+                        indice,
+                        len(claves),
+                    )
+                    continue
+                raise
 
-            espera = BACKOFF_BASE_CURIOSIDAD_IA_S * (2 ** (intento - 1))
-            logger.warning(
-                "Curiosidades IA: intento %d/%d fallido para Parada(id=%d). Reintentando en %.1fs. Error: %s",
-                intento,
-                MAX_REINTENTOS_CURIOSIDAD_IA,
-                parada.id,
-                espera,
-                ultimo_error,
-            )
-            time.sleep(espera)
+        if ultimo_error_cuota is not None:
+            raise RuntimeError('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
 
-        if ultimo_error and self._es_error_transitorio_ia(ultimo_error):
-            raise RuntimeError(
-                "Servicio de IA temporalmente saturado. Intenta de nuevo en unos segundos."
-            ) from ultimo_error
-
-        if ultimo_error:
-            raise RuntimeError(f"No se pudo generar la curiosidad con IA: {ultimo_error}") from ultimo_error
-
-        raise RuntimeError("No se pudo generar la curiosidad con IA.")
-
-    @staticmethod
-    def _es_error_transitorio_ia(error: Exception) -> bool:
-        mensaje = str(error).lower()
-        patrones = (
-            "503",
-            "unavailable",
-            "high demand",
-            "429",
-            "resource_exhausted",
-            "timeout",
-            "deadline exceeded",
-            "temporarily",
-        )
-        return any(p in mensaje for p in patrones)
+        raise RuntimeError('No se pudo generar curiosidad con Gemini.')
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """
@@ -758,19 +749,7 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     Returns:
         (curiosidad, fue_generada)
     """
-    curiosidad_existente = Curiosidad.objects.filter(parada=parada).first()
-    if curiosidad_existente:
-        return curiosidad_existente, False
-
-    servicio_ia = ServicioCuriosidadesIA()
-    datos_ia = servicio_ia._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
-    curiosidad = servicio_ia._guardar_curiosidad_en_cache(
-        parada=parada,
-        ciudad=ciudad,
-        datos_curiosidad=datos_ia,
-    )
-
-    return curiosidad, True
+    return ServicioCuriosidadesIA().obtener_o_crear_curiosidad(parada=parada, ciudad=ciudad)
 
 
 def generar_curiosidad_parada_preview(parada: Parada, ciudad: str = "Sevilla") -> dict:

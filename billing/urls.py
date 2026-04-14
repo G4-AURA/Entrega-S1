@@ -6,6 +6,16 @@ app_name = 'billing'
 
 urlpatterns = [
     path(
+        'admin/feature-access/',
+        views.feature_access_panel_view,
+        name='feature_access_panel',
+    ),
+    path(
+        'admin/feature-access/update/',
+        views.update_feature_access_view,
+        name='feature_access_update',
+    ),
+    path(
         'create-checkout-session/',
         views.create_checkout_session_view,
         name='create_checkout_session',

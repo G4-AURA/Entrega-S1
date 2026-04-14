@@ -16,9 +16,9 @@ from creacion.geo_validation import (
     NoConvergenciaCoordenadasError,
     completar_lista_paradas_validadas,
 )
+from creacion.exceptions import ErrorIntegracionIA
 from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
-    ErrorIntegracionIA,
     calcular_objetivo_paradas_ia,
     normalizar_poi_para_optimizacion,
 )

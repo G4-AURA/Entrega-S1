@@ -1,12 +1,19 @@
 import json
 import logging
 from datetime import timezone as dt_timezone
+from functools import wraps
+from urllib.parse import quote_plus
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import HttpResponseForbidden
 from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 
 from rutas.models import Guia
@@ -20,8 +27,55 @@ from .services import (
     schedule_subscription_cancel_at_period_end,
     verify_stripe_signature,
 )
+from .tier_guard import get_feature_access_rows, update_feature_access
 
 logger = logging.getLogger(__name__)
+
+
+def superuser_required_html(view_func):
+    @wraps(view_func)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return HttpResponseForbidden(
+                'Acceso denegado: area exclusiva para administradores.'
+            )
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
+
+
+@superuser_required_html
+@require_GET
+def feature_access_panel_view(request):
+    return render(
+        request,
+        'billing/feature_access_panel.html',
+        {
+            'feature_rows': get_feature_access_rows(),
+            'updated_key': str(request.GET.get('updated') or '').strip(),
+            'error_message': str(request.GET.get('error') or '').strip(),
+        },
+    )
+
+
+@superuser_required_html
+@require_POST
+def update_feature_access_view(request):
+    key = str(request.POST.get('key') or '').strip()
+    tier = str(request.POST.get('tier') or '').strip()
+    enabled_raw = request.POST.get('enabled')
+
+    try:
+        update_feature_access(key=key, tier=tier, enabled=enabled_raw)
+    except ValueError as exc:
+        return redirect(
+            f"{reverse('billing:feature_access_panel')}?error={quote_plus(str(exc))}"
+        )
+
+    return redirect(
+        f"{reverse('billing:feature_access_panel')}?updated={key}&tier={tier}"
+    )
 
 
 def _obtener_guia_para_usuario(user):
