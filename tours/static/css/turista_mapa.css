@@ -578,6 +578,148 @@ main.container {
     display: inline-block;
 }
 
+/* ── Recordatorios ───────────────────────────────────────────── */
+.recordatorio-form-card,
+.recordatorio-list-block {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.recordatorio-form-card h4,
+.recordatorio-list-block h4 {
+    margin: 0 0 10px 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.recordatorio-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.recordatorio-form-card label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.recordatorio-input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    background: #fff;
+}
+
+.recordatorio-input:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.recordatorio-create-btn {
+    width: 100%;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #4f46e5;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.recordatorio-create-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.recordatorio-feedback {
+    margin: 8px 0 0 0;
+    font-size: 0.76rem;
+    min-height: 1.1em;
+}
+
+.recordatorio-feedback.ok {
+    color: #0f766e;
+}
+
+.recordatorio-feedback.error {
+    color: #b91c1c;
+}
+
+.recordatorios-list {
+    max-height: 260px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.recordatorio-item {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px;
+    background: #f8fafc;
+}
+
+.recordatorio-item-alerta {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.recordatorio-item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.recordatorio-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    background: #e0e7ff;
+    color: #3730a3;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 8px;
+}
+
+.recordatorio-time {
+    font-size: 0.72rem;
+    color: #475569;
+    font-weight: 600;
+}
+
+.recordatorio-text {
+    margin: 0;
+    color: #1f2937;
+    font-size: 0.84rem;
+    white-space: pre-wrap;
+}
+
+.recordatorio-meta {
+    margin: 6px 0 0;
+    font-size: 0.74rem;
+    color: #475569;
+}
+
+@media (max-width: 640px) {
+    .recordatorio-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ── Mapa ────────────────────────────────────────────────────────– */
 #mapa-tour {
     width: 100%;

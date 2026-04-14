@@ -1211,11 +1211,13 @@ def normalizar_payload_ia(datos):
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
     mood = datos.get('mood')
-    if not all([ciudad, duracion, personas, exigencia, mood]):
+    if duracion in (None, '') or personas in (None, '') or not exigencia:
         raise ErrorValidacionRuta('Faltan parámetros obligatorios en la petición.')
     exigencia_normalizada = MAPA_EXIGENCIA_RUTA.get(exigencia)
     if not exigencia_normalizada:
         raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
+    if mood is None:
+        raise ErrorValidacionRuta('Debes seleccionar al menos una temática (mood) válida.')
     moods_normalizados = normalizar_moods(mood)
     if not moods_normalizados:
         raise ErrorValidacionRuta('Debes indicar al menos una temática (mood) válida.')

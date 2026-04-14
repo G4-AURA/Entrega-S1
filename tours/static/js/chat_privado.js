@@ -26,6 +26,17 @@
   let privateTabVisible  = false;
   let selectedPrivateFile = null;
   let privatePreviewObjUrl = null;
+  const MAX_PRIVATE_IMAGE_SIZE = 5 * 1024 * 1024;
+  const ALLOWED_PRIVATE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+  function notifyPrivateChat(message, type = 'warning') {
+    const feedback = window.AuraFeedback;
+    if (feedback && typeof feedback.toast === 'function') {
+      feedback.toast(message, { type, duration: 3600 });
+      return;
+    }
+    console.warn('[AURA private chat]', message);
+  }
 
   // ── Referencias DOM ─────────────────────────────────────────────────────
   const privateBadge       = document.getElementById('chat-privado-badge');
@@ -66,6 +77,19 @@
     } catch {
       return '';
     }
+  }
+
+  async function readJsonOrText(response) {
+    const raw = await response.text();
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch (_error) {
+      return { raw };
+    }
+  }
+
+  function extraerMensajeDeError(payload, fallback) {
+    return payload?.error || payload?.mensaje || payload?.detail || fallback;
   }
 
   function incrementBadge() {
@@ -355,7 +379,10 @@
 
   function sendPrivateMessage() {
     const texto = privateChatInput ? privateChatInput.value.trim() : '';
-    if (!texto && !selectedPrivateFile) return;
+    if (!texto && !selectedPrivateFile) {
+      notifyPrivateChat('El mensaje no puede estar vacío.', 'warning');
+      return;
+    }
 
     // Bloquear controles durante el envío
     [privateChatSend, privateChatInput, privateImageBtn].forEach(el => {
@@ -380,9 +407,12 @@
       headers: { 'X-CSRFToken': getCsrf() },
       body: formData,
     })
-      .then(r => r.json())
-      .then(data => {
-        if (data.status !== 'ok') return;
+      .then(async (r) => {
+        const data = await readJsonOrText(r);
+        if (!r.ok || data?.status !== 'ok') {
+          throw new Error(extraerMensajeDeError(data, 'No se pudo enviar el mensaje.'));
+        }
+
         if (privateChatInput) privateChatInput.value = '';
         clearPrivatePreview();
 
@@ -393,7 +423,9 @@
           fetchPrivateMessagesTurista();
         }
       })
-      .catch(() => {})
+      .catch((error) => {
+        notifyPrivateChat(error?.message || 'No se pudo enviar el mensaje.', 'error');
+      })
       .finally(() => {
         [privateChatSend, privateChatInput, privateImageBtn].forEach(el => {
           if (el) el.disabled = false;
@@ -466,8 +498,16 @@
         return;
       }
       const file = privateImageInput.files[0];
-      const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!allowed.includes(file.type)) { clearPrivatePreview(); return; }
+      if (!ALLOWED_PRIVATE_IMAGE_TYPES.has(file.type)) {
+        notifyPrivateChat('Formato de imagen no permitido. Usa JPEG, PNG o WebP.', 'warning');
+        clearPrivatePreview();
+        return;
+      }
+      if (file.size > MAX_PRIVATE_IMAGE_SIZE) {
+        notifyPrivateChat('La imagen supera el tamaño máximo de 5MB.', 'warning');
+        clearPrivatePreview();
+        return;
+      }
       selectedPrivateFile = file;
       renderPrivatePreview(file);
     });

@@ -27,6 +27,8 @@ let ubicacionPollId   = null;
 let chatPollId        = null;
 let geolocationWatchId = null;
 let tourFinalizado    = false;
+let ultimaPosicionTurista = null;
+let primeraUbicacionTuristaCentrada = false;
 // ------------------------------------------------------------
 
 const paradasMarkers  = new Map();
@@ -126,6 +128,11 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 document.dispatchEvent(new CustomEvent('privateChatClosed'));
             }
+            if (target === 'notificaciones') {
+                const badge = document.getElementById('recordatorios-badge');
+                if (badge) badge.style.display = 'none';
+                document.dispatchEvent(new CustomEvent('recordatoriosOpened'));
+            }
         });
     });
 
@@ -138,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Chat ──────────────────────────────────────────────────────────────
     _initSessionCountdown();
     _initChat();
+    _initRecordatorios();
 });
 
 
@@ -197,32 +205,12 @@ function _dibujarRutaYParadas() {
 
 async function _iniciarRastreoLocal() {
     if (!navigator.geolocation) return;
-    const feedback = window.AuraFeedback;
-
-    if (feedback && typeof feedback.confirm === 'function') {
-        const confirmarUbicacion = await feedback.confirm({
-            title: 'Compartir ubicación',
-            message: esGuia
-                ? 'Activa tu ubicación para que los turistas puedan seguirte durante el tour.'
-                : 'Activa tu ubicación para mostrar curiosidades cercanas y seguir al guía en tiempo real.',
-            confirmText: 'Permitir',
-            cancelText: 'Ahora no',
-            type: 'info',
-        });
-
-        if (!confirmarUbicacion) {
-            feedback.toast('Puedes activar la ubicación más tarde desde los permisos del navegador.', {
-                type: 'info',
-                duration: 3200,
-            });
-            return;
-        }
-    }
 
     geolocationWatchId = navigator.geolocation.watchPosition(
         position => {
             const { latitude: lat, longitude: lng } = position.coords;
             const pos = [lat, lng];
+            ultimaPosicionTurista = { lat, lng };
 
             if (!miUbicacionMarker) {
                 const color = esGuia ? '#ef4444' : '#3b82f6';
@@ -244,6 +232,11 @@ async function _iniciarRastreoLocal() {
                 }).addTo(map).bindPopup(esGuia ? 'Guía (tú)' : 'Tú');
             } else {
                 miUbicacionMarker.setLatLng(pos);
+            }
+
+            if (!esGuia && !primeraUbicacionTuristaCentrada && map) {
+                map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.6 });
+                primeraUbicacionTuristaCentrada = true;
             }
 
             // El guía envía su posición al servidor para que los turistas la vean
@@ -277,7 +270,23 @@ async function _iniciarRastreoLocal() {
                 _detectarParadaYSolicitarCuriosidad(lat, lng);
             }
         },
-        () => {},
+        error => {
+            const feedback = window.AuraFeedback;
+            const mensaje =
+                error?.code === error.PERMISSION_DENIED
+                    ? 'El navegador ha bloqueado la ubicación. Revisa los permisos del sitio.'
+                    : error?.code === error.POSITION_UNAVAILABLE
+                        ? 'No se pudo obtener una posición válida en este momento.'
+                        : error?.code === error.TIMEOUT
+                            ? 'La localización está tardando demasiado en responder.'
+                            : 'No se pudo detectar la ubicación automáticamente.';
+
+            if (feedback && typeof feedback.toast === 'function') {
+                feedback.toast(mensaje, { type: 'warning', duration: 3800 });
+            } else {
+                console.warn('[AURA geolocation]', mensaje);
+            }
+        },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 },
     );
 }
@@ -591,6 +600,7 @@ function _initSessionCountdown() {
     const startBtn = document.getElementById('start-countdown-btn');
     if (!timerContainer || !timerValue) return;
 
+    const MINUTE_MS = 60 * 1000;
     const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
         ? duracionRutaHoras
         : 1;
@@ -601,25 +611,31 @@ function _initSessionCountdown() {
         : Date.now();
 
     const setWaitingUi = () => {
-        timerValue.textContent = _formatRemainingTime(countdownMs);
+        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
         timerContainer.classList.remove('finished');
         timerContainer.classList.add('waiting');
     };
 
-    const startTicker = () => {
+    const startTicker = (remoteRemainingMinutes = null) => {
         if (countdownTimerId) {
             clearInterval(countdownTimerId);
             countdownTimerId = null;
         }
 
         timerContainer.classList.remove('waiting');
-        let endTimestamp = startTimestamp + countdownMs;
-        let remainingSeconds = Math.max(0, Math.floor((endTimestamp - Date.now()) / 1000));
-        let lastTickAt = Date.now();
+        const hasRemoteMinutes = Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0;
+        const normalizedRemoteMinutes = hasRemoteMinutes
+            ? Math.max(0, Math.ceil(remoteRemainingMinutes))
+            : null;
+        let endTimestamp = hasRemoteMinutes
+            ? Date.now() + (normalizedRemoteMinutes * MINUTE_MS)
+            : startTimestamp + countdownMs;
 
         const render = () => {
-            timerValue.textContent = _formatRemainingTime(remainingSeconds * 1000);
-            if (remainingSeconds === 0) {
+            const remainingMinutes = Math.max(0, Math.ceil((endTimestamp - Date.now()) / MINUTE_MS));
+            timerValue.textContent = _formatRemainingMinutes(remainingMinutes);
+
+            if (remainingMinutes === 0) {
                 timerContainer.classList.add('finished');
                 if (countdownTimerId) {
                     clearInterval(countdownTimerId);
@@ -632,13 +648,8 @@ function _initSessionCountdown() {
 
         render();
         countdownTimerId = setInterval(() => {
-            const tickNow = Date.now();
-            const elapsedSeconds = Math.max(1, Math.floor((tickNow - lastTickAt) / 1000));
-            remainingSeconds = Math.max(0, remainingSeconds - elapsedSeconds);
-            lastTickAt = tickNow;
-            if (remainingSeconds > 0) endTimestamp = tickNow + (remainingSeconds * 1000);
             render();
-        }, 1000);
+        }, MINUTE_MS);
     };
 
     const applyRemoteState = (data) => {
@@ -664,7 +675,8 @@ function _initSessionCountdown() {
                 startBtn.disabled = true;
                 startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
             }
-            startTicker();
+            const remoteMinutes = Number(data.minutos_restantes);
+            startTicker(remoteMinutes);
         } else {
             sesionIniciada = false;
             if (!countdownTimerId) setWaitingUi();
@@ -698,7 +710,7 @@ function _initSessionCountdown() {
     else setWaitingUi();
 
     fetchCountdownState();
-    countdownPollId = setInterval(fetchCountdownState, 1200);
+    countdownPollId = setInterval(fetchCountdownState, MINUTE_MS);
 
     if (startBtn) {
         startBtn.addEventListener('click', () => {
@@ -717,7 +729,8 @@ function _initSessionCountdown() {
                         if (Number.isFinite(parsed)) startTimestamp = parsed;
                         sesionIniciada = true;
                         startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
-                        startTicker();
+                        const remoteMinutes = Number(data.minutos_restantes);
+                        startTicker(remoteMinutes);
                     } else {
                         startBtn.disabled = false;
                     }
@@ -727,13 +740,9 @@ function _initSessionCountdown() {
     }
 }
 
-function _formatRemainingTime(milliseconds) {
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+function _formatRemainingMinutes(totalMinutes) {
+    const safeMinutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.ceil(totalMinutes)) : 0;
+    return `${safeMinutes} min`;
 }
 
 
@@ -754,6 +763,17 @@ function _initChat() {
     let chatVisible     = false;
     let selectedFile    = null;
     let previewObjectUrl = null;
+    const MAX_CHAT_IMAGE_SIZE = 5 * 1024 * 1024;
+    const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+    const notifyChat = (message, type = 'warning') => {
+        const feedback = window.AuraFeedback;
+        if (feedback && typeof feedback.toast === 'function') {
+            feedback.toast(message, { type, duration: 3600 });
+            return;
+        }
+        console.warn('[AURA chat]', message);
+    };
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
 
@@ -792,6 +812,19 @@ function _initChat() {
         selectedFile = null;
         chatImageInput.value = '';
         chatPreviewContainer.innerHTML = '';
+    }
+
+    async function readJsonOrText(response) {
+        const raw = await response.text();
+        try {
+            return raw ? JSON.parse(raw) : null;
+        } catch (_error) {
+            return { raw };
+        }
+    }
+
+    function extraerMensajeDeError(payload, fallback) {
+        return payload?.error || payload?.mensaje || payload?.detail || fallback;
     }
 
     function renderPreview(file) {
@@ -927,7 +960,10 @@ function _initChat() {
         if (!_sesionEnCurso()) return;
 
         const texto = chatInput.value.trim();
-        if (!texto && !selectedFile) return;
+        if (!texto && !selectedFile) {
+            notifyChat('El mensaje no puede estar vacío.', 'warning');
+            return;
+        }
 
         chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = true;
 
@@ -942,14 +978,19 @@ function _initChat() {
             headers: { 'X-CSRFToken': _getCsrf() },
             body:    payload,
         })
-        .then(r => r.json())
-        .then((data) => {
-            if (data.status !== 'ok') return;
+        .then(async (r) => {
+            const data = await readJsonOrText(r);
+            if (!r.ok || data?.status !== 'ok') {
+                throw new Error(extraerMensajeDeError(data, 'No se pudo enviar el mensaje.'));
+            }
+
             chatInput.value = '';
             clearPreview();
             fetchMessages();
         })
-        .catch(() => {})
+        .catch((error) => {
+            notifyChat(error?.message || 'No se pudo enviar el mensaje.', 'error');
+        })
         .finally(() => {
             chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = false;
             chatInput.focus();
@@ -966,8 +1007,14 @@ function _initChat() {
         }
 
         const file = chatImageInput.files[0];
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
+        if (!ALLOWED_CHAT_IMAGE_TYPES.has(file.type)) {
+            notifyChat('Formato de imagen no permitido. Usa JPEG, PNG o WebP.', 'warning');
+            clearPreview();
+            return;
+        }
+
+        if (file.size > MAX_CHAT_IMAGE_SIZE) {
+            notifyChat('La imagen supera el tamaño máximo de 5MB.', 'warning');
             clearPreview();
             return;
         }
@@ -984,6 +1031,269 @@ function _initChat() {
     });
 
     syncChatAvailability();
+}
+
+
+function _initRecordatorios() {
+    const listEl = document.getElementById('recordatorios-list');
+    if (!listEl) return;
+
+    const horaInput = document.getElementById('recordatorio-hora');
+    const avisarInput = document.getElementById('recordatorio-avisar');
+    const mensajeInput = document.getElementById('recordatorio-mensaje');
+    const crearBtn = document.getElementById('recordatorio-crear-btn');
+    const feedbackEl = document.getElementById('recordatorio-feedback');
+    const badgeEl = document.getElementById('recordatorios-badge');
+
+    let unreadAlerts = 0;
+    let tabVisible = false;
+    const alertasActivasPorId = new Map();
+    let ultimoRecordatorios = [];
+
+    document.addEventListener('recordatoriosOpened', () => {
+        tabVisible = true;
+        unreadAlerts = 0;
+        if (badgeEl) badgeEl.style.display = 'none';
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabVisible = btn.getAttribute('data-tab') === 'notificaciones';
+        });
+    });
+
+    const tabBtn = document.querySelector('[data-tab="notificaciones"]');
+    if (tabBtn && tabBtn.classList.contains('active')) {
+        tabVisible = true;
+    }
+
+    function showFeedback(msg, isError) {
+        if (!feedbackEl) return;
+        feedbackEl.textContent = msg || '';
+        feedbackEl.classList.toggle('error', Boolean(isError));
+        feedbackEl.classList.toggle('ok', !isError && Boolean(msg));
+    }
+
+    function formatDate(isoDate) {
+        try {
+            return new Date(isoDate).toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return 'Fecha inválida';
+        }
+    }
+
+    function formatHour(isoDate) {
+        try {
+            return new Date(isoDate).toLocaleTimeString('es-ES', {
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return '--:--';
+        }
+    }
+
+    function clearExpiredActiveAlerts() {
+        const nowMs = Date.now();
+        Array.from(alertasActivasPorId.entries()).forEach(([id, alerta]) => {
+            const endMs = Date.parse(alerta?.hora_objetivo || '');
+            if (!Number.isFinite(endMs) || endMs <= nowMs) {
+                alertasActivasPorId.delete(id);
+            }
+        });
+    }
+
+    function renderRecordatorios(recordatorios) {
+        clearExpiredActiveAlerts();
+
+        if (!Array.isArray(recordatorios) || !recordatorios.length) {
+            listEl.innerHTML = `
+                <div class="chat-empty">
+                    <span class="material-icons-round">notifications_none</span>
+                    <p>Aún no hay recordatorios</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = '';
+        recordatorios.forEach(item => {
+            const card = document.createElement('article');
+            const itemId = String(item.id);
+            const alertaActiva = alertasActivasPorId.has(itemId);
+            card.className = `recordatorio-item ${alertaActiva ? 'recordatorio-item-alerta' : ''}`;
+
+            const chipTexto = alertaActiva
+                ? `ALERTA HASTA ${formatHour(item.hora_objetivo)}`
+                : `${item.avisar_minutos_antes} min antes`;
+
+            card.innerHTML = `
+                <div class="recordatorio-item-head">
+                    <span class="recordatorio-chip">${_escapeHtml(chipTexto)}</span>
+                    <span class="recordatorio-time">${_escapeHtml(formatDate(item.hora_objetivo))}</span>
+                </div>
+                <p class="recordatorio-text">${_escapeHtml(item.mensaje)}</p>
+            `;
+            listEl.appendChild(card);
+        });
+    }
+
+    function pollRecordatorios() {
+        if (typeof recordatoriosUrl === 'undefined' || !recordatoriosUrl) return;
+        fetch(recordatoriosUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => {
+                ultimoRecordatorios = data.recordatorios || [];
+                renderRecordatorios(ultimoRecordatorios);
+            })
+            .catch(() => {});
+    }
+
+    async function playReminderSound() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const context = new AudioCtx();
+
+            const beep = (startAt, freq) => {
+                const osc = context.createOscillator();
+                const gain = context.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, startAt);
+                gain.gain.exponentialRampToValueAtTime(0.2, startAt + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.3);
+                osc.connect(gain);
+                gain.connect(context.destination);
+                osc.start(startAt);
+                osc.stop(startAt + 0.32);
+            };
+
+            const now = context.currentTime;
+            beep(now, 880);
+            beep(now + 0.35, 660);
+            beep(now + 0.7, 880);
+
+            setTimeout(() => {
+                context.close().catch(() => {});
+            }, 1500);
+        } catch {
+            return;
+        }
+    }
+
+    function notifyBrowser(alerta) {
+        const title = 'Recordatorio del guía';
+        const body = alerta.mensaje || 'Tienes un nuevo recordatorio';
+
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body });
+            return;
+        }
+        if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    new Notification(title, { body });
+                }
+            }).catch(() => {});
+        }
+    }
+
+    function pollAlertasTurista() {
+        if (esGuia) return;
+        if (typeof recordatoriosAlertasUrl === 'undefined' || !recordatoriosAlertasUrl) return;
+
+        fetch(recordatoriosAlertasUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => {
+                const alertas = data.alertas || [];
+                if (!alertas.length) return;
+
+                alertas.forEach(alerta => {
+                    alertasActivasPorId.set(String(alerta.id), alerta);
+                    notifyBrowser(alerta);
+                });
+
+                renderRecordatorios(ultimoRecordatorios);
+
+                playReminderSound();
+
+                if (!tabVisible) {
+                    unreadAlerts += alertas.length;
+                    if (badgeEl) {
+                        badgeEl.textContent = unreadAlerts > 99 ? '99+' : String(unreadAlerts);
+                        badgeEl.style.display = 'block';
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    function createRecordatorio() {
+        if (!esGuia || !crearBtn) return;
+
+        const hora = horaInput ? horaInput.value : '';
+        const mensaje = mensajeInput ? mensajeInput.value.trim() : '';
+        const avisar = avisarInput ? avisarInput.value : '10';
+
+        if (!hora) {
+            showFeedback('Debes indicar la hora objetivo.', true);
+            return;
+        }
+        if (!mensaje) {
+            showFeedback('Debes escribir un mensaje para el recordatorio.', true);
+            return;
+        }
+
+        const payload = {
+            hora_objetivo: new Date(hora).toISOString(),
+            avisar_minutos_antes: Number(avisar || '10'),
+            mensaje,
+        };
+
+        crearBtn.disabled = true;
+        showFeedback('Creando recordatorio...', false);
+
+        fetch(recordatoriosUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': _getCsrf(),
+            },
+            body: JSON.stringify(payload),
+        })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    throw new Error(data.error || 'No se pudo crear el recordatorio.');
+                }
+                return data;
+            })
+            .then(() => {
+                if (mensajeInput) mensajeInput.value = '';
+                showFeedback('Recordatorio creado correctamente.', false);
+                pollRecordatorios();
+            })
+            .catch(err => {
+                showFeedback(err.message || 'No se pudo crear el recordatorio.', true);
+            })
+            .finally(() => {
+                crearBtn.disabled = false;
+            });
+    }
+
+    if (crearBtn) {
+        crearBtn.addEventListener('click', createRecordatorio);
+    }
+
+    pollRecordatorios();
+    setInterval(pollRecordatorios, 15000);
+    setInterval(pollAlertasTurista, 10000);
 }
 
 
@@ -1234,6 +1544,11 @@ function _initBotónCentraMapa() {
 
 function _centrar_en_turista() {
     if (!map || !miUbicacionMarker) {
+        if (ultimaPosicionTurista) {
+            map.flyTo([ultimaPosicionTurista.lat, ultimaPosicionTurista.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+            return;
+        }
+
         console.warn('No se puede centrar: posición del turista no disponible');
         return;
     }

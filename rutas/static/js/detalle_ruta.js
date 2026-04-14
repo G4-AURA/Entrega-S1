@@ -121,10 +121,25 @@ function actualizarPanelMetricas(data) {
 
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
-    if (data.distancia_total_km && data.duracion_total_min) {
+    const tieneDistancia = data.distancia_total_km !== null && data.distancia_total_km !== undefined && data.distancia_total_km !== '';
+    const tieneDuracion = data.duracion_total_min !== null && data.duracion_total_min !== undefined;
+
+    if (tieneDistancia && tieneDuracion) {
         panel.appendChild(makeMetricSpan('📍', 'Distancia', data.distancia_total_km + ' km'));
         panel.appendChild(makeSep());
         panel.appendChild(makeMetricSpan('⏱️', 'Tiempo', data.duracion_total_min + ' min'));
+        panel.appendChild(makeSep());
+        panel.appendChild(makeMetricSpan('🚶', '', paradas.length + ' paradas'));
+    } else if (tieneDistancia || tieneDuracion) {
+        if (tieneDistancia) {
+            panel.appendChild(makeMetricSpan('📍', 'Distancia', data.distancia_total_km + ' km'));
+        }
+        if (tieneDistancia && tieneDuracion) {
+            panel.appendChild(makeSep());
+        }
+        if (tieneDuracion) {
+            panel.appendChild(makeMetricSpan('⏱️', 'Tiempo', data.duracion_total_min + ' min'));
+        }
         panel.appendChild(makeSep());
         panel.appendChild(makeMetricSpan('🚶', '', paradas.length + ' paradas'));
     } else {

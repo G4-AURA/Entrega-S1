@@ -13,6 +13,7 @@ S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 import logging
 import json
 import math
+import time
 
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
@@ -29,6 +30,8 @@ MIN_DURACION_HORAS = 0.5
 MAX_DURACION_HORAS = 24.0
 MIN_NUM_PERSONAS = 1
 MAX_NUM_PERSONAS = 50
+MAX_REINTENTOS_CURIOSIDAD_IA = 3
+BACKOFF_BASE_CURIOSIDAD_IA_S = 1.0
 
 
 def _es_incremento_media_hora(valor):
@@ -236,7 +239,7 @@ def _validar_coordenadas(raw_lat, raw_lon):
         raise ValueError("Coordenadas inválidas")
 
 
-def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
+def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -244,10 +247,12 @@ def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
         raise ValueError("El nombre de la parada no puede superar los 255 caracteres")
 
     lat, lon = _validar_coordenadas(raw_lat, raw_lon)
+    descripcion_limpia = (descripcion or '').strip()[:500]
 
     parada.nombre = nombre
+    parada.descripcion = descripcion_limpia
     parada.coordenadas = Point(lon, lat, srid=4326)
-    parada.save(update_fields=["nombre", "coordenadas"])
+    parada.save(update_fields=["nombre", "descripcion", "coordenadas"])
 
 
 def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
