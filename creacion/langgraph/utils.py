@@ -16,6 +16,7 @@ import math
 import os
 
 import requests
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ _KEYWORDS_MOOD = {
 # Gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
+class _GeminiQuotaError(Exception):
+    """Internal marker for quota/rate-limit responses on a concrete API key."""
+
 def _leer_int_env(nombre: str, default: int) -> int:
     try:
         return int(os.getenv(nombre, str(default)))
@@ -60,12 +64,7 @@ def _leer_int_env(nombre: str, default: int) -> int:
         return default
 
 
-def llamar_gemini(prompt: str) -> list | dict:
-    """
-    Llama a Gemini y devuelve la respuesta parseada como JSON.
-    Lanza ErrorIntegracionIA ante cualquier fallo.
-    """
-    api_key = os.getenv('GEMINI_API_KEY')
+def _llamar_gemini_con_clave(prompt: str, api_key: str) -> list | dict:
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
@@ -80,12 +79,19 @@ def llamar_gemini(prompt: str) -> list | dict:
     }
     timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
     max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
-    http_reintentable = {408, 409, 425, 429, 500, 502, 503, 504}
+    # 429 is handled as quota fallback to the next key, not retried in-place.
+    http_reintentable = {408, 409, 425, 500, 502, 503, 504}
 
     ultimo_error: Exception | None = None
     for intento in range(max_reintentos + 1):
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
+            if is_quota_or_rate_limit_error(
+                status_code=response.status_code,
+                detail=getattr(response, 'text', ''),
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={response.status_code}.')
+
             if response.status_code in http_reintentable and intento < max_reintentos:
                 logger.warning('Gemini status=%s (reintento %s/%s).', response.status_code, intento + 1, max_reintentos)
                 continue
@@ -93,6 +99,8 @@ def llamar_gemini(prompt: str) -> list | dict:
             resultado = response.json()
             texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
             return json.loads(texto_json)
+        except _GeminiQuotaError:
+            raise
         except requests.Timeout as exc:
             ultimo_error = exc
             if intento < max_reintentos:
@@ -101,6 +109,14 @@ def llamar_gemini(prompt: str) -> list | dict:
         except requests.HTTPError as exc:
             ultimo_error = exc
             status = exc.response.status_code if exc.response is not None else 'desconocido'
+            detalle = getattr(exc.response, 'text', '') if exc.response is not None else ''
+            if is_quota_or_rate_limit_error(
+                status_code=status if isinstance(status, int) else None,
+                detail=detalle,
+                exception=exc,
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={status}.') from exc
+
             if status in http_reintentable and intento < max_reintentos:
                 continue
             raise ErrorIntegracionIA(f'Error HTTP de Gemini (status={status}).') from exc
@@ -115,6 +131,33 @@ def llamar_gemini(prompt: str) -> list | dict:
             raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
+
+
+def llamar_gemini(prompt: str) -> list | dict:
+    """
+    Llama a Gemini y devuelve la respuesta parseada como JSON.
+    Lanza ErrorIntegracionIA ante cualquier fallo.
+    """
+    claves = list(iter_gemini_api_keys())
+    if not claves:
+        raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
+    ultimo_error_cuota: Exception | None = None
+    for indice, clave in enumerate(claves, start=1):
+        try:
+            return _llamar_gemini_con_clave(prompt, clave)
+        except _GeminiQuotaError as exc:
+            ultimo_error_cuota = exc
+            logger.warning(
+                'Gemini devolvió cuota/429 en clave %s/%s; se intenta fallback.',
+                indice,
+                len(claves),
+            )
+            continue
+
+    if ultimo_error_cuota is not None:
+        raise ErrorIntegracionIA('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+    raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

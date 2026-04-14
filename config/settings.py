@@ -209,9 +209,33 @@ LOGOUT_REDIRECT_URL = '/'
 
 
 # --- API KEYS ---
+
+def _parse_csv_env_list(raw_value: str | None) -> tuple[str, ...]:
+    """Parses comma/newline separated env values preserving order and uniqueness."""
+    if not raw_value:
+        return tuple()
+
+    values = str(raw_value).replace('\n', ',').split(',')
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+    return tuple(deduped)
+
+
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_API_KEYS = _parse_csv_env_list(os.getenv('GEMINI_API_KEYS'))
+
+if GEMINI_API_KEYS:
+    GEMINI_API_KEY = GEMINI_API_KEYS[0]
+elif GEMINI_API_KEY:
+    GEMINI_API_KEYS = (GEMINI_API_KEY,)
 
 
 # --- STRIPE (TIERS FREEMIUM/PREMIUM) ---
