@@ -12,6 +12,7 @@ import json
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.utils import timezone
 
@@ -150,6 +151,50 @@ class ChatExcepcionesTestCase(TestCase):
         data = response.json()
         self.assertIn('error', data)
         self.assertIn('vacío', data['error'])
+
+    def test_enviar_mensaje_imagen_formato_no_permitido(self):
+        """Test: Formatos de imagen no permitidos deben devolver error controlado."""
+        session = self.client.session
+        session['turista_id'] = self.turista.id
+        session.save()
+
+        imagen = SimpleUploadedFile(
+            'prueba.txt',
+            b'archivo de texto',
+            content_type='text/plain',
+        )
+
+        response = self.client.post(
+            f'/tours/sesiones/{self.sesion_activa.id}/mensajes/enviar/',
+            data={'texto': '', 'imagen': imagen},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn('error', data)
+        self.assertIn('Formato de imagen no permitido', data['error'])
+
+    def test_enviar_mensaje_imagen_demasiado_grande(self):
+        """Test: Imágenes que superan el límite deben ser rechazadas."""
+        session = self.client.session
+        session['turista_id'] = self.turista.id
+        session.save()
+
+        imagen = SimpleUploadedFile(
+            'grande.png',
+            b'0' * (5 * 1024 * 1024 + 1),
+            content_type='image/png',
+        )
+
+        response = self.client.post(
+            f'/tours/sesiones/{self.sesion_activa.id}/mensajes/enviar/',
+            data={'texto': '', 'imagen': imagen},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn('error', data)
+        self.assertIn('tamaño máximo', data['error'])
 
     def test_enviar_mensaje_json_invalido(self):
         """Test: JSON malformado debe devolver 400."""

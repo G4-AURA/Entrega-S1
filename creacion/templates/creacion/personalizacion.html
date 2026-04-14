@@ -29,6 +29,7 @@
                 <div class="col-12 col-md-6">
                     <label for="duracion" class="form-label">Duración (horas)</label>
                     <input type="number" id="duracion" name="duracion" class="form-control form-control-lg" min="0.5" max="24" step="0.5" placeholder="Ej: 2.5" required>
+                    <div class="form-text mt-1">Valores permitidos: de 0.5 a 24 horas, en intervalos de 0.5.</div>
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="personas" class="form-label">Número de Personas</label>
@@ -43,6 +44,7 @@
                         placeholder="Ej: 4"
                         required
                     >
+                    <div class="form-text mt-1">Valores permitidos: de 1 a {{ tier_max_personas }} personas.</div>
                 </div>
                <div class="col-12 col-md-6">
                     <label class="form-label" for="exigencia">Exigencia</label>
@@ -87,8 +89,6 @@
                     </div>
                 </div>
                 {% endif %}
-
-                <br>
 
                 <div class="col-12 d-flex justify-content-end">
                     <button id="btn-generar-ruta" type="submit" class="btn btn-brand px-5">Generar la ruta</button>

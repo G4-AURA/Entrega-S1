@@ -214,8 +214,10 @@ class NormalizacionPayloadE2ETest(TestCase):
     @patch("creacion.services.validar_ciudad_existe", return_value=True)
     def test_payload_sin_moods_lanza_error(self, _mock_ciudad):
         datos = {**_PAYLOAD_FRONTEND, "mood": []}
-        with self.assertRaises(ErrorValidacionRuta):
+        with self.assertRaises(ErrorValidacionRuta) as ctx:
             normalizar_payload_ia(datos)
+
+        self.assertIn("temática", str(ctx.exception).lower())
 
     @patch("creacion.services.validar_ciudad_existe", return_value=True)
     def test_payload_con_deseos_personalizados_se_preservan(self, _mock_ciudad):
