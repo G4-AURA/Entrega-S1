@@ -794,10 +794,12 @@ function _initSessionCountdown() {
     if (!timerContainer || !timerValue) return;
 
     const MINUTE_MS = 60 * 1000;
+    const COUNTDOWN_STATUS_POLL_MS = 5000;
     const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
         ? duracionRutaHoras
         : 1;
     const countdownMs = Math.round(horasBase * 60 * 60 * 1000);
+    const countdownTotalMinutes = Math.max(1, Math.ceil(countdownMs / MINUTE_MS));
     let sesionIniciada = (typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso');
     let cronometroPausado = false;
     let startTimestamp = (typeof sesionFechaInicioEpochMs !== 'undefined' && Number.isFinite(sesionFechaInicioEpochMs))
@@ -818,22 +820,31 @@ function _initSessionCountdown() {
         if (!sesionIniciada) {
             pauseBtn.classList.add('d-none');
             pauseBtn.disabled = true;
-            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+            pauseBtn.textContent = 'Pausar cronómetro';
             return;
         }
 
         pauseBtn.classList.remove('d-none');
         pauseBtn.disabled = pauseBtnRequestInFlight;
         if (cronometroPausado) {
-            pauseBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Reanudar cronómetro';
+            pauseBtn.textContent = 'Reanudar cronómetro';
         } else {
-            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+            pauseBtn.textContent = 'Pausar cronómetro';
         }
+    };
+
+    const setCountdownProgress = (remainingMinutes) => {
+        const normalizedRemaining = Number.isFinite(remainingMinutes)
+            ? Math.max(0, Math.min(countdownTotalMinutes, Math.ceil(remainingMinutes)))
+            : countdownTotalMinutes;
+        const progress = 1 - (normalizedRemaining / countdownTotalMinutes);
+        timerContainer.style.setProperty('--countdown-progress', String(Math.max(0, Math.min(1, progress))));
     };
 
     const setWaitingUi = () => {
         stopTicker();
-        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
+        timerValue.textContent = _formatRemainingMinutes(countdownTotalMinutes);
+        setCountdownProgress(countdownTotalMinutes);
         timerContainer.classList.remove('finished', 'paused');
         timerContainer.classList.add('waiting');
     };
@@ -853,6 +864,7 @@ function _initSessionCountdown() {
         const render = () => {
             const remainingMinutes = Math.max(0, Math.ceil((endTimestamp - Date.now()) / MINUTE_MS));
             timerValue.textContent = _formatRemainingMinutes(remainingMinutes);
+            setCountdownProgress(remainingMinutes);
 
             if (remainingMinutes === 0) {
                 timerContainer.classList.add('finished');
@@ -878,6 +890,7 @@ function _initSessionCountdown() {
 
         if (Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0) {
             timerValue.textContent = _formatRemainingMinutes(remoteRemainingMinutes);
+            setCountdownProgress(remoteRemainingMinutes);
         }
     };
 
@@ -903,7 +916,7 @@ function _initSessionCountdown() {
             sesionIniciada = true;
             if (startBtn) {
                 startBtn.disabled = true;
-                startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+                startBtn.textContent = 'Cronómetro iniciado';
             }
             const remoteMinutes = Number(data.minutos_restantes);
             if (cronometroPausado) {
@@ -917,7 +930,7 @@ function _initSessionCountdown() {
             setWaitingUi();
             if (startBtn) {
                 startBtn.disabled = false;
-                startBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Iniciar cronómetro';
+                startBtn.textContent = 'Iniciar cronómetro';
             }
         }
         setPauseButtonState();
@@ -951,7 +964,7 @@ function _initSessionCountdown() {
     setPauseButtonState();
 
     fetchCountdownState();
-    countdownPollId = setInterval(fetchCountdownState, MINUTE_MS);
+    countdownPollId = setInterval(fetchCountdownState, COUNTDOWN_STATUS_POLL_MS);
 
     if (startBtn) {
         startBtn.addEventListener('click', () => {
@@ -1012,7 +1025,9 @@ function _initSessionCountdown() {
 
 function _formatRemainingMinutes(totalMinutes) {
     const safeMinutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.ceil(totalMinutes)) : 0;
-    return `${safeMinutes} min`;
+    const hours = Math.floor(safeMinutes / 60);
+    const minutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 
@@ -1700,6 +1715,8 @@ function _resaltarParadaSeleccionada(paradaId) {
         item.classList.remove('active', 'selected-stop');
         const stopName = item.querySelector('.timeline-stop-name');
         if (stopName) stopName.classList.add('text-muted');
+        const liveBadge = item.querySelector('.timeline-stop-live-badge');
+        if (liveBadge) liveBadge.classList.add('d-none');
     });
 
     document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
@@ -1721,6 +1738,8 @@ function _resaltarParadaSeleccionada(paradaId) {
         timelineItem.classList.add('selected-stop');
         const stopName = timelineItem.querySelector('.timeline-stop-name');
         if (stopName) stopName.classList.remove('text-muted');
+        const liveBadge = timelineItem.querySelector('.timeline-stop-live-badge');
+        if (liveBadge) liveBadge.classList.remove('d-none');
     }
 
     document.querySelectorAll('.parada-focus-btn').forEach(btn => {

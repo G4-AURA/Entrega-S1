@@ -95,24 +95,25 @@
                 <span style="color:var(--text-muted);font-size:.8rem;font-weight:500;">{{ sesion.ruta.titulo }}</span>
             </div>
 
-            <div class="session-countdown" id="session-countdown" aria-live="polite">
-                <span class="material-icons-round">timer</span>
-                <span>Tiempo restante</span>
-                <strong id="session-countdown-time">-- min</strong>
-            </div>
+            <div class="countdown-layout {% if es_guia %}countdown-layout-guia{% endif %}">
+                <div class="session-countdown" id="session-countdown" aria-live="polite">
+                    <span class="session-countdown-label">Tiempo restante</span>
+                    <div class="session-countdown-clock">
+                        <strong id="session-countdown-time">--:--</strong>
+                    </div>
+                </div>
 
-            {% if es_guia %}
-            <div class="countdown-controls">
-                <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
-                    <span class="material-icons-round">play_arrow</span>
-                    {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
-                </button>
-                <button id="pause-countdown-btn" class="start-countdown-btn countdown-pause-btn d-none">
-                    <span class="material-icons-round">pause</span>
-                    Pausar cronómetro
-                </button>
+                {% if es_guia %}
+                <div class="countdown-controls">
+                    <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
+                        {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
+                    </button>
+                    <button id="pause-countdown-btn" class="start-countdown-btn countdown-pause-btn d-none">
+                        Pausar cronómetro
+                    </button>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
 
             <div class="timeline">
                 {% for parada in paradas %}
@@ -121,8 +122,8 @@
                     <div class="timeline-item-main">
                         <div class="timeline-item-topline">
                             <span class="timeline-stop-order">Parada {{ parada.orden }}</span>
-                            {% if sesion.parada_actual_id == parada.id %}
-                            <span class="timeline-stop-live-badge">Actual</span>
+                            {% if not es_guia %}
+                            <span class="timeline-stop-live-badge {% if sesion.parada_actual_id != parada.id %}d-none{% endif %}">Actual</span>
                             {% endif %}
                         </div>
                         <h6 class="timeline-stop-name {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">

@@ -156,26 +156,35 @@ main.container {
 .session-chat-switch {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
     margin-left: auto;
 }
 
 .session-chat-switch-btn {
-    border: 1px solid var(--border-color);
-    background: #ffffff;
-    color: var(--text-secondary);
+    min-height: 48px;
+    min-width: 120px;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    background: rgba(255, 255, 255, 0.95);
+    color: #1e293b;
     border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 0.72rem;
-    font-weight: 700;
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: 0.01em;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s ease, transform 0.12s ease;
 }
 
 .session-chat-switch-btn.active {
     border-color: var(--brand-color);
-    background: var(--brand-color);
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
     color: #ffffff;
+    box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
+}
+
+.session-chat-switch-btn:hover {
+    transform: translateY(-1px);
 }
 
 .panel-header {
@@ -279,22 +288,27 @@ main.container {
     padding: 4px 2px 12px;
 }
 
+.countdown-layout {
+    display: block;
+}
+
 .session-countdown {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: 1fr;
     align-items: center;
-    gap: 10px;
+    justify-items: center;
+    text-align: center;
+    gap: 6px;
     margin: 8px 0 12px;
-    padding: 11px 12px;
+    padding: 14px 12px;
     border-radius: 14px;
     border: 1px solid #c7d2fe;
     background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
     color: #312e81;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 700;
     font-family: 'Manrope', sans-serif;
-    width: 100%;
-    max-width: 420px;
+    width: min(100%, 420px);
     box-shadow: 0 14px 24px rgba(67, 56, 202, 0.14);
     position: relative;
     overflow: hidden;
@@ -310,19 +324,51 @@ main.container {
     animation: sessionCountdownPulse 1.7s infinite;
 }
 
-.session-countdown .material-icons-round {
-    font-size: 17px;
+.session-countdown-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    color: #4338ca;
+    font-weight: 800;
+}
+
+.session-countdown-clock {
+    --countdown-progress: 0;
+    position: relative;
+    width: 126px;
+    height: 126px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: conic-gradient(
+        #4f46e5 calc(var(--countdown-progress) * 1turn),
+        rgba(79, 70, 229, 0.18) 0
+    );
+    padding: 9px;
+    box-shadow: 0 10px 22px rgba(79, 70, 229, 0.2);
+}
+
+.session-countdown-clock::before {
+    content: '';
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid rgba(67, 56, 202, 0.16);
 }
 
 .session-countdown strong {
-    font-size: 0.93rem;
-    letter-spacing: 0.03em;
-    margin-left: 0;
-    padding: 6px 9px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.78);
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 1.55rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
     color: #1e1b4b;
-    border: 1px solid rgba(67, 56, 202, 0.2);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+    z-index: 1;
+    pointer-events: none;
 }
 
 .session-countdown.finished {
@@ -331,16 +377,31 @@ main.container {
     color: #991b1b;
 }
 
+.session-countdown.finished .session-countdown-clock {
+    background: conic-gradient(#dc2626 1turn, rgba(220, 38, 38, 0.2) 0);
+}
+
 .session-countdown.waiting {
     border-color: #fed7aa;
     background: #fff7ed;
     color: #9a3412;
 }
 
+.session-countdown.waiting .session-countdown-clock {
+    background: conic-gradient(rgba(249, 115, 22, 0.35) 0turn, rgba(249, 115, 22, 0.22) 0);
+}
+
 .session-countdown.paused {
     border-color: #facc15;
     background: linear-gradient(135deg, #fef9c3 0%, #fef3c7 100%);
     color: #92400e;
+}
+
+.session-countdown.paused .session-countdown-clock {
+    background: conic-gradient(
+        #f59e0b calc(var(--countdown-progress) * 1turn),
+        rgba(245, 158, 11, 0.22) 0
+    );
 }
 
 .session-countdown.paused::before {
@@ -384,6 +445,29 @@ main.container {
     cursor: pointer;
     transition: all 0.2s;
     box-shadow: 0 12px 18px rgba(79, 70, 229, 0.25);
+}
+
+@media (min-width: 1024px) {
+    .tour-panel.role-guia .countdown-layout-guia {
+        display: grid;
+        grid-template-columns: minmax(290px, 420px) 1fr;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .tour-panel.role-guia .countdown-controls {
+        margin: 0;
+        justify-content: flex-end;
+        align-items: center;
+    }
+
+    .tour-panel.role-guia .start-countdown-btn {
+        min-width: 210px;
+    }
+
+    .tour-panel.role-guia .session-countdown {
+        margin: 8px 0;
+    }
 }
 
 .start-countdown-btn:hover:not(:disabled) {
@@ -451,22 +535,6 @@ main.container {
 
 .timeline-item.selected-stop .timeline-stop-name {
     color: #c2410c !important;
-}
-
-.tour-panel.role-turista .timeline-item.selected-stop::after {
-    content: 'Parada actual';
-    position: absolute;
-    top: 10px;
-    right: 12px;
-    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-    color: #ffffff;
-    font-size: 0.66rem;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    border-radius: 999px;
-    padding: 4px 8px;
-    box-shadow: 0 8px 16px rgba(234, 88, 12, 0.3);
 }
 
 .timeline-item-topline {
@@ -1027,6 +1095,8 @@ body.session-overlay-open .leaflet-control-container {
     .session-chat-switch-btn {
         flex: 1;
         text-align: center;
+        min-height: 50px;
+        font-size: 0.94rem;
     }
 
     .timeline-item,
