@@ -18,6 +18,7 @@
 
 **Tipo de documento:** Documento adicional de análisis
 **Versión:** v1.0  
+**Fecha:** 14/04/2026  
 </div>
 
 ---
