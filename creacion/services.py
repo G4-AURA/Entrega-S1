@@ -1786,7 +1786,7 @@ def _seleccionar_mejor_alternativa(alternativas):
 # Grafo y orquestación
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str) -> dict:
+def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str, historial_id: int = None) -> dict:
     """
     Invoca el pipeline completo de 4 nodos (generacion → validacion →
     scoring → optimizacion) para una variación concreta del prompt.
@@ -1796,9 +1796,10 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str) -> dict:
             'ruta':                          dict,
             'metricas':                      {distancia_total_km, diversidad, coherencia_tematica},
             'paradas_rechazadas_validacion': list[dict],
+            'telemetria':                    dict,
         }
     """
-    payload_variacion = {**payload, '_variacion': variacion}
+    payload_variacion = {**payload, '_variacion': variacion, '_historial_id': historial_id}
     grafo = _GRAFO_COMPILADO
 
     try:
@@ -1821,37 +1822,107 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str) -> dict:
         'coherencia_tematica': 0.5,
     }
     razones_descarte = state_resultado.get('razones_descarte') or []
+    telemetria = state_resultado.get('telemetria') or {}
 
     return {
         'ruta': ruta,
         'metricas': metricas,
         'paradas_rechazadas_validacion': razones_descarte,
+        'telemetria': telemetria,
     }
 
 
-def consultar_langgraph(prompt_params: dict) -> dict:
+def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
+    """
+    Orquestador principal simplificado para generación asíncrona.
+    Realiza un intento optimizado y registra telemetría.
+    """
+    variacion = "Direct optimization"
     try:
-        num_alternativas = int(prompt_params.get('num_alternativas', 3))
-    except (TypeError, ValueError):
-        num_alternativas = 3
+        # Se realiza una única generación robusta
+        alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion, historial_id=historial_id)
+    except ErrorIntegracionIA as exc:
+        raise ErrorIntegracionIA("No se pudo generar la ruta tras el intento optimizado.") from exc
 
-    num_alternativas = max(1, min(MAX_ALTERNATIVAS_RUTA, num_alternativas))
-
-    alternativas = []
-    for idx in range(num_alternativas):
-        variacion = _VARIACIONES_ALTERNATIVA[idx % len(_VARIACIONES_ALTERNATIVA)]
+    ruta_final = alternativa['ruta']
+    ruta_final['paradas_rechazadas_validacion'] = alternativa.get('paradas_rechazadas_validacion') or []
+    ruta_final['telemetria'] = alternativa.get('telemetria') or {}
+    
+    # Si tenemos historial_id, actualizamos los tiempos en DB
+    if historial_id:
         try:
-            alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion)
-        except ErrorIntegracionIA:
-            continue
-        alternativas.append(alternativa)
+            historial = Historial_ia.objects.get(id=historial_id)
+            tele = alternativa.get('telemetria', {})
+            historial.duracion_generacion = tele.get('duracion_generacion')
+            historial.duracion_validacion = tele.get('duracion_validacion')
+            historial.duracion_scoring = tele.get('duracion_scoring')
+            historial.duracion_optimizacion = tele.get('duracion_optimizacion')
+            historial.etapa_actual = 'finalizado'
+            historial.save()
+        except Historial_ia.DoesNotExist:
+            logger.warning(f"No se encontró Historial_ia {historial_id} para grabar telemetría.")
 
-    mejor, evaluadas = _seleccionar_mejor_alternativa(alternativas)
-    ruta_final = mejor['ruta']
-    ruta_final['paradas_rechazadas_validacion'] = mejor.get('paradas_rechazadas_validacion') or []
-    ruta_final['alternativas_evaluadas'] = [
-        {'score_total': a.get('score_total'), 'metricas': a.get('metricas')}
-        for a in evaluadas
-    ]
-    ruta_final['metricas_seleccion'] = mejor.get('metricas')
     return ruta_final
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Servicios de Gestión de Historial y Progreso
+# ─────────────────────────────────────────────────────────────────────────────
+
+def pre_crear_historial_ia(payload: dict, sesion_id: str = None) -> Historial_ia:
+    """
+    Crea un registro inicial de Historial_ia para seguimiento por Polling.
+    """
+    return Historial_ia.objects.create(
+        prompt=json.dumps(payload),
+        respuesta={},
+        estado_tarea='en_progreso',
+        etapa_actual='iniciando',
+        sesion_id=sesion_id
+    )
+
+def registrar_resultado_final_ia(historial_id: int, resultado: dict):
+    """
+    Guarda el JSON final de la ruta y marca la tarea como completada.
+    """
+    Historial_ia.objects.filter(id=historial_id).update(
+        respuesta=resultado,
+        estado_tarea='completado',
+        etapa_actual='finalizado'
+    )
+
+def registrar_error_ia(historial_id: int, mensaje: str):
+    """
+    Registra el fallo de la generación para informar al frontend.
+    """
+    Historial_ia.objects.filter(id=historial_id).update(
+        mensaje_error=mensaje,
+        estado_tarea='error',
+        etapa_actual='error'
+    )
+
+def calcular_progreso_historial(historial: Historial_ia) -> dict:
+    """
+    Calcula el porcentaje de progreso y ETA basado en la etapa actual.
+    """
+    mapa_progreso = {
+        'iniciando': {'porcentaje': 10, 'eta': 45},
+        'generacion': {'porcentaje': 30, 'eta': 35},
+        'validacion': {'porcentaje': 60, 'eta': 20},
+        'scoring': {'porcentaje': 80, 'eta': 10},
+        'optimizacion': {'porcentaje': 90, 'eta': 5},
+        'finalizado': {'porcentaje': 100, 'eta': 0},
+        'error': {'porcentaje': 0, 'eta': 0},
+    }
+    
+    config = mapa_progreso.get(historial.etapa_actual, {'porcentaje': 0, 'eta': 0})
+    
+    return {
+        'historial_id': historial.id,
+        'estado_tarea': historial.estado_tarea,
+        'etapa_actual': historial.etapa_actual,
+        'cargando_porcentaje': config['porcentaje'],
+        'eta_segundos': config['eta'],
+        'mensaje_error': historial.mensaje_error,
+        'datos_ruta': historial.respuesta if historial.estado_tarea == 'completado' else None
+    }

@@ -478,10 +478,17 @@ def completar_lista_paradas_validadas(
             nombres_bloqueados.add(nombre_validada)
         coords_bloqueadas.add(coords_validada_key)
 
-    if len(aceptadas) != cantidad_objetivo:
+    MIN_PARADAS_EXITO = 3
+    if len(aceptadas) < MIN_PARADAS_EXITO:
         raise NoConvergenciaCoordenadasError(
-            f'No fue posible completar {cantidad_objetivo} paradas válidas '
+            f'No fue posible completar el mínimo de {MIN_PARADAS_EXITO} paradas válidas '
             f'tras validar coordenadas (obtenidas {len(aceptadas)}/{cantidad_objetivo}, presupuesto={presupuesto_global}).'
+        )
+    
+    if len(aceptadas) < cantidad_objetivo:
+        logger.warning(
+            f'Éxito parcial en validación: se obtuvieron {len(aceptadas)} de {cantidad_objetivo} paradas '
+            f'solicitadas (limite Gemini/Geocoding).'
         )
 
     return aceptadas

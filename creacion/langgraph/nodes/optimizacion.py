@@ -15,6 +15,7 @@ from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
     crear_matriz_datos,
     serializar_parada_ruta_final,
+    medir_tiempo_nodo,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ def _formatear_titulo_mood(mood) -> str:
     return str(mood).strip().capitalize() if mood else "Turística"
 
 
+@medir_tiempo_nodo
 def nodo_optimizacion(state: State) -> dict:
     """
     Ordena los POIs validados con el algoritmo TSP de OR-Tools.

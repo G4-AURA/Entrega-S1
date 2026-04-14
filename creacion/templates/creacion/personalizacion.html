@@ -1,6 +1,5 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load static %}
 
 {% block title %}AURA - Personalización de Ruta{% endblock %}
 
@@ -138,11 +137,22 @@
     </div>
 </section>
 
-<div id="pantalla-carga" class="loading-overlay">
+<div id="pantalla-carga" class="loading-overlay" style="display: none;">
     <div class="card p-5 text-center shadow-lg border-0 loading-overlay__card">
         <div class="spinner-border text-primary mx-auto mb-4 loading-overlay__spinner"></div>
         <h5 id="loading-status-title">Generando ruta...</h5>
-        <p id="loading-status-detail" class="text-muted small mb-0">Preparando el proceso...</p>
+        <p id="loading-status-detail" class="text-muted small mb-3">Preparando el proceso...</p>
+        
+        <div class="progress mb-2" style="height: 8px;">
+            <div id="loading-progress-bar" 
+                 class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                 role="progressbar" 
+                 style="width: 0%" 
+                 aria-valuenow="0" 
+                 aria-valuemin="0" 
+                 aria-valuemax="100"></div>
+        </div>
+        <small id="loading-eta" class="text-muted font-monospace" style="font-size: 0.75rem;"></small>
     </div>
 </div>
 {% endblock %}
@@ -154,11 +164,12 @@
     "csrfToken": "{{ csrf_token }}",
     "mapboxToken": "{{ MAPBOX_ACCESS_TOKEN }}",
     "limits": {
-        "personasMax": {{ tier_max_personas }},
-        "paradasMax": {{ tier_max_stops }}
+        "personasMax": {{ tier_max_personas|default:50 }},
+        "paradasMax": {{ tier_max_stops|default:15 }}
     },
     "urls": {
         "generar": "{% url 'creacion:generar_ruta_ia' %}",
+        "progreso": "{% url 'creacion:obtener_progreso_ia' historial_id=0 %}",
         "confirmar": "{% url 'creacion:confirmar_ruta_ia' %}",
         "adicionales": "{% url 'creacion:generar_paradas_adicionales_ia' %}",
         "obtenerSesion": "{% url 'creacion:obtener_sesion_generacion_ia' session_id='__SESSION_ID__' %}"

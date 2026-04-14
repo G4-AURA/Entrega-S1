@@ -21,11 +21,12 @@ from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
     calcular_objetivo_paradas_ia,
     normalizar_poi_para_optimizacion,
+    medir_tiempo_nodo,
 )
 
 logger = logging.getLogger(__name__)
 
-
+@medir_tiempo_nodo
 def nodo_validacion(state: State) -> dict:
     """
     Valida coordenadas, deduplica y completa la lista de POIs.

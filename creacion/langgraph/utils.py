@@ -14,6 +14,8 @@ import json
 import logging
 import math
 import os
+import time
+from functools import wraps
 
 import requests
 from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
@@ -63,7 +65,7 @@ def _leer_int_env(nombre: str, default: int) -> int:
         return default
 
 
-def _llamar_gemini_con_clave(prompt: str, api_key: str) -> list | dict:
+def _llamar_gemini_con_clave(prompt: str, api_key: str, historial_id: int = None) -> list | dict:
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
@@ -131,31 +133,63 @@ def _llamar_gemini_con_clave(prompt: str, api_key: str) -> list | dict:
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
 
 
-def llamar_gemini(prompt: str) -> list | dict:
+def llamar_gemini(prompt: str, historial_id: int = None) -> list | dict:
     """
-    Llama a Gemini y devuelve la respuesta parseada como JSON.
-    Lanza ErrorIntegracionIA ante cualquier fallo.
+    Intenta llamar a Gemini rotando por todas las claves disponibles.
     """
-    claves = list(iter_gemini_api_keys())
-    if not claves:
-        raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
-    ultimo_error_cuota: Exception | None = None
-    for indice, clave in enumerate(claves, start=1):
+    for clave in iter_gemini_api_keys():
         try:
-            return _llamar_gemini_con_clave(prompt, clave)
-        except _GeminiQuotaError as exc:
-            ultimo_error_cuota = exc
-            logger.warning(
-                'Gemini devolvió cuota/429 en clave %s/%s; se intenta fallback.',
-                indice,
-                len(claves),
-            )
+            return _llamar_gemini_con_clave(prompt, clave, historial_id=historial_id)
+        except _GeminiQuotaError:
+            logger.warning('Gemini devolvió cuota/429; se intenta fallback.')
             continue
+        except Exception as e:
+            logger.error('Error llamando a Gemini con clave actual: %s', e)
+            continue
+    
+    raise ErrorIntegracionIA('Todas las claves de Gemini han fallado o agotado cuota.')
 
-    if ultimo_error_cuota is not None:
-        raise ErrorIntegracionIA('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
 
-    raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.')
+# ─────────────────────────────────────────────────────────────────────────────
+# Decorador de Telemetría
+# ─────────────────────────────────────────────────────────────────────────────
+
+def medir_tiempo_nodo(funcion_nodo):
+    """
+    Decorador para medir el tiempo de ejecución de un nodo de LangGraph
+    y actualizar el estado con la duración correspondiente.
+    """
+    @wraps(funcion_nodo)
+    def wrapper(state):
+        nombre_nodo = funcion_nodo.__name__.replace('nodo_', '')
+
+        # Actualización de etapa para el polling en tiempo real
+        historial_id = state.get('usuario_input', {}).get('_historial_id')
+        if historial_id:
+            try:
+                from creacion.models import Historial_ia
+                Historial_ia.objects.filter(id=historial_id).update(etapa_actual=nombre_nodo)
+            except Exception as e:
+                logger.warning(f"Error actualizando etapa_actual en {nombre_nodo}: {e}")
+
+        inicio = time.perf_counter()
+        resultado = {}
+        
+        try:
+            resultado = funcion_nodo(state)
+        except Exception:
+            raise
+        finally:
+            fin = time.perf_counter()
+            duracion = fin - inicio
+            if isinstance(resultado, dict):
+                if 'telemetria' not in resultado:
+                    resultado['telemetria'] = {}
+                resultado['telemetria'][f'duracion_{nombre_nodo}'] = duracion
+        
+        return resultado
+    
+    return wrapper
 
 
 # ─────────────────────────────────────────────────────────────────────────────

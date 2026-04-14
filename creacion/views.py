@@ -5,8 +5,9 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
+from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from billing.tier_guard import (
     TierRuleViolation,
@@ -29,6 +30,7 @@ from billing.tier_guard import (
 )
 from creacion import services
 from creacion.services import consultar_langgraph
+from creacion.tasks import tarea_generar_ruta_ia
 from rutas.models import Guia, Ruta
 
 logger = logging.getLogger(__name__)
@@ -153,174 +155,60 @@ def generar_ruta_ia(request):
         except TierRuleViolation as exc:
             return tier_error_response(exc)
 
-        modo_seleccion = bool(datos.get('modo_seleccion'))
         payload = services.normalizar_payload_ia(datos)
         try:
             ensure_route_people_count_allowed(guia, payload.get('personas'))
         except TierRuleViolation as exc:
             return tier_error_response(exc)
 
-        sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload)
+        sesion_generacion = services.crear_estado_sesion_generacion(request, payload=payload, checkpoint='procesando_ia')
+        
+        historial = services.pre_crear_historial_ia(payload, sesion_id=sesion_generacion['session_id'])
+        
+        # Disparar tarea en segundo plano
+        tarea_generar_ruta_ia.delay(payload, historial.id)
 
-        ruta_generada = consultar_langgraph(payload)
-        if not isinstance(ruta_generada, dict):
-            raise services.ErrorValidacionRuta('La IA devolvió un formato de ruta no válido.')
-
-        stops_limited, stop_warning = clamp_generated_stops_to_tier(
-            guia,
-            ruta_generada.get('paradas'),
-        )
-        if stop_warning:
-            tier_warnings = [*tier_warnings, stop_warning]
-            ruta_generada = dict(ruta_generada)
-            ruta_generada['paradas'] = stops_limited
-
-        try:
-            ensure_route_people_count_allowed(
-                guia,
-                ruta_generada.get('num_personas') or payload.get('personas'),
-            )
-            ensure_moods_allowed(
-                guia,
-                ruta_generada.get('mood') or payload.get('mood') or [],
-            )
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
-
-        estado_propuesta = services.avanzar_checkpoint_sesion_generacion(
-            request,
-            sesion_generacion['session_id'],
-            checkpoint='ruta_generada',
-            paradas_propuestas=ruta_generada.get('paradas') or [],
-            datos_extra={
-                'ruta_generada_base': {
-                    'titulo': ruta_generada.get('titulo'),
-                    'descripcion': ruta_generada.get('descripcion'),
-                    'duracion_horas': ruta_generada.get('duracion_horas') or ruta_generada.get('duracion_estimada'),
-                    'num_personas': ruta_generada.get('num_personas'),
-                    'nivel_exigencia': ruta_generada.get('nivel_exigencia') or payload.get('exigencia'),
-                    'mood': ruta_generada.get('mood') or payload.get('mood') or [],
-                }
-            },
-        )
-
-        for parada_rechazada in ruta_generada.get('paradas_rechazadas_validacion') or []:
-            estado_propuesta = services.avanzar_checkpoint_sesion_generacion(
-                request,
-                sesion_generacion['session_id'],
-                checkpoint='validacion_paradas',
-                parada_rechazada={
-                    'nombre': parada_rechazada.get('nombre'),
-                    'coordenadas': parada_rechazada.get('coordenadas'),
-                },
-                motivo_rechazo=parada_rechazada.get('motivo_rechazo') or 'Parada inválida detectada automáticamente.',
-            )
-
-        if modo_seleccion:
-            record_ai_generation_usage(guia)
-            return JsonResponse(
-                {
-                    'status': 'OK',
-                    'mensaje': 'Ruta propuesta generada. Selecciona las paradas que deseas guardar.',
-                    'sesion_generacion_id': sesion_generacion['session_id'],
-                    'checkpoint_actual': estado_propuesta.get('checkpoint_actual'),
-                    'datos_ruta': {
-                        **ruta_generada,
-                        'paradas': estado_propuesta.get('paradas_propuestas') or [],
-                    },
-                    'warnings': tier_warnings,
-                },
-                status=200,
-            )
-
-        try:
-            ensure_route_stop_count_allowed(
-                guia,
-                len((ruta_generada or {}).get('paradas') or []),
-            )
-            ensure_route_people_count_allowed(
-                guia,
-                ruta_generada.get('num_personas') or payload.get('personas'),
-            )
-            ensure_moods_allowed(
-                guia,
-                ruta_generada.get('mood') or payload.get('mood') or [],
-            )
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
-
-        ruta_guardada = _guardar_ruta_ia_en_bd(guia=guia, payload=payload, ruta_generada=ruta_generada)
-        estado_actualizado = services.avanzar_checkpoint_sesion_generacion(
-            request,
-            sesion_generacion['session_id'],
-            checkpoint='ruta_guardada',
-            datos_extra={'ruta_id': ruta_guardada.id},
-        )
-        record_ai_generation_usage(guia)
-
-        ruta_generada['checkpoint_contexto'] = {
-            'restricciones_usuario': estado_actualizado.get('restricciones_usuario') or [],
-            'paradas_rechazadas': estado_actualizado.get('paradas_rechazadas') or [],
-        }
-
-        advertencias = []
-        advertencia_historial = services.guardar_historial_ruta_ia(payload, ruta_generada)
-        if advertencia_historial:
-            advertencias.append(advertencia_historial)
-
-        response_data = {
+        # Retornar 202 Accepted para que el frontend inicie el polling
+        return JsonResponse({
             'status': 'OK',
-            'mensaje': 'Ruta generada, optimizada y guardada correctamente.',
-            'ruta_id': ruta_guardada.id,
-            'sesion_generacion_id': sesion_generacion['session_id'],
-            'checkpoint_actual': estado_actualizado.get('checkpoint_actual'),
-            'datos_ruta': ruta_generada,
+            'mensaje': 'Generación de ruta iniciada',
             'datos': {
-                'ruta_id': ruta_guardada.id,
-                'ruta': ruta_generada,
+                'historial_id': historial.id,
                 'sesion_generacion_id': sesion_generacion['session_id'],
-            },
-        }
-        if advertencias:
-            response_data['advertencias'] = advertencias
-            response_data['datos']['advertencias'] = advertencias
-        if tier_warnings:
-            response_data['warnings'] = tier_warnings
+                'checkpoint_actual': 'procesando_ia',
+                'warnings': tier_warnings,
+            }
+        }, status=202)
 
-        return JsonResponse(response_data, status=200)
-    except services.ErrorValidacionRuta as exc:
-        logger.warning('Error de validación en generar_ruta_ia: %s', exc)
-        errores = exc.errores if isinstance(exc.errores, dict) else {'general': str(exc)}
-        mensaje = (
-            errores.get('general')
-            or errores.get('mood')
-            or next((str(valor) for valor in errores.values() if valor), 'Error en los datos.')
-        )
-        return JsonResponse({'status': 'ERROR', 'mensaje': mensaje, 'errores': errores}, status=400)
-    except ValueError as exc:
-        logger.warning('Error de validación en generar_ruta_ia: %s', exc)
-        return JsonResponse({'status': 'ERROR', 'mensaje': f'Error en los datos: {str(exc)}'}, status=400)
-    except services.ErrorSesionGeneracionNoEncontrada as exc:
-        logger.warning('Sesión de generación no encontrada en generar_ruta_ia: %s', exc)
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=404)
-    except services.ErrorSesionGeneracionExpirada as exc:
-        logger.warning('Sesión de generación expirada en generar_ruta_ia: %s', exc)
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
-    except services.ErrorIntegracionIA as exc:
-        logger.warning('Error de integración IA en generar_ruta_ia: %s', exc)
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=502)
-    except services.ErrorPersistenciaRuta as exc:
-        logger.exception('Error de persistencia en generar_ruta_ia')
-        return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
-    except Exception as exc:
-        logger.exception('Error inesperado en generar_ruta_ia')
-        return JsonResponse(
-            {
-                'status': 'ERROR',
-                'mensaje': 'Se produjo un error inesperado al generar la ruta. Inténtalo de nuevo.',
-            },
-            status=500,
-        )
+    except services.ErrorRutaBase as e:
+        logger.warning(f"Error controlado en generar_ruta_ia: {e}")
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(e)}, status=400)
+    except Exception as e:
+        logger.error(f"Error inesperado en generar_ruta_ia: {e}", exc_info=True)
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'Ocurrió un error inesperado al procesar la solicitud.'}, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def obtener_progreso_ia(request, historial_id):
+    """
+    Endpoint de polling para consultar el estado y progreso de la generación de IA.
+    """
+    try:
+        from .models import Historial_ia
+        historial = Historial_ia.objects.get(id=historial_id)
+        
+        progreso = services.calcular_progreso_historial(historial)
+        
+        return JsonResponse({
+            'status': 'OK',
+            'datos': progreso
+        })
+    except Historial_ia.DoesNotExist:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'No se encontró el registro de historial.'}, status=404)
+    except Exception as e:
+        logger.error(f"Error en obtener_progreso_ia: {e}")
+        return JsonResponse({'status': 'ERROR', 'mensaje': str(e)}, status=500)
 
 
 @csrf_exempt
@@ -342,8 +230,10 @@ def confirmar_ruta_ia(request):
 
     sesion_generacion_id = str(body.get('sesion_generacion_id') or '').strip()
     seleccion_indices = body.get('seleccion_indices') or []
+    
     if not sesion_generacion_id:
         return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes indicar la sesión de generación.'}, status=400)
+    
     if not isinstance(seleccion_indices, list):
         return JsonResponse({'status': 'ERROR', 'mensaje': 'La selección de paradas no es válida.'}, status=400)
 
@@ -360,14 +250,45 @@ def confirmar_ruta_ia(request):
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=410)
 
     paradas_propuestas = estado.get('paradas_propuestas') or []
+    
+    # RECONCILIACIÓN ASÍNCRONA: Si la sesión no tiene las paradas, buscarlas en Historial_ia
     if not paradas_propuestas:
-        return JsonResponse({'status': 'ERROR', 'mensaje': 'No hay paradas propuestas para esta sesión.'}, status=400)
+        from .models import Historial_ia
+        try:
+            historial = Historial_ia.objects.filter(sesion_id=sesion_generacion_id, estado_tarea='completado').latest('momento')
+            if historial.respuesta and 'paradas' in historial.respuesta:
+                paradas_propuestas = historial.respuesta['paradas']
+                # Persistir en la sesión para evitar nuevas consultas y permitir modificaciones
+                estado['paradas_propuestas'] = paradas_propuestas
+                
+                # Asegurar que las claves existen antes de asignar
+                if 'contexto_generacion' not in estado or estado['contexto_generacion'] is None:
+                    estado['contexto_generacion'] = {}
+                
+                estado['contexto_generacion']['ruta_generada_base'] = {
+                    k: v for k, v in historial.respuesta.items() if k != 'paradas'
+                }
+                
+                # Guardar manualmente en el store de la sesión
+                estado['checkpoint_actual'] = 'confirmacion_pendiente'
+                store = services._obtener_store_sesiones_generacion(request)
+                store[sesion_generacion_id] = estado
+                request.session[services.SESION_GENERACION_STORE_KEY] = store
+                request.session.modified = True
+        except Historial_ia.DoesNotExist:
+            return JsonResponse({'status': 'ERROR', 'mensaje': 'No se encontraron paradas propuestas para esta sesión. Verifica que la generación haya terminado.'}, status=400)
+        except Exception as e:
+            logger.exception(f"Error inesperado en reconciliación de confirmar_ruta_ia: {e}")
+            return JsonResponse({'status': 'ERROR', 'mensaje': f'Error interno durante la sincronización: {str(e)}'}, status=500)
+
+    if not paradas_propuestas:
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'No hay paradas propuestas disponibles para confirmar.'}, status=400)
 
     if not indices:
         return JsonResponse({'status': 'ERROR', 'mensaje': 'Debes seleccionar al menos una parada.'}, status=400)
 
     if indices[-1] >= len(paradas_propuestas) or indices[0] < 0:
-        return JsonResponse({'status': 'ERROR', 'mensaje': 'La selección de paradas no es válida.'}, status=400)
+        return JsonResponse({'status': 'ERROR', 'mensaje': 'La selección de paradas no es válida para la ruta actual.'}, status=400)
 
     paradas_seleccionadas = [paradas_propuestas[idx] for idx in indices]
     paradas_rechazadas = [
