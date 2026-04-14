@@ -75,6 +75,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware', # <--- Whitenoise para estáticos
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'config.middleware.ApiErrorMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -137,7 +138,7 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        'NAME': 'config.validators.ExplainableCommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
@@ -165,6 +166,13 @@ CELERY_TIMEZONE = TIME_ZONE
 USE_REDIS_CACHE = os.getenv('USE_REDIS_CACHE', 'False').lower() in ('true', '1', 't')
 REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL', 'redis://localhost:6379/1')
 ROUTE_SNAPSHOT_CACHE_TTL = int(os.getenv('ROUTE_SNAPSHOT_CACHE_TTL', '180'))
+
+# --- TOUR LOCATION UPDATE THRESHOLDS ---
+# Backend dedup thresholds for GPS updates sent during live tours.
+TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS = float(os.getenv('TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS', '3.0'))
+TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS = float(os.getenv('TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS', '4.0'))
+TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS = float(os.getenv('TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS', '10.0'))
+TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS = float(os.getenv('TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS', '8.0'))
 
 if USE_REDIS_CACHE:
     CACHES = {
@@ -208,9 +216,33 @@ LOGOUT_REDIRECT_URL = '/'
 
 
 # --- API KEYS ---
+
+def _parse_csv_env_list(raw_value: str | None) -> tuple[str, ...]:
+    """Parses comma/newline separated env values preserving order and uniqueness."""
+    if not raw_value:
+        return tuple()
+
+    values = str(raw_value).replace('\n', ',').split(',')
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+    return tuple(deduped)
+
+
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_API_KEYS = _parse_csv_env_list(os.getenv('GEMINI_API_KEYS'))
+
+if GEMINI_API_KEYS:
+    GEMINI_API_KEY = GEMINI_API_KEYS[0]
+elif GEMINI_API_KEY:
+    GEMINI_API_KEYS = (GEMINI_API_KEY,)
 
 
 # --- STRIPE (TIERS FREEMIUM/PREMIUM) ---

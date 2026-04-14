@@ -39,14 +39,18 @@
 
     {# ── Panel métricas (S2.1-29) ─────────────────────────────────────────── #}
     <div id="panel-metricas" class="ruta-metrics-panel">
-        {% if distancia_total_km and duracion_total_min %}
+        {% if distancia_total_km != None or duracion_total_min != None %}
+            {% if distancia_total_km != None %}
             <span class="metric-item">
                 📍 Distancia: <span class="metric-value" id="val-distancia">{{ distancia_total_km }} km</span>
             </span>
-            <span class="metric-sep">|</span>
+            {% endif %}
+            {% if distancia_total_km != None and duracion_total_min != None %}<span class="metric-sep">|</span>{% endif %}
+            {% if duracion_total_min != None %}
             <span class="metric-item">
                 ⏱️ Tiempo: <span class="metric-value" id="val-duracion">{{ duracion_total_min }} min</span>
             </span>
+            {% endif %}
             <span class="metric-sep">|</span>
             <span class="metric-item">
                 🚶 <span class="metric-value">{{ paradas|length }} paradas</span>
@@ -263,7 +267,7 @@
                     </div>
 
                     {% if parada.descripcion %}
-                    <div class="small text-muted fst-italic mt-1">{{ parada.descripcion }}</div>
+                    <div class="small text-muted fst-italic mt-1 parada-descripcion">{{ parada.descripcion }}</div>
                     {% endif %}
 
                     <div class="small text-muted">
@@ -287,13 +291,23 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm btn-editar-parada"
                                 data-parada-id="{{ parada.id }}">Editar</button>
-                        {% if ruta.es_generada_ia %}
+                        {% if ruta.es_generada_ia and ai_stop_replacement_enabled %}
                         <button type="button"
                                 class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
                                 data-parada-id="{{ parada.id }}">
                             ✨ IA
                         </button>
                         {% endif %}
+                        <button type="button"
+                                class="btn btn-outline-info btn-sm btn-generar-curiosidad-ia"
+                            data-parada-id="{{ parada.id }}"
+                            data-tiene-curiosidad="{% if parada.id in paradas_con_curiosidad %}1{% else %}0{% endif %}">
+                            {% if parada.id in paradas_con_curiosidad %}
+                                Editar Curiosidad
+                            {% else %}
+                                Añadir Curiosidad
+                            {% endif %}
+                        </button>
                         <form method="post" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
@@ -304,7 +318,7 @@
                         </form>
                     </div>
 
-                    {% if ruta.es_generada_ia %}
+                    {% if ruta.es_generada_ia and ai_stop_replacement_enabled %}
                         <div class="ia-suggestions-panel ia-suggestions-inline d-none"
                              id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
                             <div class="d-flex align-items-center justify-content-between">
@@ -315,6 +329,81 @@
                         </div>
                     {% endif %}
 
+                    <div class="ia-curiosidad-panel d-none mt-2"
+                         id="panel-generar-curiosidad-{{ parada.id }}" aria-live="polite">
+                        <div class="border rounded p-3 bg-light">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <strong class="small" id="titulo-panel-curiosidad-{{ parada.id }}">
+                                    {% if parada.id in paradas_con_curiosidad %}
+                                        Editar Curiosidad
+                                    {% else %}
+                                        Añadir Curiosidad Manual
+                                    {% endif %}
+                                </strong>
+                                <button type="button" class="btn btn-sm btn-link btn-cerrar-curiosidad"
+                                        data-parada-id="{{ parada.id }}">✕</button>
+                            </div>
+                            <div id="estado-generar-curiosidad-{{ parada.id }}" class="small text-muted mb-2"></div>
+                            <div id="acciones-curiosidad-{{ parada.id }}" class="mb-2 d-none">
+                                <button type="button" class="btn btn-danger btn-sm btn-eliminar-curiosidad-existente"
+                                        data-parada-id="{{ parada.id }}">
+                                    Eliminar curiosidad existente
+                                </button>
+                            </div>
+                            <form id="form-guardar-curiosidad-{{ parada.id }}"
+                                  class="curiosidad-form d-none">
+                                {% csrf_token %}
+                                <input type="hidden" name="parada_id" value="{{ parada.id }}">
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Título</label>
+                                    <input type="text" name="titulo" class="form-control form-control-sm"
+                                           placeholder="Título de la curiosidad" required>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Texto</label>
+                                    <textarea name="texto" class="form-control form-control-sm" rows="3"
+                                              placeholder="Descripción de la curiosidad" required></textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Tipo</label>
+                                    <select name="tipo" class="form-control form-control-sm" required>
+                                        <option value="">-- Selecciona un tipo --</option>
+                                        <option value="Historia">Historia</option>
+                                        <option value="Arquitectura">Arquitectura</option>
+                                        <option value="Personaje">Personaje</option>
+                                        <option value="Evento">Evento</option>
+                                        <option value="Dato Curioso">Dato Curioso</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">URL de Imagen (opcional)</label>
+                                    <input type="url" name="imagen_url" class="form-control form-control-sm"
+                                           placeholder="https://...">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Imagen local (opcional)</label>
+                                    <input type="file" name="imagen_manual" class="form-control form-control-sm"
+                                           accept="image/png,image/jpeg,image/webp">
+                                    <div class="form-text">Si subes archivo, tendrá prioridad sobre la URL.</div>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" name="eliminar_imagen_manual"
+                                           id="eliminar-imagen-manual-{{ parada.id }}" value="1">
+                                    <label class="form-check-label small" for="eliminar-imagen-manual-{{ parada.id }}">
+                                        Quitar imagen local actual
+                                    </label>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" class="btn btn-success btn-sm">Guardar</button>
+                                    <button type="button" class="btn btn-outline-info btn-sm btn-generar-curiosidad-desde-ia"
+                                            data-parada-id="{{ parada.id }}">Generar con IA</button>
+                                    <button type="button" class="btn btn-secondary btn-sm btn-cancelar-curiosidad"
+                                            data-parada-id="{{ parada.id }}">Cancelar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
                     <form method="post" class="parada-edit-form d-none"
                           id="form-editar-parada-{{ parada.id }}">
                         {% csrf_token %}
@@ -324,6 +413,11 @@
                             <label class="form-label small mb-1">Nombre</label>
                             <input type="text" name="nombre" class="form-control form-control-sm"
                                    value="{{ parada.nombre }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Descripcion (opcional)</label>
+                            <textarea name="descripcion" class="form-control form-control-sm" rows="2"
+                                      maxlength="500" placeholder="Breve descripcion de la parada...">{{ parada.descripcion }}</textarea>
                         </div>
                         <div class="row g-2">
                             <div class="col-6">
@@ -411,6 +505,8 @@
 {{ geometria_ruta_json|json_script:"geometria-ruta-json" }}
 <script src="{% static 'js/pages/route_detail.js' %}"></script>
 
+<script src="{% static 'js/map_icons.js' %}"></script>
+
 <script>
 /**
  * detalle_ruta.js (inline)
@@ -424,8 +520,20 @@ const geometriaRuta = JSON.parse(document.getElementById('geometria-ruta-json').
 const mapboxToken   = '{{ MAPBOX_ACCESS_TOKEN|default:"" }}';
 const rutaId = parseInt('{{ ruta.id }}', 10);
 const csrfToken     = '{{ csrf_token }}';
+const RECALCULAR_MIN_STOPS = 2;
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 const uiFeedback = window.AuraFeedback;
+
+function getCsrfTokenFromCookie() {
+    const value = `; ${document.cookie}`;
+    const parts = value.split('; csrftoken=');
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+
+function getCsrfToken() {
+    return csrfToken || getCsrfTokenFromCookie();
+}
 
 async function confirmarAccion(options) {
     try {
@@ -457,12 +565,36 @@ L.tileLayer(tileUrl, { attribution: mapboxToken ? '© Mapbox' : '© OpenStreetMa
 
 // ── Marcadores ─────────────────────────────────────────────────────────────
 const puntos = [];
+
+const _paradasConCoords = paradas.filter(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
+const _ordenMin = _paradasConCoords.length > 0 ? Math.min(..._paradasConCoords.map(p => p.orden)) : null;
+const _ordenMax = _paradasConCoords.length > 0 ? Math.max(..._paradasConCoords.map(p => p.orden)) : null;
+
+function _buildPopupDetalle(parada, esOrigen, esDestino) {
+    const badge = esOrigen
+        ? ' <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;">INICIO</span>'
+        : esDestino
+        ? ' <span style="display:inline-block;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;">FIN</span>'
+        : '';
+    return `<b>${parada.orden}. ${parada.nombre}${badge}</b>`;
+}
+
 paradas.forEach(parada => {
     if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
     puntos.push(parada.coordenadas);
-    L.marker(parada.coordenadas)
-        .addTo(mapa)
-        .bindPopup(`<b>${parada.orden}. ${parada.nombre}</b>`);
+    
+    const esOrigen  = _paradasConCoords.length >= 2 && parada.orden === _ordenMin;
+    const esDestino = _paradasConCoords.length >= 2 && parada.orden === _ordenMax;
+    
+    let role = null;
+    if (esOrigen) role = 'origin';
+    else if (esDestino) role = 'destination';
+
+    L.marker(parada.coordenadas, { 
+        icon: window.buildAuraMarkerIcon(parada, { role: role }) 
+    })
+    .addTo(mapa)
+    .bindPopup(_buildPopupDetalle(parada, esOrigen, esDestino));
 });
 
 // ── Estado del badge en el mapa ────────────────────────────────────────────
@@ -526,11 +658,21 @@ function actualizarPanelMetricas(data) {
     const panel = document.getElementById('panel-metricas');
     if (!panel) return;
 
-    if (data.distancia_total_km && data.duracion_total_min) {
+    const tieneDistancia = data.distancia_total_km !== null && data.distancia_total_km !== undefined && data.distancia_total_km !== '';
+    const tieneDuracion = data.duracion_total_min !== null && data.duracion_total_min !== undefined;
+
+    if (tieneDistancia && tieneDuracion) {
         panel.innerHTML = `
             <span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>
             <span class="metric-sep">|</span>
             <span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>
+            <span class="metric-sep">|</span>
+            <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
+    } else if (tieneDistancia || tieneDuracion) {
+        panel.innerHTML = `
+            ${tieneDistancia ? `<span class="metric-item">📍 Distancia: <span class="metric-value">${data.distancia_total_km} km</span></span>` : ''}
+            ${tieneDistancia && tieneDuracion ? '<span class="metric-sep">|</span>' : ''}
+            ${tieneDuracion ? `<span class="metric-item">⏱️ Tiempo: <span class="metric-value">${data.duracion_total_min} min</span></span>` : ''}
             <span class="metric-sep">|</span>
             <span class="metric-item">🚶 <span class="metric-value">${paradas.length} paradas</span></span>`;
     } else {
@@ -542,6 +684,17 @@ function actualizarPanelMetricas(data) {
 // ── Recálculo AJAX (S2.1-32) ──────────────────────────────────────────────
 async function recalcularRutaAjax() {
     const btn = document.getElementById('btn-recalcular');
+    const totalParadas = document.querySelectorAll('.parada-item[data-parada-id]').length;
+
+    if (totalParadas < RECALCULAR_MIN_STOPS) {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '🔄 Calcular ruta';
+        }
+        setBadge('warn', '⚠️ Añade al menos 2 paradas para calcular la ruta');
+        return null;
+    }
+
     let huboError = false;
     if (btn) {
         if (window.RouteDetailUI && typeof window.RouteDetailUI.setRecalcularButtonLoading === 'function') {
@@ -556,7 +709,7 @@ async function recalcularRutaAjax() {
     try {
         const resp = await fetch(`/api/rutas/${rutaId}/recalcular/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
         });
 
         if (!resp.ok) {
@@ -634,6 +787,13 @@ function actualizarAyudaExigenciaMeta() {
     if (!selectExigenciaMeta || !ayudaExigenciaMeta) return;
     const clave = String(selectExigenciaMeta.value || '').trim().toLowerCase();
     ayudaExigenciaMeta.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
+}
+
+function getCurrentStopOrder() {
+    return Array.from(listaParadas?.querySelectorAll('.parada-item[data-parada-id]') || [])
+        .map(item => item.dataset.paradaId)
+        .filter(Boolean)
+        .join(',');
 }
 
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
@@ -756,7 +916,11 @@ function updateRecalcularButton() {
     const paradas = document.querySelectorAll('.parada-item');
     const btn = document.getElementById('btn-recalcular');
     if (btn) {
-        btn.disabled = paradas.length < 1;
+        const canRecalculate = paradas.length >= RECALCULAR_MIN_STOPS;
+        btn.disabled = !canRecalculate;
+        btn.title = canRecalculate
+            ? 'Recalcular ruta con GraphHopper'
+            : 'Necesitas al menos 2 paradas para calcular la ruta';
     }
 }
 
@@ -770,7 +934,7 @@ function agregarSugerenciaComoNuevaParada(candidato) {
     const nameInput = form.querySelector('input[name="nombre"]');
     const latInput = form.querySelector('input[name="lat"]');
     const lonInput = form.querySelector('input[name="lon"]');
-    const descInput = form.querySelector('input[name="descripcion"]');
+    const descInput = form.querySelector('[name="descripcion"]');
 
     const lat = Number(candidato.lat);
     const lon = Number(candidato.lon);
@@ -794,7 +958,7 @@ function reemplazarParadaConSugerencia(paradaId, candidato) {
     const nameInput = form.querySelector('input[name="nombre"]');
     const latInput = form.querySelector('input[name="lat"]');
     const lonInput = form.querySelector('input[name="lon"]');
-    const descInput = form.querySelector('input[name="descripcion"]');
+    const descInput = form.querySelector('[name="descripcion"]');
 
     const coords = Array.isArray(candidato?.coordenadas) ? candidato.coordenadas : [];
     const lat = Number(coords[0]);
@@ -937,6 +1101,7 @@ function setReorderMode(enabled) {
     reorderMode = enabled;
     if (enabled) {
         deactivateParadaEditMode();
+        if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
         formAgregarParada?.classList.add('d-none');
         formReordenarParadas.classList.remove('d-none');
         listaParadas.classList.add('reorder-active');
@@ -967,9 +1132,7 @@ if (listaParadas) {
             draggedItem = null;
             items.forEach(i => i.classList.remove('drag-over'));
             updateVisualOrderLabels();
-            const ordered = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
-                .map(i => i.dataset.paradaId).filter(Boolean);
-            if (stopOrderInput) stopOrderInput.value = ordered.join(',');
+            if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
         });
         item.addEventListener('dragover', e => {
             e.preventDefault();
@@ -982,5 +1145,386 @@ if (listaParadas) {
         item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
     });
 }
+
+// ── Generación de Curiosidades (S3.1-11) ──────────────────────────────────
+const curiosidadPreviewCache = new Map();
+
+/**
+ * Cierra todos los paneles de generación de curiosidad.
+ */
+function cerrarTodosLosPannelesCuriosidad() {
+    document.querySelectorAll('.ia-curiosidad-panel').forEach((panel) => {
+        panel.classList.add('d-none');
+    });
+}
+
+function limpiarEstadoCuriosidad(estado) {
+    if (!estado) return;
+    estado.textContent = '';
+    estado.classList.remove('curiosidad-estado', 'curiosidad-estado--info', 'curiosidad-estado--success', 'curiosidad-estado--error');
+}
+
+function mostrarEstadoCuriosidad(estado, mensaje, tipo = 'info') {
+    if (!estado) return;
+    estado.textContent = mensaje;
+    estado.classList.remove('curiosidad-estado', 'curiosidad-estado--info', 'curiosidad-estado--success', 'curiosidad-estado--error');
+    estado.classList.add('curiosidad-estado', `curiosidad-estado--${tipo}`);
+}
+
+function descartarBorradorCuriosidad(paradaId) {
+    curiosidadPreviewCache.delete(String(paradaId));
+
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (form) {
+        form.reset();
+        form.classList.add('d-none');
+    }
+
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    if (estado) {
+        limpiarEstadoCuriosidad(estado);
+    }
+}
+
+/**
+ * Sincroniza el estado visual del botón/panel de curiosidad sin recargar la página.
+ */
+function actualizarEstadoUIBotonCuriosidad(paradaId, tieneCuriosidad) {
+    const triggerButton = document.querySelector(`.btn-generar-curiosidad-ia[data-parada-id="${paradaId}"]`);
+    if (triggerButton) {
+        triggerButton.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Añadir Curiosidad';
+        triggerButton.dataset.tieneCuriosidad = tieneCuriosidad ? '1' : '0';
+    }
+
+    const tituloPanel = document.getElementById(`titulo-panel-curiosidad-${paradaId}`);
+    if (tituloPanel) {
+        tituloPanel.textContent = tieneCuriosidad ? 'Editar Curiosidad' : 'Añadir Curiosidad Manual';
+    }
+}
+
+function abrirFormularioManualCuriosidad(paradaId, triggerButton) {
+    const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (!panel || !estado || !form) return;
+
+    cerrarTodosLosPannelesCuriosidad();
+    panel.classList.remove('d-none');
+    form.classList.remove('d-none');
+
+    const tituloInput = form.querySelector('input[name="titulo"]');
+    const textoInput = form.querySelector('textarea[name="texto"]');
+    const tipoInput = form.querySelector('select[name="tipo"]');
+    const imagenInput = form.querySelector('input[name="imagen_url"]');
+    const imagenManualInput = form.querySelector('input[name="imagen_manual"]');
+    const eliminarImagenManualInput = form.querySelector('input[name="eliminar_imagen_manual"]');
+    const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+
+    if (imagenManualInput) imagenManualInput.value = '';
+    if (eliminarImagenManualInput) eliminarImagenManualInput.checked = false;
+
+    const tieneCuriosidad = triggerButton?.dataset?.tieneCuriosidad === '1';
+    if (tieneCuriosidad) {
+        generarCuriosidadIA(paradaId, null, true);
+        return;
+    }
+
+    if (tituloInput) tituloInput.value = '';
+    if (textoInput) textoInput.value = '';
+    if (tipoInput) tipoInput.value = '';
+    if (imagenInput) imagenInput.value = '';
+    if (accionesDiv) accionesDiv.classList.add('d-none');
+    mostrarEstadoCuriosidad(estado, 'Completa la curiosidad manualmente o usa Generar con IA.', 'info');
+}
+
+/**
+ * Genera una curiosidad IA para una parada.
+ */
+async function generarCuriosidadIA(paradaId, triggerButton, soloCargarExistente = false) {
+    const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    
+    if (!panel || !estado || !form) return;
+
+    if (!soloCargarExistente) {
+        cerrarTodosLosPannelesCuriosidad();
+    }
+    panel.classList.remove('d-none');
+    const previewCacheada = curiosidadPreviewCache.get(String(paradaId));
+    if (previewCacheada) {
+        const tituloInput = form.querySelector('input[name="titulo"]');
+        const textoInput = form.querySelector('textarea[name="texto"]');
+        const tipoInput = form.querySelector('select[name="tipo"]');
+        const imagenInput = form.querySelector('input[name="imagen_url"]');
+        const imagenManualInput = form.querySelector('input[name="imagen_manual"]');
+        const eliminarImagenManualInput = form.querySelector('input[name="eliminar_imagen_manual"]');
+
+        if (tituloInput) tituloInput.value = previewCacheada.titulo || '';
+        if (textoInput) textoInput.value = previewCacheada.texto || '';
+        if (tipoInput) tipoInput.value = previewCacheada.tipo || '';
+        if (imagenInput) imagenInput.value = previewCacheada.imagen_url || '';
+        if (imagenManualInput) imagenManualInput.value = '';
+        if (eliminarImagenManualInput) eliminarImagenManualInput.checked = false;
+
+        form.classList.remove('d-none');
+        mostrarEstadoCuriosidad(estado, 'Previsualización recuperada. No se guardará hasta pulsar Guardar.', 'info');
+        return;
+    }
+
+    mostrarEstadoCuriosidad(estado, 'Generando curiosidad...', 'info');
+    form.classList.add('d-none');
+    if (triggerButton) triggerButton.disabled = true;
+
+    try {
+        const response = await fetch(`/api/paradas/${paradaId}/curiosidad/?preview=1`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+        });
+
+        if (!response.ok) {
+            let mensajeError = `Error ${response.status}`;
+            try {
+                const dataError = await response.json();
+                if (dataError && dataError.mensaje) {
+                    mensajeError = dataError.mensaje;
+                }
+            } catch (_err) {
+                // Si no hay JSON, mantenemos el código HTTP.
+            }
+            mostrarEstadoCuriosidad(estado, mensajeError, 'error');
+            return;
+        }
+
+        const data = await response.json();
+
+        if (data.status !== 'ok' || !data.curiosidad) {
+            mostrarEstadoCuriosidad(estado, data.mensaje || 'No se pudo generar la curiosidad.', 'error');
+            return;
+        }
+
+        // Rellenar el formulario con los datos generados
+        const curiosidad = data.curiosidad;
+        const tituloInput = form.querySelector('input[name="titulo"]');
+        const textoInput = form.querySelector('textarea[name="texto"]');
+        const tipoInput = form.querySelector('select[name="tipo"]');
+        const imagenInput = form.querySelector('input[name="imagen_url"]');
+        const imagenManualInput = form.querySelector('input[name="imagen_manual"]');
+        const eliminarImagenManualInput = form.querySelector('input[name="eliminar_imagen_manual"]');
+
+        if (tituloInput) tituloInput.value = curiosidad.titulo || '';
+        if (textoInput) textoInput.value = curiosidad.texto || '';
+        if (tipoInput) tipoInput.value = curiosidad.tipo || '';
+        if (imagenInput) imagenInput.value = curiosidad.imagen_url || '';
+        if (imagenManualInput) imagenManualInput.value = '';
+        if (eliminarImagenManualInput) eliminarImagenManualInput.checked = false;
+
+        if (data.persistida) {
+            const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+            if (accionesDiv) accionesDiv.classList.remove('d-none');
+            actualizarEstadoUIBotonCuriosidad(paradaId, true);
+            
+            mostrarEstadoCuriosidad(estado, data.generada
+                ? 'Curiosidad generada y guardada. Edita y guarda si deseas cambios.'
+                : 'Curiosidad existente cargada. Edita y guarda si deseas cambios.', 'success');
+        } else {
+            if (soloCargarExistente) {
+                const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+                if (accionesDiv) accionesDiv.classList.add('d-none');
+                if (tituloInput) tituloInput.value = '';
+                if (textoInput) textoInput.value = '';
+                if (tipoInput) tipoInput.value = '';
+                if (imagenInput) imagenInput.value = '';
+                mostrarEstadoCuriosidad(estado, 'Completa la curiosidad manualmente o usa Generar con IA.', 'info');
+                form.classList.remove('d-none');
+                return;
+            }
+            const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+            if (accionesDiv) accionesDiv.classList.add('d-none');
+            curiosidadPreviewCache.set(String(paradaId), {
+                titulo: curiosidad.titulo || '',
+                texto: curiosidad.texto || '',
+                tipo: curiosidad.tipo || '',
+                imagen_url: curiosidad.imagen_url || '',
+            });
+            
+            mostrarEstadoCuriosidad(estado, 'Previsualización generada. No se guardará hasta pulsar Guardar.', 'info');
+        }
+        
+        form.classList.remove('d-none');
+
+    } catch (err) {
+        console.error('[AURA] Error generando curiosidad:', err);
+        mostrarEstadoCuriosidad(estado, 'Error de conexión al servidor.', 'error');
+    } finally {
+        if (triggerButton) triggerButton.disabled = false;
+    }
+}
+
+/**
+ * Elimina una curiosidad existente para poder regenerarla.
+ */
+async function eliminarCuriosidadExistente(paradaId, triggerButton) {
+    const confirmacion = await confirmarAccion({
+        title: 'Eliminar curiosidad',
+        message: '¿Estás seguro de que quieres eliminar esta curiosidad? Podrás generar una nueva.',
+        confirmText: 'Eliminar',
+        cancelText: 'Cancelar',
+        type: 'danger',
+    });
+    
+    if (!confirmacion) return;
+
+    triggerButton.disabled = true;
+
+    try {
+        const response = await fetch(`/api/paradas/${paradaId}/curiosidad/eliminar/`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.status !== 'ok') {
+            alert(data.mensaje || 'Error al eliminar la curiosidad.');
+            return;
+        }
+
+        const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+        const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+        const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+
+        if (estado) mostrarEstadoCuriosidad(estado, 'Curiosidad eliminada. Puedes generar una nueva.', 'info');
+        if (accionesDiv) accionesDiv.classList.add('d-none');
+        if (form) form.classList.add('d-none');
+        curiosidadPreviewCache.delete(String(paradaId));
+        actualizarEstadoUIBotonCuriosidad(paradaId, false);
+
+    } catch (err) {
+        console.error('[AURA] Error eliminando curiosidad:', err);
+        alert('Error de conexión al servidor.');
+    } finally {
+        triggerButton.disabled = false;
+    }
+}
+
+/**
+ * Guarda una curiosidad a través de la API.
+ */
+async function guardarCuriosidad(paradaId, event) {
+    event.preventDefault();
+    
+    const form = document.getElementById(`form-guardar-curiosidad-${paradaId}`);
+    if (!form) return;
+
+    const titulo = form.querySelector('input[name="titulo"]').value.trim();
+    const texto = form.querySelector('textarea[name="texto"]').value.trim();
+    const tipo = form.querySelector('select[name="tipo"]').value.trim();
+    const imagen_url = form.querySelector('input[name="imagen_url"]').value.trim();
+    const imagen_manual = form.querySelector('input[name="imagen_manual"]').files[0];
+    const eliminar_imagen_manual = !!form.querySelector('input[name="eliminar_imagen_manual"]').checked;
+
+    if (!titulo || !texto || !tipo) {
+        alert('Por favor, completa todos los campos requeridos.');
+        return;
+    }
+
+    const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+    const estado = document.getElementById(`estado-generar-curiosidad-${paradaId}`);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    
+    if (submitBtn) submitBtn.disabled = true;
+    if (estado) mostrarEstadoCuriosidad(estado, 'Guardando...', 'info');
+
+    try {
+        const formData = new FormData();
+        formData.append('titulo', titulo);
+        formData.append('texto', texto);
+        formData.append('tipo', tipo);
+        formData.append('imagen_url', imagen_url);
+        if (imagen_manual) {
+            formData.append('imagen_manual', imagen_manual);
+        }
+        if (eliminar_imagen_manual) {
+            formData.append('eliminar_imagen_manual', '1');
+        }
+
+        const response = await fetch(`/api/paradas/${paradaId}/curiosidad/guardar/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+            },
+            body: formData,
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.status !== 'ok') {
+            const mensajeError = data.mensaje || 'No se pudo guardar.';
+            if (estado) mostrarEstadoCuriosidad(estado, `Error: ${mensajeError}`, 'error');
+            return;
+        }
+
+        const accionesDiv = document.getElementById(`acciones-curiosidad-${paradaId}`);
+        if (accionesDiv) accionesDiv.classList.remove('d-none');
+        curiosidadPreviewCache.delete(String(paradaId));
+        actualizarEstadoUIBotonCuriosidad(paradaId, true);
+
+        if (estado) mostrarEstadoCuriosidad(estado, 'Curiosidad guardada correctamente.', 'success');
+        if (panel) setTimeout(() => panel.classList.add('d-none'), 2000);
+
+    } catch (err) {
+        console.error('[AURA] Error guardando curiosidad:', err);
+        if (estado) mostrarEstadoCuriosidad(estado, 'Error de conexión.', 'error');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Event listeners para botones de curiosidad
+document.querySelectorAll('.btn-generar-curiosidad-ia').forEach((btn) => {
+    btn.addEventListener('click', () => abrirFormularioManualCuriosidad(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-generar-curiosidad-desde-ia').forEach((btn) => {
+    btn.addEventListener('click', () => generarCuriosidadIA(btn.dataset.paradaId, btn));
+});
+
+document.querySelectorAll('.btn-cerrar-curiosidad').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const paradaId = btn.dataset.paradaId;
+        descartarBorradorCuriosidad(paradaId);
+        const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+        if (panel) panel.classList.add('d-none');
+    });
+});
+
+document.querySelectorAll('.btn-cancelar-curiosidad').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const paradaId = btn.dataset.paradaId;
+        descartarBorradorCuriosidad(paradaId);
+        const panel = document.getElementById(`panel-generar-curiosidad-${paradaId}`);
+        if (panel) panel.classList.add('d-none');
+    });
+});
+
+document.querySelectorAll('.btn-eliminar-curiosidad-existente').forEach((btn) => {
+    btn.addEventListener('click', () => eliminarCuriosidadExistente(btn.dataset.paradaId, btn));
+});
+
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (form.id.startsWith('form-guardar-curiosidad-')) {
+        event.preventDefault();
+        const paradaId = form.querySelector('input[name="parada_id"]').value;
+        guardarCuriosidad(paradaId, event);
+    }
+});
 </script>
 {% endblock %}

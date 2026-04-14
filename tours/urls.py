@@ -24,6 +24,8 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/cerrar_acceso/", views.cerrar_acceso, name="cerrar_acceso"),
     path("sesiones/<int:sesion_id>/participantes/", views.participantes_sesion, name="participantes_sesion"),
     path("sesiones/<int:sesion_id>/cronometro/estado/", views.estado_cronometro, name="estado_cronometro"),
+    path("sesiones/<int:sesion_id>/cronometro/pausar/", views.pausar_cronometro, name="pausar_cronometro"),
+    path("sesiones/<int:sesion_id>/cronometro/reanudar/", views.reanudar_cronometro, name="reanudar_cronometro"),
     path("sesiones/<int:sesion_id>/parada_actual/", views.seleccionar_parada_actual, name="seleccionar_parada_actual"),
     # ------------------------------------------------------------------
     # API REST — ubicación y chat
@@ -35,6 +37,8 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/ubicaciones_turistas/", views.obtener_ubicaciones_turistas, name="ubicaciones_turistas"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
     path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
+    path("sesiones/<int:sesion_id>/recordatorios/", views.recordatorios_sesion, name="recordatorios_sesion"),
+    path("sesiones/<int:sesion_id>/recordatorios/alertas/", views.alertas_recordatorios, name="alertas_recordatorios"),
     path(
         "sesiones/<int:sesion_id>/mensajes/<int:mensaje_id>/imagen/",
         views.descargar_imagen_mensaje,

@@ -2,8 +2,9 @@ import json
 import logging
 
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -21,6 +22,7 @@ from billing.tier_guard import (
     get_allowed_moods_for_guia,
     get_max_stops_per_route_limit,
     get_session_capacity_limit,
+    is_feature_enabled_for_guia,
     record_ai_generation_usage,
     record_ai_stop_replacement_usage,
     tier_error_response,
@@ -57,12 +59,20 @@ def _build_tier_ui_context(guia):
     mood_choices_disponibles = [
         (value, label) for value, label in Ruta.Mood.choices if value in allowed_moods_set
     ]
+    ai_route_generation_enabled = (
+        True if guia is None else is_feature_enabled_for_guia(guia, 'ai_route_generation')
+    )
+    payload_wishes_enabled = (
+        True if guia is None else is_feature_enabled_for_guia(guia, 'payload_wishes')
+    )
     return {
         'guia': guia,
         'es_freemium': bool(guia and guia.tipo_suscripcion == Guia.Suscripcion.FREEMIUM),
         'tier_max_personas': get_session_capacity_limit(guia),
         'tier_max_stops': get_max_stops_per_route_limit(guia),
         'mood_choices_disponibles': mood_choices_disponibles,
+        'ai_route_generation_enabled': ai_route_generation_enabled,
+        'payload_wishes_enabled': payload_wishes_enabled,
     }
 
 
@@ -76,7 +86,15 @@ def _guardar_ruta_ia_en_bd(guia, payload, ruta_generada):
 # @login_required
 def seleccion_tipo_ruta(request):
     """Vista para la selección del tipo de ruta (Manual o IA)."""
-    return render(request, 'seleccion_tipo_ruta.html')
+    guia = _obtener_guia_para_contexto(request.user)
+    context = _build_tier_ui_context(guia)
+    context.update(
+        {
+            'show_ai_option': context['ai_route_generation_enabled'],
+            'ia_disabled_notice': request.GET.get('ia_disabled') == '1',
+        }
+    )
+    return render(request, 'seleccion_tipo_ruta.html', context)
 
 
 def creacion_manual(request):
@@ -88,6 +106,8 @@ def creacion_manual(request):
 def generar_ruta(request):
     """Vista para la generación con IA de rutas."""
     guia = _obtener_guia_para_contexto(request.user)
+    if guia is not None and not is_feature_enabled_for_guia(guia, 'ai_route_generation'):
+        return redirect(f"{reverse('creacion:seleccion_tipo_ruta')}?ia_disabled=1")
     return render(request, './creacion/personalizacion.html', _build_tier_ui_context(guia))
 
 
@@ -268,7 +288,16 @@ def generar_ruta_ia(request):
             response_data['warnings'] = tier_warnings
 
         return JsonResponse(response_data, status=200)
-    except (services.ErrorValidacionRuta, ValueError) as exc:
+    except services.ErrorValidacionRuta as exc:
+        logger.warning('Error de validación en generar_ruta_ia: %s', exc)
+        errores = exc.errores if isinstance(exc.errores, dict) else {'general': str(exc)}
+        mensaje = (
+            errores.get('general')
+            or errores.get('mood')
+            or next((str(valor) for valor in errores.values() if valor), 'Error en los datos.')
+        )
+        return JsonResponse({'status': 'ERROR', 'mensaje': mensaje, 'errores': errores}, status=400)
+    except ValueError as exc:
         logger.warning('Error de validación en generar_ruta_ia: %s', exc)
         return JsonResponse({'status': 'ERROR', 'mensaje': f'Error en los datos: {str(exc)}'}, status=400)
     except services.ErrorSesionGeneracionNoEncontrada as exc:
@@ -283,6 +312,15 @@ def generar_ruta_ia(request):
     except services.ErrorPersistenciaRuta as exc:
         logger.exception('Error de persistencia en generar_ruta_ia')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
+    except Exception as exc:
+        logger.exception('Error inesperado en generar_ruta_ia')
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'Se produjo un error inesperado al generar la ruta. Inténtalo de nuevo.',
+            },
+            status=500,
+        )
 
 
 @csrf_exempt

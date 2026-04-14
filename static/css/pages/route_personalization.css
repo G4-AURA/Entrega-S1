@@ -82,6 +82,90 @@
     display: none;
 }
 
+.mood-buttons--error {
+    border: 1px solid #dc3545;
+    border-radius: 0.5rem;
+    padding: 0.65rem;
+    background: #fff5f5;
+}
+
+.field-error {
+    color: #dc3545;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .personalizacion-wrapper {
+        padding-top: 0.25rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .personalizacion-wrapper .card-body {
+        padding: 1.25rem !important;
+    }
+
+    .personalizacion-wrapper .mb-4 {
+        margin-bottom: 1rem !important;
+    }
+
+    .personalizacion-wrapper .form-label {
+        margin-bottom: 0.35rem;
+    }
+
+    .personalizacion-wrapper .form-text,
+    .personalizacion-wrapper .exigencia-help {
+        margin-top: 0.35rem !important;
+        margin-bottom: 0.5rem !important;
+        font-size: 0.84rem;
+        line-height: 1.35;
+    }
+
+    #form-personalizacion-ruta {
+        --bs-gutter-x: 0.75rem;
+        --bs-gutter-y: 0.75rem;
+    }
+
+    .mood-buttons {
+        gap: 0.35rem;
+    }
+
+    .mood-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.88rem;
+    }
+
+    .deseos-section {
+        padding: 1rem 1rem 0.9rem;
+    }
+
+    .deseos-header {
+        gap: 0.5rem;
+    }
+
+    .deseos-lista {
+        gap: 0.35rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .deseo-item {
+        gap: 0.4rem;
+    }
+
+    .deseo-input {
+        padding: 0.4rem 0.7rem;
+    }
+
+    .btn-añadir-deseo {
+        padding: 0.3rem 0.8rem;
+        font-size: 0.84rem;
+    }
+
+    .map-container-ruta {
+        height: 420px;
+    }
+}
+
 
 /* ── Sección "Deseos personalizados" ─────────────────────────────────────── */
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Subscription, TierUsageEvent, WebhookEvent
+from .models import FeatureAccessSetting, Subscription, TierUsageEvent, WebhookEvent
 
 
 @admin.register(Subscription)
@@ -54,3 +54,17 @@ class TierUsageEventAdmin(admin.ModelAdmin):
     list_filter = ('action', 'created_at')
     search_fields = ('guia__user__user__username', 'ruta__titulo')
     readonly_fields = ('created_at',)
+
+
+@admin.register(FeatureAccessSetting)
+class FeatureAccessSettingAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'key',
+        'enabled_freemium',
+        'enabled_premium',
+        'updated_at',
+    )
+    list_filter = ('enabled_freemium', 'enabled_premium')
+    search_fields = ('key',)
+    readonly_fields = ('created_at', 'updated_at')

@@ -21,6 +21,29 @@ let miUbicacionMarker = null;
 const turistasMarkers = new Map();
 let countdownTimerId  = null;
 let countdownPollId   = null;
+
+// --- Variables para el control del fin de sesión del tour ---
+let ubicacionPollId   = null;
+let chatPollId        = null;
+let geolocationWatchId = null;
+let tourFinalizado    = false;
+let ultimaPosicionTurista = null;
+let primeraUbicacionTuristaCentrada = false;
+const LOCATION_SEND_CONFIG = {
+    guia: { minIntervalMs: 3000, minDistanceM: 4 },
+    turista: { minIntervalMs: 10000, minDistanceM: 8 },
+    hiddenIntervalMultiplier: 3,
+};
+const LAST_LOCATION_SENT = {
+    guia: { atMs: 0, lat: null, lng: null },
+    turista: { atMs: 0, lat: null, lng: null },
+};
+const LOCATION_SEND_IN_FLIGHT = {
+    guia: false,
+    turista: false,
+};
+// ------------------------------------------------------------
+
 const paradasMarkers  = new Map();
 const paradasDataById = new Map();
 let paradaSeleccionadaId = null;
@@ -38,6 +61,8 @@ const CENTRADO_STATES = {
 };
 let estadoCentradoActual = CENTRADO_STATES.PARADA;
 let primeraParadaCentrada = false;
+
+const paradasRole = new Map();
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -81,10 +106,10 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Polling de posiciones en vivo ──────────────────────────────────────
     if (!esGuia) {
         _obtenerUbicacionGuia();
-        setInterval(_obtenerUbicacionGuia, 5000);
+        ubicacionPollId = setInterval(_obtenerUbicacionGuia, 5000);
     } else {
         _obtenerUbicacionesTuristas();
-        setInterval(_obtenerUbicacionesTuristas, 5000);
+        ubicacionPollId = setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
     // ── Panel expandible ──────────────────────────────────────────────────
@@ -102,10 +127,26 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             this.classList.add('active');
             document.getElementById('tab-' + target)?.classList.add('active');
+
             if (target === 'chat') {
                 const badge = document.getElementById('chat-badge');
                 if (badge) badge.style.display = 'none';
                 document.dispatchEvent(new CustomEvent('chatOpened'));
+            } else {
+                document.dispatchEvent(new CustomEvent('chatClosed'));
+            }
+
+            if (target === 'chat-privado') {
+                const privBadge = document.getElementById('chat-privado-badge');
+                if (privBadge) privBadge.style.display = 'none';
+                document.dispatchEvent(new CustomEvent('privateChatOpened'));
+            } else {
+                document.dispatchEvent(new CustomEvent('privateChatClosed'));
+            }
+            if (target === 'notificaciones') {
+                const badge = document.getElementById('recordatorios-badge');
+                if (badge) badge.style.display = 'none';
+                document.dispatchEvent(new CustomEvent('recordatoriosOpened'));
             }
         });
     });
@@ -119,6 +160,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Chat ──────────────────────────────────────────────────────────────
     _initSessionCountdown();
     _initChat();
+    _initRecordatorios();
 });
 
 
@@ -144,19 +186,34 @@ function _dibujarRutaYParadas() {
 
     const bounds = [];
 
+    const paradasConCoordenadas = paradasData.filter(p => p.lat != null && p.lng != null);
+    const ordenMin = paradasConCoordenadas.length > 0
+        ? Math.min(...paradasConCoordenadas.map(p => p.orden))
+        : null;
+    const ordenMax = paradasConCoordenadas.length > 0
+        ? Math.max(...paradasConCoordenadas.map(p => p.orden))
+        : null;
+
     paradasData.forEach(parada => {
         if (parada.lat == null || parada.lng == null) return;
 
         bounds.push([parada.lat, parada.lng]);
 
+        let role = null;
+        if (paradasConCoordenadas.length >= 2) {
+            if (parada.orden === ordenMin) role = 'origin';
+            else if (parada.orden === ordenMax) role = 'destination';
+        }
+
+        if (parada.id != null) {
+            paradasRole.set(String(parada.id), role);
+        }
+
         const marker = L.marker([parada.lat, parada.lng], {
-            icon: _buildParadaIcon(parada),
+            icon: _buildParadaIcon(parada, false, role),
         })
         .addTo(map)
-        .bindPopup(
-            `<strong>${parada.nombre}</strong>` +
-            `<br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`
-        );
+        .bindPopup(_buildPopupTour(parada, role));
 
         if (parada.id != null) {
             const paradaId = String(parada.id);
@@ -178,32 +235,12 @@ function _dibujarRutaYParadas() {
 
 async function _iniciarRastreoLocal() {
     if (!navigator.geolocation) return;
-    const feedback = window.AuraFeedback;
 
-    if (feedback && typeof feedback.confirm === 'function') {
-        const confirmarUbicacion = await feedback.confirm({
-            title: 'Compartir ubicación',
-            message: esGuia
-                ? 'Activa tu ubicación para que los turistas puedan seguirte durante el tour.'
-                : 'Activa tu ubicación para mostrar curiosidades cercanas y seguir al guía en tiempo real.',
-            confirmText: 'Permitir',
-            cancelText: 'Ahora no',
-            type: 'info',
-        });
-
-        if (!confirmarUbicacion) {
-            feedback.toast('Puedes activar la ubicación más tarde desde los permisos del navegador.', {
-                type: 'info',
-                duration: 3200,
-            });
-            return;
-        }
-    }
-
-    navigator.geolocation.watchPosition(
+    geolocationWatchId = navigator.geolocation.watchPosition(
         position => {
             const { latitude: lat, longitude: lng } = position.coords;
             const pos = [lat, lng];
+            ultimaPosicionTurista = { lat, lng };
 
             if (!miUbicacionMarker) {
                 const color = esGuia ? '#ef4444' : '#3b82f6';
@@ -227,50 +264,140 @@ async function _iniciarRastreoLocal() {
                 miUbicacionMarker.setLatLng(pos);
             }
 
+            if (!esGuia && !primeraUbicacionTuristaCentrada && map) {
+                map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.6 });
+                primeraUbicacionTuristaCentrada = true;
+            }
+
             // El guía envía su posición al servidor para que los turistas la vean
             if (esGuia) {
-                fetch('/tours/ubicacion/', {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-                    body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
-                }).catch(() => {});
-            } else {
-                fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-                    body:    JSON.stringify({ latitud: lat, longitud: lng }),
-                })
-                    .then(r => r.ok ? r.json() : Promise.reject())
-                    .then(data => {
-                        const curiosidadCercana = data?.curiosidad_cercana;
-                        const parada = curiosidadCercana?.parada;
-                        const curiosidad = curiosidadCercana?.curiosidad;
-                        if (!parada?.id || !curiosidad) return;
-
-                        const paradaId = String(parada.id);
-                        if (curiosidadesMostradas.has(paradaId)) return;
-
-                        curiosidadesMostradas.add(paradaId);
-                        _mostrarCuriosidadAutomatica(parada, curiosidad);
+                if (_shouldSendLocationUpdate('guia', lat, lng)) {
+                    _setLocationUpdateInFlight('guia', true);
+                    fetch('/tours/ubicacion/', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                        body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
                     })
-                    .catch(() => {});
+                        .then((r) => {
+                            if (!r.ok) throw new Error('No se pudo registrar ubicación del guía.');
+                            _markLocationUpdateSent('guia', lat, lng);
+                        })
+                        .catch(() => {})
+                        .finally(() => {
+                            _setLocationUpdateInFlight('guia', false);
+                        });
+                }
+            } else {
+                if (_shouldSendLocationUpdate('turista', lat, lng)) {
+                    _setLocationUpdateInFlight('turista', true);
+                    fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+                        body:    JSON.stringify({ latitud: lat, longitud: lng }),
+                    })
+                        .then(r => {
+                            if (!r.ok) throw new Error('No se pudo registrar ubicación del turista.');
+                            _markLocationUpdateSent('turista', lat, lng);
+                            return r.json();
+                        })
+                        .then(data => {
+                            const curiosidadCercana = data?.curiosidad_cercana;
+                            const parada = curiosidadCercana?.parada;
+                            const curiosidad = curiosidadCercana?.curiosidad;
+                            if (!parada?.id || !curiosidad) return;
+
+                            const paradaId = String(parada.id);
+                            if (curiosidadesMostradas.has(paradaId)) return;
+
+                            curiosidadesMostradas.add(paradaId);
+                            _mostrarCuriosidadAutomatica(parada, curiosidad);
+                        })
+                        .catch(() => {})
+                        .finally(() => {
+                            _setLocationUpdateInFlight('turista', false);
+                        });
+                }
 
                 _detectarParadaYSolicitarCuriosidad(lat, lng);
             }
         },
-        () => {},
+        error => {
+            const feedback = window.AuraFeedback;
+            const mensaje =
+                error?.code === error.PERMISSION_DENIED
+                    ? 'El navegador ha bloqueado la ubicación. Revisa los permisos del sitio.'
+                    : error?.code === error.POSITION_UNAVAILABLE
+                        ? 'No se pudo obtener una posición válida en este momento.'
+                        : error?.code === error.TIMEOUT
+                            ? 'La localización está tardando demasiado en responder.'
+                            : 'No se pudo detectar la ubicación automáticamente.';
+
+            if (feedback && typeof feedback.toast === 'function') {
+                feedback.toast(mensaje, { type: 'warning', duration: 3800 });
+            } else {
+                console.warn('[AURA geolocation]', mensaje);
+            }
+        },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 },
     );
+}
+
+
+function _shouldSendLocationUpdate(role, lat, lng) {
+    const roleKey = (role === 'guia') ? 'guia' : 'turista';
+    const cfg = LOCATION_SEND_CONFIG[roleKey];
+    const state = LAST_LOCATION_SENT[roleKey];
+    if (!cfg || !state) return true;
+    if (LOCATION_SEND_IN_FLIGHT[roleKey]) return false;
+
+    if (!Number.isFinite(state.atMs) || state.atMs <= 0) return true;
+
+    const hiddenMultiplier = (document.visibilityState === 'hidden')
+        ? LOCATION_SEND_CONFIG.hiddenIntervalMultiplier
+        : 1;
+    const minIntervalMs = cfg.minIntervalMs * hiddenMultiplier;
+    const elapsedMs = Date.now() - state.atMs;
+
+    let distanceM = Number.POSITIVE_INFINITY;
+    if (Number.isFinite(state.lat) && Number.isFinite(state.lng)) {
+        distanceM = _distanciaMetros(lat, lng, state.lat, state.lng);
+    }
+
+    return !(elapsedMs < minIntervalMs && distanceM < cfg.minDistanceM);
+}
+
+
+function _setLocationUpdateInFlight(role, isInFlight) {
+    const roleKey = (role === 'guia') ? 'guia' : 'turista';
+    if (!(roleKey in LOCATION_SEND_IN_FLIGHT)) return;
+    LOCATION_SEND_IN_FLIGHT[roleKey] = Boolean(isInFlight);
+}
+
+
+function _markLocationUpdateSent(role, lat, lng) {
+    const roleKey = (role === 'guia') ? 'guia' : 'turista';
+    const state = LAST_LOCATION_SENT[roleKey];
+    if (!state) return;
+
+    state.atMs = Date.now();
+    state.lat = lat;
+    state.lng = lng;
 }
 
 
 // ── Posición del guía (solo turistas) ─────────────────────────────────────
 
 function _obtenerUbicacionGuia() {
-    if (!map) return;
+    if (!map || tourFinalizado) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
-        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(r => { 
+            if ([401, 403, 410].includes(r.status)) {
+                _manejarFinDeTour(); throw new Error('Fin');
+            }
+            if (!r.ok) throw new Error(); 
+            return r.json(); 
+        })
         .then(data => {
             if (!data.lat || !data.lng) return;
             const pos = [data.lat, data.lng];
@@ -508,6 +635,62 @@ function _sesionEnCurso() {
     return sesionEstadoActual === 'en_curso';
 }
 
+function _manejarFinDeTour() {
+    if (tourFinalizado) return;
+    tourFinalizado = true;
+    sesionEstadoActual = 'finalizada';
+
+    // 1. Limpiar todos los intervalos de peticiones
+    if (countdownPollId) clearInterval(countdownPollId);
+    if (countdownTimerId) clearInterval(countdownTimerId);
+    if (ubicacionPollId) clearInterval(ubicacionPollId);
+    if (chatPollId) clearInterval(chatPollId);
+
+    // 2. Detener el rastreo GPS local (ahorra batería)
+    if (geolocationWatchId && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geolocationWatchId);
+    }
+
+    // 3. Actualizar la UI del temporizador a "Finalizado"
+    const timerContainer = document.getElementById('session-countdown');
+    const timerValue = document.getElementById('session-countdown-time');
+    const startBtn = document.getElementById('start-countdown-btn');
+    const pauseBtn = document.getElementById('pause-countdown-btn');
+    if (timerContainer && timerValue) {
+        timerContainer.classList.remove('waiting', 'en_curso', 'paused');
+        timerContainer.classList.add('finished');
+        timerValue.textContent = '00:00:00';
+    }
+    if (startBtn) startBtn.disabled = true;
+    if (pauseBtn) {
+        pauseBtn.disabled = true;
+        pauseBtn.classList.add('d-none');
+    }
+    const estadoBadgeContainer = document.querySelector('#tab-itinerario > div.d-flex.justify-content-between');
+    if (estadoBadgeContainer) {
+        const oldBadge = estadoBadgeContainer.querySelector('span'); // Selecciona la primera pastilla
+        if (oldBadge) {
+            oldBadge.outerHTML = `<span style="display:inline-flex;align-items:center;background:var(--border-light);color:var(--text-muted);border-radius:var(--radius-pill);padding:.3rem .8rem;font-size:.67rem;font-weight:700;font-family:'Manrope',sans-serif;letter-spacing:.5px;text-transform:uppercase;">Finalizado</span>`;
+        }
+    }
+
+    // 4. Disparar el evento para deshabilitar el input del chat
+    document.dispatchEvent(new CustomEvent('sessionStateChanged', { detail: { estado: 'finalizada' } }));
+
+    // 5. Notificar al usuario visualmente
+    const feedback = window.AuraFeedback;
+    if (feedback && typeof feedback.alert === 'function') {
+        feedback.alert({
+            title: 'Recorrido finalizado',
+            message: 'El guía ha terminado el tour. Ya no se actualizará tu ubicación ni el chat, pero puedes consultar el itinerario y los mensajes anteriores. Una vez que salgas del tour, no podrás volver a unirte.',
+            confirmText: 'Entendido',
+            type: 'info'
+        });
+    } else {
+        alert('El tour ha finalizado. Ya no se recibirán actualizaciones.');
+    }
+}
+
 
 // ── Cronómetro de sesión ──────────────────────────────────────────────────
 
@@ -515,37 +698,71 @@ function _initSessionCountdown() {
     const timerContainer = document.getElementById('session-countdown');
     const timerValue = document.getElementById('session-countdown-time');
     const startBtn = document.getElementById('start-countdown-btn');
+    const pauseBtn = document.getElementById('pause-countdown-btn');
     if (!timerContainer || !timerValue) return;
 
+    const MINUTE_MS = 60 * 1000;
     const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
         ? duracionRutaHoras
         : 1;
     const countdownMs = Math.round(horasBase * 60 * 60 * 1000);
     let sesionIniciada = (typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso');
+    let cronometroPausado = false;
     let startTimestamp = (typeof sesionFechaInicioEpochMs !== 'undefined' && Number.isFinite(sesionFechaInicioEpochMs))
         ? sesionFechaInicioEpochMs
         : Date.now();
+    let pauseBtnRequestInFlight = false;
 
-    const setWaitingUi = () => {
-        timerValue.textContent = _formatRemainingTime(countdownMs);
-        timerContainer.classList.remove('finished');
-        timerContainer.classList.add('waiting');
-    };
-
-    const startTicker = () => {
+    const stopTicker = () => {
         if (countdownTimerId) {
             clearInterval(countdownTimerId);
             countdownTimerId = null;
         }
+    };
 
-        timerContainer.classList.remove('waiting');
-        let endTimestamp = startTimestamp + countdownMs;
-        let remainingSeconds = Math.max(0, Math.floor((endTimestamp - Date.now()) / 1000));
-        let lastTickAt = Date.now();
+    const setPauseButtonState = () => {
+        if (!pauseBtn) return;
+
+        if (!sesionIniciada) {
+            pauseBtn.classList.add('d-none');
+            pauseBtn.disabled = true;
+            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+            return;
+        }
+
+        pauseBtn.classList.remove('d-none');
+        pauseBtn.disabled = pauseBtnRequestInFlight;
+        if (cronometroPausado) {
+            pauseBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Reanudar cronómetro';
+        } else {
+            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+        }
+    };
+
+    const setWaitingUi = () => {
+        stopTicker();
+        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
+        timerContainer.classList.remove('finished', 'paused');
+        timerContainer.classList.add('waiting');
+    };
+
+    const startTicker = (remoteRemainingMinutes = null) => {
+        stopTicker();
+
+        timerContainer.classList.remove('waiting', 'paused');
+        const hasRemoteMinutes = Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0;
+        const normalizedRemoteMinutes = hasRemoteMinutes
+            ? Math.max(0, Math.ceil(remoteRemainingMinutes))
+            : null;
+        let endTimestamp = hasRemoteMinutes
+            ? Date.now() + (normalizedRemoteMinutes * MINUTE_MS)
+            : startTimestamp + countdownMs;
 
         const render = () => {
-            timerValue.textContent = _formatRemainingTime(remainingSeconds * 1000);
-            if (remainingSeconds === 0) {
+            const remainingMinutes = Math.max(0, Math.ceil((endTimestamp - Date.now()) / MINUTE_MS));
+            timerValue.textContent = _formatRemainingMinutes(remainingMinutes);
+
+            if (remainingMinutes === 0) {
                 timerContainer.classList.add('finished');
                 if (countdownTimerId) {
                     clearInterval(countdownTimerId);
@@ -558,13 +775,18 @@ function _initSessionCountdown() {
 
         render();
         countdownTimerId = setInterval(() => {
-            const tickNow = Date.now();
-            const elapsedSeconds = Math.max(1, Math.floor((tickNow - lastTickAt) / 1000));
-            remainingSeconds = Math.max(0, remainingSeconds - elapsedSeconds);
-            lastTickAt = tickNow;
-            if (remainingSeconds > 0) endTimestamp = tickNow + (remainingSeconds * 1000);
             render();
-        }, 1000);
+        }, MINUTE_MS);
+    };
+
+    const setPausedUi = (remoteRemainingMinutes = null) => {
+        stopTicker();
+        timerContainer.classList.remove('waiting', 'finished');
+        timerContainer.classList.add('paused');
+
+        if (Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0) {
+            timerValue.textContent = _formatRemainingMinutes(remoteRemainingMinutes);
+        }
     };
 
     const applyRemoteState = (data) => {
@@ -574,6 +796,7 @@ function _initSessionCountdown() {
             detail: { estado: data.estado },
         }));
         const remoteStarted = data.estado === 'en_curso';
+        cronometroPausado = Boolean(data.cronometro_pausado);
 
         if (data.parada_actual_id != null) {
             _resaltarParadaSeleccionada(String(data.parada_actual_id));
@@ -590,28 +813,53 @@ function _initSessionCountdown() {
                 startBtn.disabled = true;
                 startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
             }
-            startTicker();
+            const remoteMinutes = Number(data.minutos_restantes);
+            if (cronometroPausado) {
+                setPausedUi(remoteMinutes);
+            } else {
+                startTicker(remoteMinutes);
+            }
         } else {
             sesionIniciada = false;
-            if (!countdownTimerId) setWaitingUi();
+            cronometroPausado = false;
+            setWaitingUi();
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Iniciar cronómetro';
+            }
         }
+        setPauseButtonState();
     };
 
     const fetchCountdownState = () => {
-        if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl) return;
+        if (typeof countdownStatusUrl === 'undefined' || !countdownStatusUrl || tourFinalizado) return;
         const separator = countdownStatusUrl.includes('?') ? '&' : '?';
         const liveStatusUrl = `${countdownStatusUrl}${separator}_=${Date.now()}`;
+        
         fetch(liveStatusUrl, { cache: 'no-store' })
-            .then(r => r.ok ? r.json() : Promise.reject())
-            .then(applyRemoteState)
+            .then(r => {
+                if ([401, 403, 410].includes(r.status)) {
+                    _manejarFinDeTour();
+                    return Promise.reject('Fin de sesión');
+                }
+                return r.ok ? r.json() : Promise.reject();
+            })
+            .then(data => {
+                if (data && data.estado === 'finalizada') {
+                    _manejarFinDeTour();
+                } else {
+                    applyRemoteState(data);
+                }
+            })
             .catch(() => {});
     };
 
     if (sesionIniciada) startTicker();
     else setWaitingUi();
+    setPauseButtonState();
 
     fetchCountdownState();
-    countdownPollId = setInterval(fetchCountdownState, 1200);
+    countdownPollId = setInterval(fetchCountdownState, MINUTE_MS);
 
     if (startBtn) {
         startBtn.addEventListener('click', () => {
@@ -625,28 +873,54 @@ function _initSessionCountdown() {
             })
                 .then(r => r.ok ? r.json() : Promise.reject())
                 .then(data => {
-                    if (data && data.estado === 'en_curso' && data.fecha_inicio) {
-                        const parsed = Date.parse(data.fecha_inicio);
-                        if (Number.isFinite(parsed)) startTimestamp = parsed;
-                        sesionIniciada = true;
-                        startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
-                        startTicker();
+                    if (data && data.estado === 'en_curso') {
+                        applyRemoteState(data);
                     } else {
                         startBtn.disabled = false;
                     }
                 })
-                .catch(() => { startBtn.disabled = false; });
+                .catch(() => {
+                    startBtn.disabled = false;
+                });
+        });
+    }
+
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            if (!sesionIniciada || pauseBtnRequestInFlight) return;
+
+            const targetUrl = cronometroPausado ? resumeCountdownUrl : pauseCountdownUrl;
+            if (!targetUrl) return;
+
+            pauseBtnRequestInFlight = true;
+            setPauseButtonState();
+
+            fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': _getCsrf(), 'Accept': 'application/json' },
+            })
+                .then(async (response) => {
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.error || 'No se pudo actualizar el cronómetro.');
+                    }
+                    return data;
+                })
+                .then((data) => {
+                    applyRemoteState(data);
+                })
+                .catch(() => {})
+                .finally(() => {
+                    pauseBtnRequestInFlight = false;
+                    setPauseButtonState();
+                });
         });
     }
 }
 
-function _formatRemainingTime(milliseconds) {
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+function _formatRemainingMinutes(totalMinutes) {
+    const safeMinutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.ceil(totalMinutes)) : 0;
+    return `${safeMinutes} min`;
 }
 
 
@@ -667,8 +941,21 @@ function _initChat() {
     let chatVisible     = false;
     let selectedFile    = null;
     let previewObjectUrl = null;
+    const MAX_CHAT_IMAGE_SIZE = 5 * 1024 * 1024;
+    const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+    const notifyChat = (message, type = 'warning') => {
+        const feedback = window.AuraFeedback;
+        if (feedback && typeof feedback.toast === 'function') {
+            feedback.toast(message, { type, duration: 3600 });
+            return;
+        }
+        console.warn('[AURA chat]', message);
+    };
 
     document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
+
+    document.addEventListener('chatClosed', () => { chatVisible = false; });
 
     const escHtml = t => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
     const myName  = () => (typeof currentUserName !== 'undefined' && currentUserName)
@@ -703,6 +990,19 @@ function _initChat() {
         selectedFile = null;
         chatImageInput.value = '';
         chatPreviewContainer.innerHTML = '';
+    }
+
+    async function readJsonOrText(response) {
+        const raw = await response.text();
+        try {
+            return raw ? JSON.parse(raw) : null;
+        } catch (_error) {
+            return { raw };
+        }
+    }
+
+    function extraerMensajeDeError(payload, fallback) {
+        return payload?.error || payload?.mensaje || payload?.detail || fallback;
     }
 
     function renderPreview(file) {
@@ -804,15 +1104,26 @@ function _initChat() {
     }
 
     function fetchMessages() {
+        if (tourFinalizado) return;
         let url = `/tours/sesiones/${sesionId}/mensajes/`;
         if (lastMessageTime) {
             try { url += `?desde=${encodeURIComponent(new Date(lastMessageTime).toISOString())}`; }
             catch { url += `?desde=${encodeURIComponent(lastMessageTime)}`; }
         }
+
         fetch(url)
-            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(r => {
+                if ([401, 403, 410].includes(r.status)) {
+                    _manejarFinDeTour(); return Promise.reject('Fin de sesión');
+                }
+                return r.ok ? r.json() : Promise.reject();
+            })
             .then(data => {
                 if (data && data.estado_sesion) {
+                    if (data.estado_sesion === 'finalizada') {
+                        _manejarFinDeTour();
+                        return;
+                    }
                     sesionEstadoActual = data.estado_sesion;
                     document.dispatchEvent(new CustomEvent('sessionStateChanged', {
                         detail: { estado: data.estado_sesion },
@@ -827,7 +1138,10 @@ function _initChat() {
         if (!_sesionEnCurso()) return;
 
         const texto = chatInput.value.trim();
-        if (!texto && !selectedFile) return;
+        if (!texto && !selectedFile) {
+            notifyChat('El mensaje no puede estar vacío.', 'warning');
+            return;
+        }
 
         chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = true;
 
@@ -842,14 +1156,19 @@ function _initChat() {
             headers: { 'X-CSRFToken': _getCsrf() },
             body:    payload,
         })
-        .then(r => r.json())
-        .then((data) => {
-            if (data.status !== 'ok') return;
+        .then(async (r) => {
+            const data = await readJsonOrText(r);
+            if (!r.ok || data?.status !== 'ok') {
+                throw new Error(extraerMensajeDeError(data, 'No se pudo enviar el mensaje.'));
+            }
+
             chatInput.value = '';
             clearPreview();
             fetchMessages();
         })
-        .catch(() => {})
+        .catch((error) => {
+            notifyChat(error?.message || 'No se pudo enviar el mensaje.', 'error');
+        })
         .finally(() => {
             chatSendBtn.disabled = chatInput.disabled = chatImageBtn.disabled = false;
             chatInput.focus();
@@ -866,8 +1185,14 @@ function _initChat() {
         }
 
         const file = chatImageInput.files[0];
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
+        if (!ALLOWED_CHAT_IMAGE_TYPES.has(file.type)) {
+            notifyChat('Formato de imagen no permitido. Usa JPEG, PNG o WebP.', 'warning');
+            clearPreview();
+            return;
+        }
+
+        if (file.size > MAX_CHAT_IMAGE_SIZE) {
+            notifyChat('La imagen supera el tamaño máximo de 5MB.', 'warning');
             clearPreview();
             return;
         }
@@ -877,7 +1202,7 @@ function _initChat() {
     });
 
     fetchMessages();
-    setInterval(fetchMessages, 5000);
+    chatPollId = setInterval(fetchMessages, 5000);
 
     document.addEventListener('sessionStateChanged', () => {
         syncChatAvailability();
@@ -887,11 +1212,285 @@ function _initChat() {
 }
 
 
+function _initRecordatorios() {
+    const recordatoriosEnabled = (typeof scheduledMeetupEnabled === 'undefined')
+        ? true
+        : Boolean(scheduledMeetupEnabled);
+    if (!recordatoriosEnabled) return;
+
+    const listEl = document.getElementById('recordatorios-list');
+    if (!listEl) return;
+
+    const horaInput = document.getElementById('recordatorio-hora');
+    const avisarInput = document.getElementById('recordatorio-avisar');
+    const mensajeInput = document.getElementById('recordatorio-mensaje');
+    const crearBtn = document.getElementById('recordatorio-crear-btn');
+    const feedbackEl = document.getElementById('recordatorio-feedback');
+    const badgeEl = document.getElementById('recordatorios-badge');
+
+    let unreadAlerts = 0;
+    let tabVisible = false;
+    const alertasActivasPorId = new Map();
+    let ultimoRecordatorios = [];
+
+    document.addEventListener('recordatoriosOpened', () => {
+        tabVisible = true;
+        unreadAlerts = 0;
+        if (badgeEl) badgeEl.style.display = 'none';
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabVisible = btn.getAttribute('data-tab') === 'notificaciones';
+        });
+    });
+
+    const tabBtn = document.querySelector('[data-tab="notificaciones"]');
+    if (tabBtn && tabBtn.classList.contains('active')) {
+        tabVisible = true;
+    }
+
+    function showFeedback(msg, isError) {
+        if (!feedbackEl) return;
+        feedbackEl.textContent = msg || '';
+        feedbackEl.classList.toggle('error', Boolean(isError));
+        feedbackEl.classList.toggle('ok', !isError && Boolean(msg));
+    }
+
+    function formatDate(isoDate) {
+        try {
+            return new Date(isoDate).toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return 'Fecha inválida';
+        }
+    }
+
+    function formatHour(isoDate) {
+        try {
+            return new Date(isoDate).toLocaleTimeString('es-ES', {
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return '--:--';
+        }
+    }
+
+    function clearExpiredActiveAlerts() {
+        const nowMs = Date.now();
+        Array.from(alertasActivasPorId.entries()).forEach(([id, alerta]) => {
+            const endMs = Date.parse(alerta?.hora_objetivo || '');
+            if (!Number.isFinite(endMs) || endMs <= nowMs) {
+                alertasActivasPorId.delete(id);
+            }
+        });
+    }
+
+    function renderRecordatorios(recordatorios) {
+        clearExpiredActiveAlerts();
+
+        if (!Array.isArray(recordatorios) || !recordatorios.length) {
+            listEl.innerHTML = `
+                <div class="chat-empty">
+                    <span class="material-icons-round">notifications_none</span>
+                    <p>Aún no hay recordatorios</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = '';
+        recordatorios.forEach(item => {
+            const card = document.createElement('article');
+            const itemId = String(item.id);
+            const alertaActiva = alertasActivasPorId.has(itemId);
+            card.className = `recordatorio-item ${alertaActiva ? 'recordatorio-item-alerta' : ''}`;
+
+            const chipTexto = alertaActiva
+                ? `ALERTA HASTA ${formatHour(item.hora_objetivo)}`
+                : `${item.avisar_minutos_antes} min antes`;
+
+            card.innerHTML = `
+                <div class="recordatorio-item-head">
+                    <span class="recordatorio-chip">${_escapeHtml(chipTexto)}</span>
+                    <span class="recordatorio-time">${_escapeHtml(formatDate(item.hora_objetivo))}</span>
+                </div>
+                <p class="recordatorio-text">${_escapeHtml(item.mensaje)}</p>
+            `;
+            listEl.appendChild(card);
+        });
+    }
+
+    function pollRecordatorios() {
+        if (typeof recordatoriosUrl === 'undefined' || !recordatoriosUrl) return;
+        fetch(recordatoriosUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => {
+                ultimoRecordatorios = data.recordatorios || [];
+                renderRecordatorios(ultimoRecordatorios);
+            })
+            .catch(() => {});
+    }
+
+    async function playReminderSound() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const context = new AudioCtx();
+
+            const beep = (startAt, freq) => {
+                const osc = context.createOscillator();
+                const gain = context.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, startAt);
+                gain.gain.exponentialRampToValueAtTime(0.2, startAt + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.3);
+                osc.connect(gain);
+                gain.connect(context.destination);
+                osc.start(startAt);
+                osc.stop(startAt + 0.32);
+            };
+
+            const now = context.currentTime;
+            beep(now, 880);
+            beep(now + 0.35, 660);
+            beep(now + 0.7, 880);
+
+            setTimeout(() => {
+                context.close().catch(() => {});
+            }, 1500);
+        } catch {
+            return;
+        }
+    }
+
+    function notifyBrowser(alerta) {
+        const title = 'Recordatorio del guía';
+        const body = alerta.mensaje || 'Tienes un nuevo recordatorio';
+
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body });
+            return;
+        }
+        if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    new Notification(title, { body });
+                }
+            }).catch(() => {});
+        }
+    }
+
+    function pollAlertasTurista() {
+        if (esGuia) return;
+        if (typeof recordatoriosAlertasUrl === 'undefined' || !recordatoriosAlertasUrl) return;
+
+        fetch(recordatoriosAlertasUrl)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => {
+                const alertas = data.alertas || [];
+                if (!alertas.length) return;
+
+                alertas.forEach(alerta => {
+                    alertasActivasPorId.set(String(alerta.id), alerta);
+                    notifyBrowser(alerta);
+                });
+
+                renderRecordatorios(ultimoRecordatorios);
+
+                playReminderSound();
+
+                if (!tabVisible) {
+                    unreadAlerts += alertas.length;
+                    if (badgeEl) {
+                        badgeEl.textContent = unreadAlerts > 99 ? '99+' : String(unreadAlerts);
+                        badgeEl.style.display = 'block';
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    function createRecordatorio() {
+        if (!esGuia || !crearBtn) return;
+
+        const hora = horaInput ? horaInput.value : '';
+        const mensaje = mensajeInput ? mensajeInput.value.trim() : '';
+        const avisar = avisarInput ? avisarInput.value : '10';
+
+        if (!hora) {
+            showFeedback('Debes indicar la hora objetivo.', true);
+            return;
+        }
+        if (!mensaje) {
+            showFeedback('Debes escribir un mensaje para el recordatorio.', true);
+            return;
+        }
+
+        const payload = {
+            hora_objetivo: new Date(hora).toISOString(),
+            avisar_minutos_antes: Number(avisar || '10'),
+            mensaje,
+        };
+
+        crearBtn.disabled = true;
+        showFeedback('Creando recordatorio...', false);
+
+        fetch(recordatoriosUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': _getCsrf(),
+            },
+            body: JSON.stringify(payload),
+        })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    throw new Error(data.error || 'No se pudo crear el recordatorio.');
+                }
+                return data;
+            })
+            .then(() => {
+                if (mensajeInput) mensajeInput.value = '';
+                showFeedback('Recordatorio creado correctamente.', false);
+                pollRecordatorios();
+            })
+            .catch(err => {
+                showFeedback(err.message || 'No se pudo crear el recordatorio.', true);
+            })
+            .finally(() => {
+                crearBtn.disabled = false;
+            });
+    }
+
+    if (crearBtn) {
+        crearBtn.addEventListener('click', createRecordatorio);
+    }
+
+    pollRecordatorios();
+    setInterval(pollRecordatorios, 15000);
+    setInterval(pollAlertasTurista, 10000);
+}
+
+
 function _obtenerUbicacionesTuristas() {
-    if (!map || !esGuia) return;
+    if (!map || !esGuia || tourFinalizado) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
-        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(r => { 
+            if ([401, 403, 410].includes(r.status)) {
+                _manejarFinDeTour(); throw new Error('Fin');
+            }
+            if (!r.ok) throw new Error(); 
+            return r.json(); 
+        })
         .then(data => _renderizarTuristasEnMapa(data.turistas || []))
         .catch(() => {});
 }
@@ -996,8 +1595,10 @@ function _resaltarParadaSeleccionada(paradaId) {
     if (paradaSeleccionadaId && paradaSeleccionadaId !== paradaId) {
         const previousMarker = paradasMarkers.get(paradaSeleccionadaId);
         const previousParada = paradasDataById.get(paradaSeleccionadaId);
+        
         if (previousMarker && previousParada) {
-            previousMarker.setIcon(_buildParadaIcon(previousParada));
+            const previousRole = paradasRole.get(paradaSeleccionadaId) || null;
+            previousMarker.setIcon(_buildParadaIcon(previousParada, false, previousRole));
             previousMarker.setZIndexOffset(0);
         }
     }
@@ -1015,8 +1616,10 @@ function _resaltarParadaSeleccionada(paradaId) {
 
     const marker = paradasMarkers.get(paradaId);
     const parada = paradasDataById.get(paradaId);
+
     if (marker && parada) {
-        marker.setIcon(_buildParadaIcon(parada, true));
+        const role = paradasRole.get(paradaId) || null;
+        marker.setIcon(_buildParadaIcon(parada, true, role));
         marker.setZIndexOffset(1200);
     }
 
@@ -1038,32 +1641,21 @@ function _resaltarParadaSeleccionada(paradaId) {
     paradaSeleccionadaId = paradaId;
 }
 
-function _buildParadaIcon(parada, highlighted = false) {
-    const esActual = Boolean(parada && parada.es_actual);
-    const size = highlighted ? 40 : (esActual ? 34 : 26);
-    const backgroundColor = highlighted ? '#f97316' : (esActual ? '#4f46e5' : '#d1d5db');
-    const borderWidth = highlighted ? 3 : (esActual ? 3 : 2);
-    const borderColor = highlighted ? '#fff7ed' : '#ffffff';
-    const shadow = highlighted
-        ? '0 0 0 4px rgba(249,115,22,.25),0 4px 12px rgba(249,115,22,.45)'
-        : (esActual ? '0 2px 10px rgba(79,70,229,.45)' : '0 1px 5px rgba(0,0,0,.18)');
-    const textColor = highlighted || esActual ? '#ffffff' : '#6b7280';
-    const textSize = highlighted ? 15 : (esActual ? 14 : 11);
-    const textWeight = highlighted ? 800 : (esActual ? 700 : 600);
+function _buildPopupTour(parada, role) {
+    let badge = '';
+    if (role === 'origin') {
+        badge = ' <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;letter-spacing:.3px;vertical-align:middle;">INICIO</span>';
+    } else if (role === 'destination') {
+        badge = ' <span style="display:inline-block;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;letter-spacing:.3px;vertical-align:middle;">FIN</span>';
+    }
+    return `<strong>${parada.nombre}${badge}</strong><br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`;
+}
 
-    return L.divIcon({
-        className: '',
-        html: `<div style="
-                background:${backgroundColor};
-                width:${size}px;height:${size}px;
-                border-radius:50%;border:${borderWidth}px solid ${borderColor};
-                box-shadow:${shadow};
-                display:flex;align-items:center;justify-content:center;">
-                <span style="color:${textColor};font-size:${textSize}px;font-weight:${textWeight};">${parada.orden}</span>
-              </div>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-        popupAnchor: [0, -(size / 2) - 4],
+function _buildParadaIcon(parada, highlighted = false, role = null) {
+    return window.buildAuraMarkerIcon(parada, {
+        highlighted: highlighted,
+        role: role,
+        esActual: Boolean(parada && parada.es_actual)
     });
 }
 
@@ -1128,6 +1720,11 @@ function _initBotónCentraMapa() {
 
 function _centrar_en_turista() {
     if (!map || !miUbicacionMarker) {
+        if (ultimaPosicionTurista) {
+            map.flyTo([ultimaPosicionTurista.lat, ultimaPosicionTurista.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+            return;
+        }
+
         console.warn('No se puede centrar: posición del turista no disponible');
         return;
     }

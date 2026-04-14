@@ -163,9 +163,13 @@ class RutasServicesValidationTest(TestCase):
             "Parada editada",
             "10",
             "20",
+            descripcion="Descripcion editada",
             usuario=self.user,
             motivo="Corrección solicitada por el guía",
         )
+
+        self.parada1.refresh_from_db()
+        self.assertEqual(self.parada1.descripcion, "Descripcion editada")
 
         evento = RutaAuditoria.objects.get()
         self.assertEqual(evento.ruta, self.ruta)
@@ -175,7 +179,31 @@ class RutasServicesValidationTest(TestCase):
         self.assertEqual(evento.motivo, "Corrección solicitada por el guía")
         self.assertEqual(evento.tipo_evento, RutaAuditoria.TipoEvento.PARADA_MODIFICADA)
         self.assertEqual(evento.detalles["antes"]["nombre"], "P1")
+        self.assertEqual(evento.detalles["antes"]["descripcion"], "")
         self.assertEqual(evento.detalles["despues"]["nombre"], "Parada editada")
+        self.assertEqual(evento.detalles["despues"]["descripcion"], "Descripcion editada")
+
+    def test_editar_parada_actualiza_descripcion(self):
+        editar_parada(
+            self.parada1,
+            "Parada 1 editada",
+            "37.39",
+            "-5.99",
+            descripcion="Descripcion nueva para la parada",
+        )
+        self.parada1.refresh_from_db()
+        self.assertEqual(self.parada1.descripcion, "Descripcion nueva para la parada")
+
+    def test_editar_parada_recorta_descripcion_larga(self):
+        editar_parada(
+            self.parada1,
+            "Parada 1 editada",
+            "37.39",
+            "-5.99",
+            descripcion="A" * 700,
+        )
+        self.parada1.refresh_from_db()
+        self.assertEqual(len(self.parada1.descripcion), 500)
 
     # 9. Añadir Parada
     def test_añadir_parada_nombre_vacio(self):
