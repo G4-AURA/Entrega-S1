@@ -304,6 +304,13 @@ main.container {
     min-width: 0;
 }
 
+.timeline-item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .timeline-item.active {
     border-left-color: var(--brand-color);
     background: var(--brand-light);
@@ -360,6 +367,34 @@ main.container {
 }
 
 .parada-focus-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.mostrar-curiosidad-btn {
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.mostrar-curiosidad-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+.mostrar-curiosidad-btn:disabled {
     opacity: 0.7;
     cursor: wait;
 }

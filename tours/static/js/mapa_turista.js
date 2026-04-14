@@ -50,6 +50,7 @@ let paradaSeleccionadaId = null;
 const curiosidadesMostradas = new Set();
 let paradaEnRadioActual = null;
 let solicitudCuriosidadEnCurso = false;
+let curiosidadPopupActual = null;
 let sesionEstadoActual = (typeof sesionEstado !== 'undefined' && sesionEstado) ? sesionEstado : '';
 const RADIO_PARADA_METROS = 75;
 
@@ -98,6 +99,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Dibujar recorrido y paradas ───────────────────────────────────────
     _dibujarRutaYParadas();
     _initParadaFocusButtons();
+    _initMostrarCuriosidadButtons();
 
 
     // ── Posición propia ───────────────────────────────────────────────────
@@ -523,40 +525,33 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
                          
     const tieneImagen = curiosidad.imagen_url && curiosidad.imagen_url.trim() !== '';
     const finalImgUrl = tieneImagen ? curiosidad.imagen_url : urlSeguridad;
-    
-    const existing = document.getElementById('curiosidad-auto-card');
-    if (existing) existing.remove();
 
-    const card = document.createElement('div');
-    card.id = 'curiosidad-auto-card';
-    card.setAttribute('role', 'status');
-    card.style.position = 'fixed';
-    card.style.left = '50%';
-    card.style.transform = 'translateX(-50%)';
-    card.style.top = '16px';
-    card.style.zIndex = '9999';
-    card.style.maxWidth = 'min(92vw, 400px)'; 
-    card.style.width = '100%';
-    card.style.background = '#ffffff';
-    card.style.border = '1px solid #e5e7eb';
-    card.style.borderLeft = '6px solid #4f46e5';
-    card.style.borderRadius = '12px';
-    card.style.padding = '12px 14px';
-    card.style.boxShadow = '0 8px 28px rgba(15, 23, 42, 0.18)';
+    _cerrarCuriosidadVisible();
+
+    const popupContent = document.createElement('div');
+    popupContent.id = 'curiosidad-auto-card';
+    if (parada && parada.id) {
+        popupContent.setAttribute('data-parada-id', String(parada.id));
+    }
+    popupContent.setAttribute('role', 'status');
+    popupContent.style.maxWidth = '320px';
+    popupContent.style.minWidth = '240px';
+    popupContent.style.fontFamily = "'Manrope', sans-serif";
+    popupContent.style.color = '#111827';
 
     const paradaTexto = parada?.nombre ? `Parada: ${parada.nombre}` : 'Parada actual';
     const tipoTexto = curiosidad.tipo ? `<span style="font-size:.72rem;color:#4338ca;font-weight:700;text-transform:uppercase;">${_escapeHtml(curiosidad.tipo)}</span>` : '';
     const tituloTexto = curiosidad.titulo ? _escapeHtml(curiosidad.titulo) : 'Curiosidad de esta parada';
     const cuerpoTexto = curiosidad.texto ? _escapeHtml(curiosidad.texto) : '';
 
-    card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
+    popupContent.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px; gap: 12px;">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <strong style="font-size:.8rem;color:#111827;">${_escapeHtml(paradaTexto)}</strong>
                 ${tipoTexto}
             </div>
             <button type="button" id="curiosidad-auto-close" aria-label="Cerrar curiosidad"
-                style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;">×</button>
+                style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;flex-shrink:0;">×</button>
         </div>
         <div id="curiosidad-auto-img-container"></div>
         <div>
@@ -564,7 +559,7 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
             <p style="margin:0;font-size:.9rem;color:#374151;line-height:1.35;">${cuerpoTexto}</p>
         </div>`;
 
-    const imgContainer = card.querySelector('#curiosidad-auto-img-container');
+    const imgContainer = popupContent.querySelector('#curiosidad-auto-img-container');
     if (imgContainer) {
         const imgEl = document.createElement('img');
         imgEl.src = finalImgUrl;
@@ -577,52 +572,76 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
         imgContainer.appendChild(imgEl);
     }
 
-    document.body.appendChild(card);
-
-    const closeBtn = document.getElementById('curiosidad-auto-close');
+    const closeBtn = popupContent.querySelector('#curiosidad-auto-close');
     if (closeBtn) {
-        closeBtn.addEventListener('click', () => card.remove());
+        closeBtn.addEventListener('click', () => _cerrarCuriosidadVisible());
     }
+
+    const latLng = parada && Number.isFinite(parada.lat) && Number.isFinite(parada.lng)
+        ? [parada.lat, parada.lng]
+        : (parada && parada.id && paradasMarkers.get(String(parada.id))
+            ? paradasMarkers.get(String(parada.id)).getLatLng()
+            : (map ? map.getCenter() : [0, 0]));
+
+    curiosidadPopupActual = L.popup({
+        closeButton: false,
+        autoClose: true,
+        closeOnClick: false,
+        className: 'curiosidad-popup-map',
+        offset: [0, -12],
+        maxWidth: 360,
+    })
+        .setLatLng(latLng)
+        .setContent(popupContent)
+        .openOn(map);
+
+    curiosidadPopupActual.on('remove', () => {
+        if (curiosidadPopupActual && curiosidadPopupActual.getElement && curiosidadPopupActual.getElement()) {
+            // noop: guardamos el mismo flujo aunque el popup se cierre externamente.
+        }
+    });
 
     if (parada && parada.id) {
-        const contenedorId = `curiosidad-timeline-${parada.id}`;
-        const contenedor = document.getElementById(contenedorId);
-        
-        if (contenedor) {
-            const tipoEl = document.getElementById(`curiosidad-timeline-tipo-${parada.id}`);
-            if (tipoEl && curiosidad.tipo) tipoEl.textContent = curiosidad.tipo;
-            
-            const tituloEl = document.getElementById(`curiosidad-timeline-titulo-${parada.id}`);
-            if (tituloEl && curiosidad.titulo) tituloEl.textContent = curiosidad.titulo;
-            
-            const textoEl = document.getElementById(`curiosidad-timeline-texto-${parada.id}`);
-            if (textoEl && curiosidad.texto) textoEl.textContent = curiosidad.texto;
-            
-            const imgEl = document.getElementById(`curiosidad-timeline-img-${parada.id}`);
-            if (imgEl) {
-                imgEl.src = finalImgUrl;
-                imgEl.onerror = function() {
-                    this.onerror = null;
-                    this.src = urlSeguridad;
-                };
-                imgEl.style.display = 'block';
-            }
-         
-            contenedor.style.display = 'block';
-           
-            const timelineItem = contenedor.closest('.timeline-item');
-            if (timelineItem) {
-                // Marcar que esta parada ha mostrado una curiosidad sin alterar
-                // el estado de selección (`active` / `text-muted`).
-                timelineItem.classList.add('has-curiosidad');
-            }
-        }
+        _setCuriosidadButtonLabel(parada.id, 'Ocultar curiosidad');
     }
-  
-    setTimeout(() => {
-        const mounted = document.getElementById('curiosidad-auto-card');
-        if (mounted) mounted.remove();
-    }, 30000);
+
+    // La curiosidad permanece visible hasta que el guía la cierre manualmente.
+}
+
+function _cerrarCuriosidadVisible() {
+    const popup = curiosidadPopupActual;
+    if (!popup) return;
+
+    const popupContent = popup.getContent ? popup.getContent() : null;
+    const paradaId = popupContent && popupContent.getAttribute ? popupContent.getAttribute('data-parada-id') : null;
+    if (paradaId) {
+        _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+    }
+
+    if (map) {
+        map.closePopup(popup);
+    }
+
+    curiosidadPopupActual = null;
+}
+
+function _setCuriosidadButtonLabel(paradaId, label) {
+    const button = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
+    if (!button) return;
+    button.textContent = label;
+}
+
+function _flashCuriosidadButtonLabel(paradaId, temporaryLabel, restoreLabel, timeoutMs = 2400) {
+    const button = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
+    if (!button) return;
+
+    button.textContent = temporaryLabel;
+    window.setTimeout(() => {
+        const currentButton = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
+        if (currentButton) {
+            currentButton.textContent = restoreLabel;
+        }
+    }, timeoutMs);
 }
 
 function _escapeHtml(value) {
@@ -1585,6 +1604,52 @@ function _initParadaFocusButtons() {
             if (!parada || parada.lat == null || parada.lng == null) return;
 
             map.flyTo([parada.lat, parada.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+        });
+    });
+}
+
+function _initMostrarCuriosidadButtons() {
+    const curiosidadButtons = document.querySelectorAll('.mostrar-curiosidad-btn');
+    if (!curiosidadButtons.length) return;
+
+    curiosidadButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const paradaId = button.getAttribute('data-parada-id');
+            if (!paradaId) return;
+
+            const popupParadaId = curiosidadPopupActual?.getContent?.()?.getAttribute?.('data-parada-id');
+            if (curiosidadPopupActual && popupParadaId === String(paradaId)) {
+                _cerrarCuriosidadVisible();
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${paradaId}/curiosidad/?solo_existente=1`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                });
+
+                if (!response.ok) {
+                    _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+                    return;
+                }
+
+                const payload = await response.json();
+                if (!payload?.curiosidad) {
+                    _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+                    _flashCuriosidadButtonLabel(paradaId, 'Sin curiosidad', 'Mostrar curiosidad');
+                    return;
+                }
+
+                curiosidadesMostradas.add(String(paradaId));
+                _mostrarCuriosidadAutomatica(payload.parada, payload.curiosidad);
+                _setCuriosidadButtonLabel(paradaId, 'Ocultar curiosidad');
+            } catch {
+                _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+            } finally {
+                button.disabled = false;
+            }
         });
     });
 }
