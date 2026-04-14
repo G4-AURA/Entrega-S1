@@ -212,6 +212,10 @@ def actualizar_exigencia_ruta(ruta, raw_exigencia):
 
 
 def eliminar_parada_y_reordenar(ruta, parada):
+    total_paradas = ruta.paradas.count()
+    if total_paradas <= 2:
+        raise ValueError("Una ruta debe tener al menos 2 paradas")
+
     parada.delete()
     for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
         if parada_restante.orden != index:

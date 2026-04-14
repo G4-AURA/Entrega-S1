@@ -650,7 +650,10 @@ def ruta_detalle_view(request, ruta_id):
         if form_type == "stop_delete":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
-            services.eliminar_parada_y_reordenar(ruta, parada)
+            try:
+                services.eliminar_parada_y_reordenar(ruta, parada)
+            except ValueError:
+                return redirect(f"{request.path}?stop_error=1")
             return redirect(f"{request.path}?stop_deleted=1")
 
         # ── Editar parada ─────────────────────────────────────────────────────

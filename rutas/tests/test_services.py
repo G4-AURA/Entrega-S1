@@ -193,11 +193,24 @@ class RutasServicesValidationTest(TestCase):
         self.assertEqual(self.parada2.orden, 1)
         self.assertEqual(self.parada1.orden, 2)
 
-    def test_eliminar_parada_y_reordenar(self):
-        eliminar_parada_y_reordenar(self.ruta, self.parada1)
+    def test_eliminar_parada_y_reordenar_bloquea_cuando_quedarian_menos_de_dos(self):
+        with self.assertRaisesMessage(ValueError, "Una ruta debe tener al menos 2 paradas"):
+            eliminar_parada_y_reordenar(self.ruta, self.parada1)
+        self.assertEqual(Parada.objects.filter(ruta=self.ruta).count(), 2)
+
+    def test_eliminar_parada_y_reordenar_permite_si_hay_tres_o_mas(self):
+        parada3 = Parada.objects.create(
+            orden=3,
+            nombre="P3",
+            coordenadas=Point(2, 2),
+            ruta=self.ruta,
+        )
+        eliminar_parada_y_reordenar(self.ruta, parada3)
+        self.parada1.refresh_from_db()
         self.parada2.refresh_from_db()
-        self.assertEqual(self.parada2.orden, 1)
-        self.assertEqual(Parada.objects.filter(ruta=self.ruta).count(), 1)
+        self.assertEqual(Parada.objects.filter(ruta=self.ruta).count(), 2)
+        self.assertEqual(self.parada1.orden, 1)
+        self.assertEqual(self.parada2.orden, 2)
 
     # 11. Eliminar Ruta
     def test_eliminar_ruta(self):

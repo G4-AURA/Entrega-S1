@@ -342,11 +342,14 @@ class RutasViewsTest(TestCase):
         response = self.client.post(url, {
             'form_type': 'stop_add',
             'nombre': 'Parada 2',
+            'descripcion': 'Descripcion de la nueva parada',
             'lat': '10.0',
             'lon': '10.0'
         })
         self.assertRedirects(response, f"{url}?stop_added=1")
         self.assertEqual(self.ruta.paradas.count(), 2)
+        parada_agregada = self.ruta.paradas.order_by('-orden').first()
+        self.assertEqual(parada_agregada.descripcion, 'Descripcion de la nueva parada')
 
     def test_ruta_detalle_post_stop_edit_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
@@ -362,13 +365,27 @@ class RutasViewsTest(TestCase):
         self.parada.refresh_from_db()
         self.assertEqual(self.parada.descripcion, 'Descripcion editada manualmente')
 
-    def test_ruta_detalle_post_stop_delete_success(self):
+    def test_ruta_detalle_post_stop_delete_bloqueado_con_dos_paradas_minimas(self):
+        Parada.objects.create(orden=2, nombre="Parada 2", coordenadas=Point(1, 1), ruta=self.ruta)
         url = reverse('ruta-detalle', args=[self.ruta.id])
         response = self.client.post(url, {
             'form_type': 'stop_delete',
             'parada_id': self.parada.id
         })
+        self.assertRedirects(response, f"{url}?stop_error=1")
+        self.assertEqual(self.ruta.paradas.count(), 2)
+
+    def test_ruta_detalle_post_stop_delete_success_con_mas_de_dos_paradas(self):
+        parada2 = Parada.objects.create(orden=2, nombre="Parada 2", coordenadas=Point(1, 1), ruta=self.ruta)
+        parada3 = Parada.objects.create(orden=3, nombre="Parada 3", coordenadas=Point(2, 2), ruta=self.ruta)
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'stop_delete',
+            'parada_id': parada3.id,
+        })
         self.assertRedirects(response, f"{url}?stop_deleted=1")
+        self.assertEqual(self.ruta.paradas.count(), 2)
+        self.assertTrue(Parada.objects.filter(id=parada2.id).exists())
 
     def test_ruta_detalle_post_stop_reorder_success(self):
         parada2 = Parada.objects.create(orden=2, nombre="P2", coordenadas=Point(1, 1), ruta=self.ruta)
