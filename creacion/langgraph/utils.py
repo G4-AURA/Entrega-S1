@@ -26,8 +26,7 @@ logger = logging.getLogger(__name__)
 # services.py es la fuente canónica; esta es un alias de importación segura.
 # ─────────────────────────────────────────────────────────────────────────────
 
-class ErrorIntegracionIA(Exception):
-    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
+from creacion.exceptions import ErrorIntegracionIA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,14 +67,13 @@ def _llamar_gemini_con_clave(prompt: str, api_key: str) -> list | dict:
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
-    url = (
-        f'https://generativelanguage.googleapis.com/v1beta/models/'
-        f'gemini-2.5-flash:generateContent?key={api_key}'
-    )
+    # USAMOS 2.5-FLASH ESTABLE PARA EVITAR 404/503
+    model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}'
     headers = {'Content-Type': 'application/json'}
     data = {
         'contents': [{'parts': [{'text': prompt}]}],
-        'generationConfig': {'response_mime_type': 'application/json'},
+        'generation_config': {'response_mime_type': 'application/json'},
     }
     timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
     max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
