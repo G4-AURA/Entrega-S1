@@ -1224,16 +1224,22 @@ def enviar_mensaje(request, sesion_id):
     if error:
         return JsonResponse({"error": error}, status=403)
 
+    # Validación de tier para chat:
+    # - Público: usa el modo indicado por cliente.
+    # - Privado: fuerza modo separado para impedir bypass por payload directo.
     try:
-        if es_privado:
-            ensure_chat_mode_allowed(sesion, 'separado')
-        else:
-            ensure_chat_mode_allowed(sesion, modo_chat)
+        chat_mode_to_validate = "separado" if es_privado else modo_chat
+        ensure_chat_mode_allowed(sesion, chat_mode_to_validate)
     except TierRuleViolation as exc:
         return tier_error_response(exc)
 
     # Resolución del destinatario privado
     destinatario_turista = None
+    if es_privado and remitente_user and not destinatario_turista_id:
+        return JsonResponse(
+            {"error": "Debes indicar destinatario_turista_id para enviar mensajes privados del guía."},
+            status=400,
+        )
     if es_privado and remitente_user and destinatario_turista_id:
         # El guía envía a un turista concreto
         try:
