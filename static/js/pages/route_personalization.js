@@ -420,7 +420,7 @@
             );
         }
 
-        if (!response.ok || data.status !== 'OK') {
+        if (!response.ok || (data.status !== 'OK' && data.status !== 'Accepted')) {
             const error = new Error(data.mensaje || 'Error desconocido al generar la ruta');
             if (data?.errores && typeof data.errores === 'object') {
                 error.fieldErrors = data.errores;

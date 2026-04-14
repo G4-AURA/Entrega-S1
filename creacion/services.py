@@ -459,7 +459,15 @@ def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
         if resultado:
             return resultado
 
-        # Si la ciudad inferida no coincide con la allowlist, relajar filtro de ciudad.
+        # 2. Si no hay resultados con temas, relajar filtro de CATEGORÍA pero mantener CIUDAD.
+        if ciudad_limpia and categorias_relevantes:
+            qs_sin_categoria = POI.objects.filter(ciudad__icontains=ciudad_limpia)
+            resultado = _serializar_qs(qs_sin_categoria.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT])
+            if resultado:
+                logger.warning('Allowlist sin resultados temáticos para ciudad="%s"; se relaxa filtro de categoría.', ciudad_limpia)
+                return resultado
+
+        # 3. Si sigue sin haber nada (quizás la ciudad no existe en la DB), relajar filtro de CIUDAD.
         if ciudad_limpia:
             qs_relajado = POI.objects.all()
             if categorias_relevantes:
@@ -1898,7 +1906,11 @@ def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
             continue
 
     if not alternativas_validas:
-        raise ErrorIntegracionIA("No se pudo generar ninguna alternativa de ruta válida tras varios intentos.")
+        ciudad = prompt_params.get('ciudad') or 'la ciudad solicitada'
+        raise ErrorIntegracionIA(
+            f"No se pudo generar ninguna ruta para {ciudad}. "
+            "Esto suele ocurrir por falta de cuota en la IA y ausencia de sitios de respaldo en la base de datos."
+        )
 
     # Selección de la mejor alternativa (por ahora la que tenga mejores métricas combinadas)
     # Si solo hay una, se elige esa.
