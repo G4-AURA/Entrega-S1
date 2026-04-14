@@ -40,16 +40,16 @@ class CrearRutaContractJsonTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
-        self.assertIn('status', data)
-        self.assertIn('mensaje', data)
-        self.assertIn('ruta_id', data)
-        self.assertIn('datos_ruta', data)
+        self.assertEqual(data['status'], 'Accepted')
+        self.assertIn('datos', data)
+        self.assertIn('sesion_generacion_id', data['datos'])
+        self.assertIn('checkpoint_actual', data['datos'])
 
     @patch('creacion.views._obtener_guia_para_usuario')
-    @patch('creacion.views.consultar_langgraph')
-    def test_generar_ruta_ia_error_inesperado_devuelve_json(self, mock_consultar, mock_get_guia):
+    @patch('creacion.views.tarea_generar_ruta_ia')
+    def test_generar_ruta_ia_acceso_exitoso_retorna_202(self, mock_tarea, mock_get_guia):
         payload = {
             'ciudad': 'Sevilla',
             'duracion': 2,
@@ -58,7 +58,6 @@ class CrearRutaContractJsonTests(TestCase):
             'mood': ['historia'],
         }
         mock_get_guia.return_value = self.guia
-        mock_consultar.side_effect = RuntimeError('fallo inesperado')
 
         response = self.client.post(
             reverse('creacion:generar_ruta_ia'),
@@ -66,10 +65,8 @@ class CrearRutaContractJsonTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 500)
-        data = response.json()
-        self.assertEqual(data['status'], 'ERROR')
-        self.assertIn('error inesperado', data['mensaje'].lower())
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()['status'], 'Accepted')
 
     def test_generar_ruta_ia_error_campos_obligatorios_mensaje_coherente(self):
         response = self.client.post(

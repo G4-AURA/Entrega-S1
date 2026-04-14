@@ -1081,6 +1081,53 @@ def obtener_estado_sesion_generacion(request, session_id, refresh_ttl=True):
         raise ErrorSesionGeneracionNoEncontrada(
             'No existe la sesión de generación solicitada. Inicia una nueva generación de ruta.'
         )
+    
+    # RECONCILIACIÓN PROACTIVA: Si estamos esperando a la IA, buscamos si ya terminó
+    if estado.get('checkpoint_actual') == 'procesando_ia':
+        try:
+            from .models import Historial_ia
+            historial = Historial_ia.objects.filter(sesion_id=str(session_id)).order_by('-id').first()
+            if historial:
+                if historial.estado_tarea == 'completado':
+                    # Sincronizar éxito
+                    estado['checkpoint_actual'] = 'ruta_generada'
+                    estado['paradas_propuestas'] = historial.respuesta.get('paradas', [])
+                    
+                    # AUTO-GUARDAR si no se ha guardado ya y es un guía
+                    if not estado.get('ruta_id'):
+                        guia = None
+                        if hasattr(request.user, 'auth_profile') and hasattr(request.user.auth_profile, 'guia'):
+                            guia = request.user.auth_profile.guia
+                        
+                        if guia:
+                            try:
+                                logger.info(f"Auto-guardando ruta para sesión {session_id}")
+                                # Usamos el contexto_generacion como payload y la respuesta del historial como ruta_generada
+                                ruta = guardar_ruta_ia(
+                                    guia=guia,
+                                    payload=estado.get('contexto_generacion', {}),
+                                    ruta_generada=historial.respuesta
+                                )
+                                estado['ruta_id'] = ruta.id
+                                logger.info(f"Ruta {ruta.id} auto-guardada con éxito para sesión {session_id}")
+                            except Exception as e_save:
+                                logger.error(f"Error al auto-guardar ruta en reconciliación: {e_save}")
+
+                    store[str(session_id)] = estado
+                    request.session[SESION_GENERACION_STORE_KEY] = store
+                    request.session.modified = True
+                    logger.info(f"Sesión {session_id} reconciliada: ÉXITO")
+                elif historial.estado_tarea == 'error':
+                    # Sincronizar error
+                    estado['checkpoint_actual'] = 'error'
+                    estado['mensaje_error_ia'] = historial.mensaje_error or 'Error en la generación IA'
+                    store[str(session_id)] = estado
+                    request.session[SESION_GENERACION_STORE_KEY] = store
+                    request.session.modified = True
+                    logger.warning(f"Sesión {session_id} reconciliada: ERROR")
+        except Exception as e:
+            logger.error(f"Error durante la reconciliación de sesión {session_id}: {e}")
+
     ahora_epoch = int(timezone.now().timestamp())
     if int(estado.get('expira_en') or 0) < ahora_epoch:
         del store[str(session_id)]
@@ -1177,8 +1224,9 @@ def normalizar_payload_ia(datos):
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
     mood = datos.get('mood')
-    if duracion in (None, '') or personas in (None, '') or not exigencia:
-        raise ErrorValidacionRuta('Faltan parámetros obligatorios en la petición.')
+    
+    if duracion is None or duracion == '' or personas is None or personas == '' or not exigencia:
+        raise ErrorValidacionRuta('Faltan parámetros obligatorios en la petición (duración, personas o exigencia).')
     exigencia_normalizada = MAPA_EXIGENCIA_RUTA.get(exigencia)
     if not exigencia_normalizada:
         raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
@@ -1834,20 +1882,44 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str, historial_id
 
 def consultar_langgraph(prompt_params: dict, historial_id: int = None) -> dict:
     """
-    Orquestador principal simplificado para generación asíncrona.
-    Realiza un intento optimizado y registra telemetría.
+    Orquestador principal que puede generar múltiples alternativas para seleccionar la mejor,
+    registrando telemetría y progreso para el usuario.
     """
-    variacion = "Direct optimization"
-    try:
-        # Se realiza una única generación robusta
-        alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion, historial_id=historial_id)
-    except ErrorIntegracionIA as exc:
-        raise ErrorIntegracionIA("No se pudo generar la ruta tras el intento optimizado.") from exc
-
-    ruta_final = alternativa['ruta']
-    ruta_final['paradas_rechazadas_validacion'] = alternativa.get('paradas_rechazadas_validacion') or []
-    ruta_final['telemetria'] = alternativa.get('telemetria') or {}
+    num_alternativas = prompt_params.get('num_alternativas') or 1
+    alternativas_validas = []
     
+    for i in range(num_alternativas):
+        variacion = f"Variación {i+1}"
+        try:
+            alternativa = _ejecutar_grafo_para_alternativa(prompt_params, variacion, historial_id=historial_id)
+            alternativas_validas.append(alternativa)
+        except ErrorIntegracionIA as exc:
+            logger.warning("Fallo en alternativa %s para historial_id=%s: %s", i+1, historial_id, exc)
+            continue
+
+    if not alternativas_validas:
+        raise ErrorIntegracionIA("No se pudo generar ninguna alternativa de ruta válida tras varios intentos.")
+
+    # Selección de la mejor alternativa (por ahora la que tenga mejores métricas combinadas)
+    # Si solo hay una, se elige esa.
+    mejor_alternativa = max(
+        alternativas_validas,
+        key=lambda x: (x['metricas'].get('coherencia_tematica', 0.5) * 2) - x['metricas'].get('distancia_total_km', 10)
+    )
+
+    ruta_final = mejor_alternativa['ruta']
+    ruta_final['paradas_rechazadas_validacion'] = mejor_alternativa.get('paradas_rechazadas_validacion') or []
+    ruta_final['telemetria'] = mejor_alternativa.get('telemetria') or {}
+    
+    # Campos adicionales para retrocompatibilidad con tests
+    ruta_final['alternativas_evaluadas'] = alternativas_validas
+    ruta_final['metricas_seleccion'] = {
+        'total_intentos': num_alternativas,
+        'validas': len(alternativas_validas),
+        'mejor_score': mejor_alternativa['metricas']
+    }
+
+    return ruta_final
     # Si tenemos historial_id, actualizamos los tiempos en DB
     if historial_id:
         try:

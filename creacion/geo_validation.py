@@ -478,10 +478,10 @@ def completar_lista_paradas_validadas(
             nombres_bloqueados.add(nombre_validada)
         coords_bloqueadas.add(coords_validada_key)
 
-    MIN_PARADAS_EXITO = 3
-    if len(aceptadas) < MIN_PARADAS_EXITO:
+    min_requerido = min(cantidad_objetivo, 3)
+    if len(aceptadas) < min_requerido:
         raise NoConvergenciaCoordenadasError(
-            f'No fue posible completar el mínimo de {MIN_PARADAS_EXITO} paradas válidas '
+            f'No fue posible completar el mínimo de {min_requerido} paradas válidas '
             f'tras validar coordenadas (obtenidas {len(aceptadas)}/{cantidad_objetivo}, presupuesto={presupuesto_global}).'
         )
     

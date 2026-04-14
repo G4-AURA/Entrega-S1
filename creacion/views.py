@@ -170,7 +170,7 @@ def generar_ruta_ia(request):
 
         # Retornar 202 Accepted para que el frontend inicie el polling
         return JsonResponse({
-            'status': 'OK',
+            'status': 'Accepted',
             'mensaje': 'Generación de ruta iniciada',
             'datos': {
                 'historial_id': historial.id,

@@ -263,7 +263,7 @@ class GenerarCandidatosParadasIATests(TestCase):
         ]
 
         with self.settings(GEMINI_API_KEY='test-key'):
-            with patch('creacion.services.llamar_gemini_bypass', side_effect=[respuesta_primera, respuesta_regenerada]) as mock_ia, \
+            with patch('creacion.services.llamar_gemini_bypass', side_effect=[respuesta_primera, respuesta_regenerada, respuesta_regenerada, respuesta_regenerada]) as mock_ia, \
                 patch.object(services.MapboxGeocodingClient, 'buscar_lugares', return_value=[]), \
                 patch.object(services.OSMGeocodingClient, 'buscar_lugares', side_effect=self._mock_osm_buscar_lugares), \
                 patch.object(services.OSMGeocodingClient, 'buscar_geometria_lineal_cercana', return_value=[]):
@@ -341,7 +341,7 @@ class GenerarCandidatosParadasIATests(TestCase):
         ]
 
         with self.settings(GEMINI_API_KEY='test-key'):
-            with patch('creacion.services.llamar_gemini_bypass', side_effect=[respuesta_primera, respuesta_regenerada]), \
+            with patch('creacion.services.llamar_gemini_bypass', side_effect=[respuesta_primera, respuesta_regenerada, respuesta_regenerada, respuesta_regenerada]), \
                 patch.object(services.MapboxGeocodingClient, 'buscar_lugares', return_value=[]), \
                 patch.object(services.OSMGeocodingClient, 'buscar_lugares', side_effect=self._mock_osm_buscar_lugares), \
                 patch.object(services.OSMGeocodingClient, 'buscar_geometria_lineal_cercana', return_value=[]):
