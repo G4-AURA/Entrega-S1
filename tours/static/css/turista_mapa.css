@@ -528,6 +528,22 @@ main.container {
     flex-shrink: 0;
 }
 
+.tour-panel.role-guia .timeline-item {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.tour-panel.role-guia .timeline-item-actions {
+    width: 100%;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+    flex-direction: row;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .timeline-item.active {
     border-color: rgba(79, 70, 229, 0.4);
     box-shadow: 0 16px 34px rgba(79, 70, 229, 0.18);

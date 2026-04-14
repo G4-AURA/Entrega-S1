@@ -100,10 +100,74 @@ def generar_codigo_unico(length: int = 6) -> str:
 # ---------------------------------------------------------------------------
 
 ROUTE_SNAPSHOT_CACHE_PREFIX = "tour:session"
+CURIOUSITY_STATE_CACHE_PREFIX = "tour:session:curiosity_state"
 
 
 def route_snapshot_cache_key(sesion_id: int) -> str:
     return f"{ROUTE_SNAPSHOT_CACHE_PREFIX}:{sesion_id}:route_snapshot"
+
+
+def curiosity_state_cache_key(sesion_id: int) -> str:
+    return f"{CURIOUSITY_STATE_CACHE_PREFIX}:{sesion_id}"
+
+
+def _normalize_curiosity_history(raw_ids) -> list[int]:
+    if not isinstance(raw_ids, list):
+        return []
+    normalized: list[int] = []
+    for raw_id in raw_ids:
+        try:
+            parsed = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0 or parsed in normalized:
+            continue
+        normalized.append(parsed)
+    return normalized
+
+
+def get_curiosity_state(sesion_id: int) -> dict:
+    state = cache.get(curiosity_state_cache_key(sesion_id))
+    if not isinstance(state, dict):
+        return {"visible_parada_id": None, "history_parada_ids": []}
+
+    visible_raw = state.get("visible_parada_id")
+    try:
+        visible_id = int(visible_raw) if visible_raw is not None else None
+    except (TypeError, ValueError):
+        visible_id = None
+    if visible_id is not None and visible_id <= 0:
+        visible_id = None
+
+    history_ids = _normalize_curiosity_history(state.get("history_parada_ids"))
+    if visible_id is not None and visible_id not in history_ids:
+        history_ids.append(visible_id)
+
+    return {
+        "visible_parada_id": visible_id,
+        "history_parada_ids": history_ids,
+    }
+
+
+def set_curiosity_visible_parada(sesion_id: int, parada_id: int | None) -> dict:
+    current = get_curiosity_state(sesion_id)
+    history_ids = list(current.get("history_parada_ids") or [])
+
+    visible_id: int | None = None
+    if parada_id is not None:
+        visible_id = int(parada_id)
+        if visible_id > 0 and visible_id not in history_ids:
+            history_ids.append(visible_id)
+    payload = {
+        "visible_parada_id": visible_id if visible_id and visible_id > 0 else None,
+        "history_parada_ids": history_ids,
+    }
+    cache.set(
+        curiosity_state_cache_key(sesion_id),
+        payload,
+        timeout=getattr(settings, "TOURS_CURIOSITY_STATE_CACHE_TTL", 12 * 60 * 60),
+    )
+    return payload
 
 
 def _build_route_snapshot(sesion: SesionTour) -> dict:

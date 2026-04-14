@@ -133,6 +133,7 @@
                             {{ parada.descripcion|default:"Sin descripción disponible para esta parada." }}
                         </p>
 
+                        {% if not es_guia %}
                         <div class="curiosidad-timeline-container" id="curiosidad-timeline-{{ parada.id }}"
                             style="display: none; margin-top: 10px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 6px;">
                             <img id="curiosidad-timeline-img-{{ parada.id }}" alt="Imagen de la curiosidad"
@@ -144,6 +145,7 @@
                             <p id="curiosidad-timeline-texto-{{ parada.id }}"
                                 style="font-size: 0.8rem; color: #475569; margin: 0; line-height: 1.4;"></p>
                         </div>
+                        {% endif %}
                     </div>
                     {% if es_guia %}
                     <div class="timeline-item-actions">
@@ -348,6 +350,7 @@
   const enviarMensajeUrl     = '{% url "tours:enviar_mensaje" sesion.id %}';
   const recordatoriosUrl     = '{% url "tours:recordatorios_sesion" sesion.id %}';
   const recordatoriosAlertasUrl = '{% url "tours:alertas_recordatorios" sesion.id %}';
+  const curiosidadesEstadoUrl = '{% url "tours:estado_curiosidades_sesion" sesion.id %}';
   // Turista — ID propio para filtrado de mensajes
   const turistaIdRaw         = '{% if turista %}{{ turista.id }}{% else %}null{% endif %}';
   const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);

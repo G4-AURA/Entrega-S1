@@ -21,6 +21,7 @@ let miUbicacionMarker = null;
 const turistasMarkers = new Map();
 let countdownTimerId  = null;
 let countdownPollId   = null;
+let curiosidadStatePollId = null;
 
 // --- Variables para el control del fin de sesión del tour ---
 let ubicacionPollId   = null;
@@ -48,6 +49,8 @@ const paradasMarkers  = new Map();
 const paradasDataById = new Map();
 let paradaSeleccionadaId = null;
 const curiosidadesMostradas = new Set();
+const curiosidadesCachePorParada = new Map();
+const curiosidadesTimelineCargando = new Set();
 let paradaEnRadioActual = null;
 let solicitudCuriosidadEnCurso = false;
 let curiosidadPopupActual = null;
@@ -253,6 +256,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── Chat ──────────────────────────────────────────────────────────────
     _initSessionCountdown();
+    _initCuriosidadStateSync();
     _initChat();
     _initRecordatorios();
 });
@@ -618,6 +622,12 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
     const tieneImagen = curiosidad.imagen_url && curiosidad.imagen_url.trim() !== '';
     const finalImgUrl = tieneImagen ? curiosidad.imagen_url : urlSeguridad;
 
+    const paradaId = parada && parada.id != null ? String(parada.id) : null;
+    if (paradaId && !esGuia) {
+        curiosidadesCachePorParada.set(paradaId, { parada, curiosidad });
+        _renderCuriosidadEnTimeline(paradaId, curiosidad);
+    }
+
     _cerrarCuriosidadVisible();
 
     const popupContent = document.createElement('div');
@@ -666,7 +676,17 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
 
     const closeBtn = popupContent.querySelector('#curiosidad-auto-close');
     if (closeBtn) {
-        closeBtn.addEventListener('click', () => _cerrarCuriosidadVisible());
+        closeBtn.addEventListener('click', async () => {
+            if (esGuia && parada && parada.id) {
+                try {
+                    await _setCuriosidadVisibilityOnServer(parada.id, false);
+                } catch {
+                    // Si falla, al menos cerramos localmente.
+                }
+            }
+            _cerrarCuriosidadVisible();
+            if (esGuia) _syncCuriosidadButtons(null);
+        });
     }
 
     const latLng = parada && Number.isFinite(parada.lat) && Number.isFinite(parada.lng)
@@ -693,7 +713,7 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
         }
     });
 
-    if (parada && parada.id) {
+    if (parada && parada.id && esGuia) {
         _setCuriosidadButtonLabel(parada.id, 'Ocultar curiosidad');
     }
 
@@ -706,7 +726,7 @@ function _cerrarCuriosidadVisible() {
 
     const popupContent = popup.getContent ? popup.getContent() : null;
     const paradaId = popupContent && popupContent.getAttribute ? popupContent.getAttribute('data-parada-id') : null;
-    if (paradaId) {
+    if (paradaId && esGuia) {
         _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
     }
 
@@ -721,6 +741,164 @@ function _setCuriosidadButtonLabel(paradaId, label) {
     const button = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
     if (!button) return;
     button.textContent = label;
+}
+
+async function _setCuriosidadVisibilityOnServer(paradaId, visible) {
+    if (!esGuia || !paradaId) return null;
+    const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${paradaId}/curiosidad/visibilidad/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': _getCsrf(),
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({ visible: Boolean(visible) }),
+    });
+    if (!response.ok) {
+        throw new Error('No se pudo actualizar la visibilidad de la curiosidad.');
+    }
+    return response.json();
+}
+
+function _parseParadaId(value) {
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function _getPopupParadaId() {
+    const popupContent = curiosidadPopupActual?.getContent?.();
+    const raw = popupContent?.getAttribute?.('data-parada-id');
+    return _parseParadaId(raw);
+}
+
+function _renderCuriosidadEnTimeline(paradaId, curiosidad) {
+    if (!paradaId || !curiosidad) return;
+
+    const contenedor = document.getElementById(`curiosidad-timeline-${paradaId}`);
+    if (!contenedor) return;
+
+    const tipoEl = document.getElementById(`curiosidad-timeline-tipo-${paradaId}`);
+    const tituloEl = document.getElementById(`curiosidad-timeline-titulo-${paradaId}`);
+    const textoEl = document.getElementById(`curiosidad-timeline-texto-${paradaId}`);
+    const imgEl = document.getElementById(`curiosidad-timeline-img-${paradaId}`);
+
+    if (tipoEl) tipoEl.textContent = curiosidad.tipo || '';
+    if (tituloEl) tituloEl.textContent = curiosidad.titulo || 'Curiosidad';
+    if (textoEl) textoEl.textContent = curiosidad.texto || '';
+
+    const imgUrl = curiosidad.imagen_url || curiosidad.manual_url || '';
+    if (imgEl) {
+        if (imgUrl) {
+            imgEl.src = imgUrl;
+            imgEl.style.display = 'block';
+        } else {
+            imgEl.removeAttribute('src');
+            imgEl.style.display = 'none';
+        }
+    }
+
+    contenedor.style.display = 'block';
+}
+
+async function _ensureCuriosidadTimeline(paradaId) {
+    const key = String(paradaId);
+    if (!key || curiosidadesTimelineCargando.has(key)) return;
+
+    const cacheEntry = curiosidadesCachePorParada.get(key);
+    if (cacheEntry?.curiosidad) {
+        _renderCuriosidadEnTimeline(key, cacheEntry.curiosidad);
+        return;
+    }
+
+    curiosidadesTimelineCargando.add(key);
+    try {
+        const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${key}/curiosidad/?solo_existente=1`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!payload?.curiosidad) return;
+        curiosidadesCachePorParada.set(key, { parada: payload.parada, curiosidad: payload.curiosidad });
+        _renderCuriosidadEnTimeline(key, payload.curiosidad);
+    } catch {
+        return;
+    } finally {
+        curiosidadesTimelineCargando.delete(key);
+    }
+}
+
+function _syncCuriosidadButtons(visibleParadaId) {
+    if (!esGuia) return;
+    document.querySelectorAll('.mostrar-curiosidad-btn').forEach((btn) => {
+        const btnParadaId = _parseParadaId(btn.getAttribute('data-parada-id'));
+        if (!btnParadaId) return;
+        btn.textContent = (visibleParadaId && btnParadaId === visibleParadaId)
+            ? 'Ocultar curiosidad'
+            : 'Mostrar curiosidad';
+    });
+}
+
+function _syncCuriosidadStateFromRemote(data) {
+    if (!data) return;
+
+    if (esGuia) return;
+    const visibleParadaId = _parseParadaId(data.curiosidad_visible_parada_id);
+
+    const historyIds = Array.isArray(data.curiosidades_historial_paradas_ids)
+        ? data.curiosidades_historial_paradas_ids.map(_parseParadaId).filter(Boolean)
+        : [];
+
+    historyIds.forEach((id) => {
+        _ensureCuriosidadTimeline(id);
+    });
+
+    const popupParadaId = _getPopupParadaId();
+    if (!visibleParadaId) {
+        if (popupParadaId) _cerrarCuriosidadVisible();
+        return;
+    }
+
+    if (popupParadaId === visibleParadaId) return;
+
+    const cached = curiosidadesCachePorParada.get(String(visibleParadaId));
+    if (cached?.curiosidad) {
+        _mostrarCuriosidadAutomatica(cached.parada, cached.curiosidad);
+        return;
+    }
+
+    _ensureCuriosidadTimeline(visibleParadaId).then(() => {
+        const loaded = curiosidadesCachePorParada.get(String(visibleParadaId));
+        if (loaded?.curiosidad) {
+            _mostrarCuriosidadAutomatica(loaded.parada, loaded.curiosidad);
+        }
+    }).catch(() => {});
+}
+
+function _initCuriosidadStateSync() {
+    if (esGuia) return;
+    if (typeof curiosidadesEstadoUrl === 'undefined' || !curiosidadesEstadoUrl) return;
+
+    const poll = () => {
+        if (tourFinalizado) return;
+        const separator = curiosidadesEstadoUrl.includes('?') ? '&' : '?';
+        const liveUrl = `${curiosidadesEstadoUrl}${separator}_=${Date.now()}`;
+        fetch(liveUrl, { cache: 'no-store' })
+            .then((r) => {
+                if ([401, 403, 410].includes(r.status)) {
+                    return Promise.reject();
+                }
+                if (!r.ok) return Promise.reject();
+                return r.json();
+            })
+            .then((data) => {
+                _syncCuriosidadStateFromRemote(data);
+            })
+            .catch(() => {});
+    };
+
+    poll();
+    curiosidadStatePollId = setInterval(poll, 4000);
 }
 
 function _flashCuriosidadButtonLabel(paradaId, temporaryLabel, restoreLabel, timeoutMs = 2400) {
@@ -754,6 +932,7 @@ function _manejarFinDeTour() {
     // 1. Limpiar todos los intervalos de peticiones
     if (countdownPollId) clearInterval(countdownPollId);
     if (countdownTimerId) clearInterval(countdownTimerId);
+    if (curiosidadStatePollId) clearInterval(curiosidadStatePollId);
     if (ubicacionPollId) clearInterval(ubicacionPollId);
     if (chatPollId) clearInterval(chatPollId);
 
@@ -1726,7 +1905,16 @@ function _initMostrarCuriosidadButtons() {
 
             const popupParadaId = curiosidadPopupActual?.getContent?.()?.getAttribute?.('data-parada-id');
             if (curiosidadPopupActual && popupParadaId === String(paradaId)) {
-                _cerrarCuriosidadVisible();
+                button.disabled = true;
+                try {
+                    await _setCuriosidadVisibilityOnServer(paradaId, false);
+                    _cerrarCuriosidadVisible();
+                    _syncCuriosidadButtons(null);
+                } catch {
+                    return;
+                } finally {
+                    button.disabled = false;
+                }
                 return;
             }
 
@@ -1749,9 +1937,10 @@ function _initMostrarCuriosidadButtons() {
                     return;
                 }
 
+                await _setCuriosidadVisibilityOnServer(paradaId, true);
                 curiosidadesMostradas.add(String(paradaId));
                 _mostrarCuriosidadAutomatica(payload.parada, payload.curiosidad);
-                _setCuriosidadButtonLabel(paradaId, 'Ocultar curiosidad');
+                _syncCuriosidadButtons(_parseParadaId(paradaId));
             } catch {
                 _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
             } finally {

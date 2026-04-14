@@ -319,6 +319,8 @@ def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
         segundos_restantes = max(0, total_segundos - segundos_transcurridos)
         minutos_restantes = math.ceil(segundos_restantes / 60) if total_segundos > 0 else 0
 
+    curiosity_state = services.get_curiosity_state(sesion.id)
+
     return {
         "estado": sesion.estado,
         "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
@@ -332,6 +334,8 @@ def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
             else None
         ),
         "parada_actual_id": sesion.parada_actual_id,
+        "curiosidad_visible_parada_id": curiosity_state.get("visible_parada_id"),
+        "curiosidades_historial_paradas_ids": curiosity_state.get("history_parada_ids", []),
     }
 
 
@@ -1174,6 +1178,69 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
                 "imagen_url": curiosidad.imagen_public_url,
                 "manual_url": curiosidad.manual_url,
             },
+        }
+    )
+
+
+@login_required
+@require_POST
+def actualizar_visibilidad_curiosidad(request, sesion_id, parada_id):
+    """Permite al guía mostrar/ocultar una curiosidad en el mapa de turistas."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "La sesión no está en curso."}, status=409)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        body = {}
+
+    visible = bool(body.get("visible"))
+    new_state = services.set_curiosity_visible_parada(
+        sesion.id,
+        parada_id if visible else None,
+    )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "parada_id": parada_id,
+            "visible": visible,
+            "curiosidad_visible_parada_id": new_state.get("visible_parada_id"),
+            "curiosidades_historial_paradas_ids": new_state.get("history_parada_ids", []),
+        }
+    )
+
+
+@require_GET
+def estado_curiosidades_sesion(request, sesion_id):
+    """Estado de visibilidad e historial de curiosidades para sincronizar turistas."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "La sesión está finalizada."}, status=410)
+
+    state = services.get_curiosity_state(sesion.id)
+    return JsonResponse(
+        {
+            "status": "ok",
+            "curiosidad_visible_parada_id": state.get("visible_parada_id"),
+            "curiosidades_historial_paradas_ids": state.get("history_parada_ids", []),
         }
     )
 
