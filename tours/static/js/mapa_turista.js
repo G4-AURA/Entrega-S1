@@ -38,6 +38,10 @@ const LAST_LOCATION_SENT = {
     guia: { atMs: 0, lat: null, lng: null },
     turista: { atMs: 0, lat: null, lng: null },
 };
+const LOCATION_SEND_IN_FLIGHT = {
+    guia: false,
+    turista: false,
+};
 // ------------------------------------------------------------
 
 const paradasMarkers  = new Map();
@@ -251,22 +255,34 @@ async function _iniciarRastreoLocal() {
             // El guía envía su posición al servidor para que los turistas la vean
             if (esGuia) {
                 if (_shouldSendLocationUpdate('guia', lat, lng)) {
-                    _markLocationUpdateSent('guia', lat, lng);
+                    _setLocationUpdateInFlight('guia', true);
                     fetch('/tours/ubicacion/', {
                         method:  'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
                         body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
-                    }).catch(() => {});
+                    })
+                        .then((r) => {
+                            if (!r.ok) throw new Error('No se pudo registrar ubicación del guía.');
+                            _markLocationUpdateSent('guia', lat, lng);
+                        })
+                        .catch(() => {})
+                        .finally(() => {
+                            _setLocationUpdateInFlight('guia', false);
+                        });
                 }
             } else {
                 if (_shouldSendLocationUpdate('turista', lat, lng)) {
-                    _markLocationUpdateSent('turista', lat, lng);
+                    _setLocationUpdateInFlight('turista', true);
                     fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
                         method:  'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
                         body:    JSON.stringify({ latitud: lat, longitud: lng }),
                     })
-                        .then(r => r.ok ? r.json() : Promise.reject())
+                        .then(r => {
+                            if (!r.ok) throw new Error('No se pudo registrar ubicación del turista.');
+                            _markLocationUpdateSent('turista', lat, lng);
+                            return r.json();
+                        })
                         .then(data => {
                             const curiosidadCercana = data?.curiosidad_cercana;
                             const parada = curiosidadCercana?.parada;
@@ -279,7 +295,10 @@ async function _iniciarRastreoLocal() {
                             curiosidadesMostradas.add(paradaId);
                             _mostrarCuriosidadAutomatica(parada, curiosidad);
                         })
-                        .catch(() => {});
+                        .catch(() => {})
+                        .finally(() => {
+                            _setLocationUpdateInFlight('turista', false);
+                        });
                 }
 
                 _detectarParadaYSolicitarCuriosidad(lat, lng);
@@ -312,6 +331,7 @@ function _shouldSendLocationUpdate(role, lat, lng) {
     const cfg = LOCATION_SEND_CONFIG[roleKey];
     const state = LAST_LOCATION_SENT[roleKey];
     if (!cfg || !state) return true;
+    if (LOCATION_SEND_IN_FLIGHT[roleKey]) return false;
 
     if (!Number.isFinite(state.atMs) || state.atMs <= 0) return true;
 
@@ -327,6 +347,13 @@ function _shouldSendLocationUpdate(role, lat, lng) {
     }
 
     return !(elapsedMs < minIntervalMs && distanceM < cfg.minDistanceM);
+}
+
+
+function _setLocationUpdateInFlight(role, isInFlight) {
+    const roleKey = (role === 'guia') ? 'guia' : 'turista';
+    if (!(roleKey in LOCATION_SEND_IN_FLIGHT)) return;
+    LOCATION_SEND_IN_FLIGHT[roleKey] = Boolean(isInFlight);
 }
 
 
