@@ -309,6 +309,38 @@ class ChatServicesTest(TestCase):
         self.assertEqual(nombre, 'TuristaServices')
         self.assertIsNone(error)
 
+    def test_obtener_mensajes_privados_turista_devuelve_ultimos_en_orden_cronologico(self):
+        """Test: con límite, devuelve contexto reciente y orden ASC para pintar en UI."""
+        momentos = [
+            timezone.now() - timedelta(minutes=4),
+            timezone.now() - timedelta(minutes=3),
+            timezone.now() - timedelta(minutes=2),
+            timezone.now() - timedelta(minutes=1),
+        ]
+        textos = ['m1', 'm2', 'm3', 'm4']
+
+        for idx, (momento, texto) in enumerate(zip(momentos, textos), start=1):
+            msg = MensajeChat.objects.create(
+                sesion_tour=self.sesion,
+                remitente=self.user_guia if idx % 2 == 0 else None,
+                turista=self.turista if idx % 2 != 0 else None,
+                destinatario_turista=self.turista if idx % 2 == 0 else None,
+                nombre_remitente='Guia' if idx % 2 == 0 else self.turista.alias,
+                texto=texto,
+                es_privado=True,
+            )
+            MensajeChat.objects.filter(id=msg.id).update(momento=momento)
+
+        mensajes = services.obtener_mensajes_privados_turista(
+            self.sesion,
+            self.turista,
+            limite=2,
+        )
+
+        self.assertEqual(len(mensajes), 2)
+        self.assertEqual([m.texto for m in mensajes], ['m3', 'm4'])
+        self.assertLess(mensajes[0].momento, mensajes[1].momento)
+
 
 class ChatIntegrationTest(TestCase):
     """Tests de integración del flujo completo del chat."""

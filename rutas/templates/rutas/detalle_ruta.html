@@ -291,7 +291,7 @@
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm btn-editar-parada"
                                 data-parada-id="{{ parada.id }}">Editar</button>
-                        {% if ruta.es_generada_ia %}
+                        {% if ruta.es_generada_ia and ai_stop_replacement_enabled %}
                         <button type="button"
                                 class="btn btn-outline-success btn-sm btn-sugerir-parada-ia"
                                 data-parada-id="{{ parada.id }}">
@@ -318,7 +318,7 @@
                         </form>
                     </div>
 
-                    {% if ruta.es_generada_ia %}
+                    {% if ruta.es_generada_ia and ai_stop_replacement_enabled %}
                         <div class="ia-suggestions-panel ia-suggestions-inline d-none"
                              id="panel-sugerencias-ia-{{ parada.id }}" aria-live="polite">
                             <div class="d-flex align-items-center justify-content-between">
@@ -462,6 +462,8 @@
 {{ geometria_ruta_json|json_script:"geometria-ruta-json" }}
 <script src="{% static 'js/pages/route_detail.js' %}"></script>
 
+<script src="{% static 'js/map_icons.js' %}"></script>
+
 <script>
 /**
  * detalle_ruta.js (inline)
@@ -520,12 +522,36 @@ L.tileLayer(tileUrl, { attribution: mapboxToken ? '© Mapbox' : '© OpenStreetMa
 
 // ── Marcadores ─────────────────────────────────────────────────────────────
 const puntos = [];
+
+const _paradasConCoords = paradas.filter(p => Array.isArray(p.coordenadas) && p.coordenadas.length === 2);
+const _ordenMin = _paradasConCoords.length > 0 ? Math.min(..._paradasConCoords.map(p => p.orden)) : null;
+const _ordenMax = _paradasConCoords.length > 0 ? Math.max(..._paradasConCoords.map(p => p.orden)) : null;
+
+function _buildPopupDetalle(parada, esOrigen, esDestino) {
+    const badge = esOrigen
+        ? ' <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;">INICIO</span>'
+        : esDestino
+        ? ' <span style="display:inline-block;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;">FIN</span>'
+        : '';
+    return `<b>${parada.orden}. ${parada.nombre}${badge}</b>`;
+}
+
 paradas.forEach(parada => {
     if (!Array.isArray(parada.coordenadas) || parada.coordenadas.length !== 2) return;
     puntos.push(parada.coordenadas);
-    L.marker(parada.coordenadas)
-        .addTo(mapa)
-        .bindPopup(`<b>${parada.orden}. ${parada.nombre}</b>`);
+    
+    const esOrigen  = _paradasConCoords.length >= 2 && parada.orden === _ordenMin;
+    const esDestino = _paradasConCoords.length >= 2 && parada.orden === _ordenMax;
+    
+    let role = null;
+    if (esOrigen) role = 'origin';
+    else if (esDestino) role = 'destination';
+
+    L.marker(parada.coordenadas, { 
+        icon: window.buildAuraMarkerIcon(parada, { role: role }) 
+    })
+    .addTo(mapa)
+    .bindPopup(_buildPopupDetalle(parada, esOrigen, esDestino));
 });
 
 // ── Estado del badge en el mapa ────────────────────────────────────────────

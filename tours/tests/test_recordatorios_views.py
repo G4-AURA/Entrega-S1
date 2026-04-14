@@ -6,6 +6,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from billing.models import FeatureAccessSetting
 from rutas.models import AuthUser, Guia, Ruta
 from tours.models import RecordatorioSesion, SesionTour, Turista, TuristaSesion
 
@@ -67,6 +68,11 @@ class RecordatoriosViewsTests(TestCase):
     def test_guia_freemium_puede_crear_recordatorio_con_ubicacion(self):
         self.guia.tipo_suscripcion = Guia.Suscripcion.FREEMIUM
         self.guia.save(update_fields=['tipo_suscripcion'])
+        FeatureAccessSetting.objects.create(
+            key='scheduled_meetup',
+            enabled_freemium=True,
+            enabled_premium=True,
+        )
 
         self.client.force_login(self.guia_user)
         url = reverse('tours:recordatorios_sesion', args=[self.sesion.id])
@@ -81,6 +87,21 @@ class RecordatoriosViewsTests(TestCase):
 
         response = self.client.post(url, data=json.dumps(payload), content_type='application/json')
         self.assertEqual(response.status_code, 201)
+
+    def test_guia_freemium_no_puede_crear_recordatorio_si_toggle_desactivado(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.FREEMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        self.client.force_login(self.guia_user)
+        url = reverse('tours:recordatorios_sesion', args=[self.sesion.id])
+        payload = {
+            'mensaje': 'No debería crearse',
+            'hora_objetivo': (timezone.now() + timedelta(minutes=20)).isoformat(),
+            'avisar_minutos_antes': 10,
+        }
+
+        response = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, 403)
 
     def test_turista_lista_recordatorios(self):
         self._activar_turista_en_cliente()
@@ -119,3 +140,12 @@ class RecordatoriosViewsTests(TestCase):
         second = self.client.get(url)
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()['total'], 0)
+
+    def test_alertas_bloqueadas_si_toggle_desactivado_para_freemium(self):
+        self.guia.tipo_suscripcion = Guia.Suscripcion.FREEMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+        self._activar_turista_en_cliente(alias='Turista freemium')
+
+        url = reverse('tours:alertas_recordatorios', args=[self.sesion.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)

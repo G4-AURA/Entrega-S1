@@ -9,7 +9,7 @@ from django.utils import timezone
 from rutas.models import Guia, Ruta
 from tours.models import SesionTour, TuristaSesion
 
-from .models import Subscription, TierUsageEvent
+from .models import FeatureAccessSetting, Subscription, TierUsageEvent
 
 
 ALLOWED_MOODS_FREEMIUM_ORDERED = (
@@ -99,6 +99,69 @@ TIER_LIMITS = {
     },
 }
 
+FEATURE_ACCESS_DEFINITIONS = (
+    {
+        'key': 'ai_route_generation',
+        'name': 'Generacion de rutas con IA',
+        'description': (
+            'Controla si el guia puede usar la opcion "Generar con IA" '
+            'y ejecutar la generacion.'
+        ),
+        'default_freemium': True,
+        'default_premium': True,
+    },
+    {
+        'key': 'ai_stop_replacement',
+        'name': 'Sustitucion con IA de paradas',
+        'description': (
+            'Permite sustituir una parada de una ruta generada con IA '
+            'por otra propuesta por IA.'
+        ),
+        'default_freemium': True,
+        'default_premium': True,
+    },
+    {
+        'key': 'chat_mode_separate',
+        'name': 'Chat por separado',
+        'description': (
+            'El chat grupal sigue disponible siempre. '
+            'Este toggle controla el chat privado por turista.'
+        ),
+        'default_freemium': False,
+        'default_premium': True,
+    },
+    {
+        'key': 'scheduled_meetup',
+        'name': 'Quedada programada con notificacion',
+        'description': 'Controla la funcionalidad de quedada programada para sesiones.',
+        'default_freemium': False,
+        'default_premium': True,
+    },
+    {
+        'key': 'payload_wishes',
+        'name': 'Campo de deseos con IA',
+        'description': (
+            'Permite usar el campo "deseos" en la personalizacion '
+            'de la generacion con IA.'
+        ),
+        'default_freemium': False,
+        'default_premium': True,
+    },
+)
+
+FEATURE_ACCESS_DEFAULTS = {
+    item['key']: (
+        bool(item['default_freemium']),
+        bool(item['default_premium']),
+    )
+    for item in FEATURE_ACCESS_DEFINITIONS
+}
+
+FEATURE_ACCESS_NAMES = {
+    item['key']: item['name']
+    for item in FEATURE_ACCESS_DEFINITIONS
+}
+
 
 @dataclass
 class TierRuleViolation(Exception):
@@ -131,6 +194,168 @@ def tier_guard(check_fn):
         return wrapped
 
     return decorator
+
+
+def get_feature_access_definitions() -> tuple[dict, ...]:
+    return FEATURE_ACCESS_DEFINITIONS
+
+
+def _coerce_bool(value, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or '').strip().lower()
+    if text in {'1', 'true', 'on', 'yes', 'si'}:
+        return True
+    if text in {'0', 'false', 'off', 'no'}:
+        return False
+    return bool(default)
+
+
+def get_feature_access_rows() -> list[dict]:
+    stored_rows: dict[str, dict] = {}
+    try:
+        keys = [item['key'] for item in FEATURE_ACCESS_DEFINITIONS]
+        stored_rows = {
+            row['key']: row
+            for row in FeatureAccessSetting.objects.filter(key__in=keys).values(
+                'key',
+                'enabled_freemium',
+                'enabled_premium',
+            )
+        }
+    except Exception:
+        stored_rows = {}
+
+    rows = []
+    for definition in FEATURE_ACCESS_DEFINITIONS:
+        default_freemium, default_premium = FEATURE_ACCESS_DEFAULTS[definition['key']]
+        stored = stored_rows.get(definition['key']) or {}
+        rows.append(
+            {
+                **definition,
+                'enabled_freemium': _coerce_bool(
+                    stored.get('enabled_freemium'),
+                    default_freemium,
+                ),
+                'enabled_premium': _coerce_bool(
+                    stored.get('enabled_premium'),
+                    default_premium,
+                ),
+            }
+        )
+    return rows
+
+
+def update_feature_access(key: str, tier: str, enabled) -> dict:
+    key_clean = str(key or '').strip()
+    if key_clean not in FEATURE_ACCESS_DEFAULTS:
+        raise ValueError('La funcionalidad indicada no existe.')
+
+    tier_clean = str(tier or '').strip().lower()
+    if tier_clean not in {'freemium', 'premium'}:
+        raise ValueError('El plan indicado no existe.')
+
+    default_freemium, default_premium = FEATURE_ACCESS_DEFAULTS[key_clean]
+    current_enabled_freemium, current_enabled_premium = _enabled_flags_for_feature_key(
+        key_clean
+    )
+
+    enabled_bool = _coerce_bool(enabled, True)
+    next_enabled_freemium = (
+        enabled_bool if tier_clean == 'freemium' else current_enabled_freemium
+    )
+    next_enabled_premium = (
+        enabled_bool if tier_clean == 'premium' else current_enabled_premium
+    )
+
+    FeatureAccessSetting.objects.update_or_create(
+        key=key_clean,
+        defaults={
+            'enabled_freemium': _coerce_bool(next_enabled_freemium, default_freemium),
+            'enabled_premium': _coerce_bool(next_enabled_premium, default_premium),
+        },
+    )
+    return {
+        'enabled_freemium': _coerce_bool(next_enabled_freemium, default_freemium),
+        'enabled_premium': _coerce_bool(next_enabled_premium, default_premium),
+    }
+
+
+def _enabled_flags_for_feature_key(feature_key: str) -> tuple[bool, bool]:
+    default_freemium, default_premium = FEATURE_ACCESS_DEFAULTS.get(
+        feature_key,
+        (True, True),
+    )
+    try:
+        row = (
+            FeatureAccessSetting.objects.filter(key=feature_key).values(
+                'enabled_freemium',
+                'enabled_premium',
+            )
+            .first()
+        )
+    except Exception:
+        row = None
+    if not row:
+        return default_freemium, default_premium
+    return (
+        _coerce_bool(row.get('enabled_freemium'), default_freemium),
+        _coerce_bool(row.get('enabled_premium'), default_premium),
+    )
+
+
+def _is_feature_enabled_for_tier(feature_key: str, tier: str) -> bool:
+    enabled_freemium, enabled_premium = _enabled_flags_for_feature_key(feature_key)
+    if tier == Guia.Suscripcion.FREEMIUM:
+        return enabled_freemium
+    if tier == Guia.Suscripcion.PREMIUM:
+        return enabled_premium
+    if str(tier or '').strip().lower() == 'freemium':
+        return enabled_freemium
+    if str(tier or '').strip().lower() == 'premium':
+        return enabled_premium
+    return False
+
+
+def is_feature_enabled_for_tier(feature_key: str, tier: str) -> bool:
+    return _is_feature_enabled_for_tier(feature_key, tier)
+
+
+def _tier_to_human_text(tier: str) -> str:
+    if tier == Guia.Suscripcion.FREEMIUM:
+        return 'Freemium'
+    if tier == Guia.Suscripcion.PREMIUM:
+        return 'Premium'
+    return 'este plan'
+
+
+def is_feature_enabled_for_guia(guia: Guia, feature_key: str) -> bool:
+    return _is_feature_enabled_for_tier(feature_key, _tier_of(guia))
+
+
+def ensure_feature_enabled_for_guia(guia: Guia, feature_key: str):
+    current_tier = _tier_of(guia)
+    if is_feature_enabled_for_guia(guia, feature_key):
+        return
+
+    feature_name = FEATURE_ACCESS_NAMES.get(feature_key, feature_key)
+    raise TierRuleViolation(
+        code='TIER_FORBIDDEN',
+        message=(
+            f'La funcionalidad "{feature_name}" no esta habilitada '
+            f'para {_tier_to_human_text(current_tier)}.'
+        ),
+        http_status=403,
+    )
+
+
+def is_feature_enabled_for_plan(feature_key: str, plan: str) -> bool:
+    plan_clean = str(plan or '').strip()
+    if plan_clean == Guia.Suscripcion.FREEMIUM:
+        return _is_feature_enabled_for_tier(feature_key, Guia.Suscripcion.FREEMIUM)
+    if plan_clean == Guia.Suscripcion.PREMIUM:
+        return _is_feature_enabled_for_tier(feature_key, Guia.Suscripcion.PREMIUM)
+    return False
 
 
 def _add_months_preserving_day(dt, months: int):
@@ -242,13 +467,15 @@ def apply_payload_tier_rules(guia: Guia, payload: dict) -> tuple[dict, list[dict
         return payload, []
 
     warnings = []
-    if _tier_of(guia) == Guia.Suscripcion.FREEMIUM and payload.get('deseos'):
+    if not is_feature_enabled_for_guia(guia, 'payload_wishes') and payload.get('deseos'):
         payload = dict(payload)
         payload['deseos'] = []
         warnings.append(
             {
                 'code': 'TIER_PLAN_REQUIRED',
-                'mensaje': 'El campo deseos está disponible en Premium y se ignoró en Freemium.',
+                'mensaje': (
+                    'El campo deseos no esta habilitado para tu plan actual y se ha ignorado.'
+                ),
             }
         )
     return payload, warnings
@@ -340,6 +567,7 @@ def _monthly_usage_count(guia: Guia, action: str) -> int:
 
 
 def ensure_ai_generation_allowed(guia: Guia):
+    ensure_feature_enabled_for_guia(guia, 'ai_route_generation')
     ensure_ia_routes_quota_available(guia)
     monthly_limit = _limit_for(guia, 'ai_generations_per_month')
     monthly_used = _monthly_usage_count(guia, TierUsageEvent.Action.IA_ROUTE_GENERATION)
@@ -355,10 +583,12 @@ def ensure_ai_generation_allowed(guia: Guia):
 
 
 def ensure_ai_route_confirmation_allowed(guia: Guia):
+    ensure_feature_enabled_for_guia(guia, 'ai_route_generation')
     ensure_ia_routes_quota_available(guia)
 
 
 def ensure_ai_stop_replacement_allowed(guia: Guia, ruta: Ruta):
+    ensure_feature_enabled_for_guia(guia, 'ai_stop_replacement')
     monthly_limit = _limit_for(guia, 'ai_stop_replacements_per_month')
     monthly_used = _monthly_usage_count(guia, TierUsageEvent.Action.IA_STOP_REPLACEMENT)
     if monthly_used >= monthly_limit:
@@ -493,12 +723,7 @@ def ensure_chat_mode_allowed(sesion: SesionTour, mode: str):
     if mode_clean in ('', 'comun', 'común', 'common'):
         return
     if mode_clean in ('separado', 'separate'):
-        if _tier_of(sesion.ruta.guia) == Guia.Suscripcion.FREEMIUM:
-            raise TierRuleViolation(
-                code='TIER_FORBIDDEN',
-                message='El modo de chat separado está disponible solo en Premium.',
-                http_status=403,
-            )
+        ensure_feature_enabled_for_guia(sesion.ruta.guia, 'chat_mode_separate')
         return
     raise TierRuleViolation(
         code='TIER_FORBIDDEN',
@@ -532,10 +757,4 @@ def ensure_curiosity_route_allowed(ruta: Ruta):
 
 
 def ensure_premium_for_quedada(sesion: SesionTour):
-    if _tier_of(sesion.ruta.guia) == Guia.Suscripcion.PREMIUM:
-        return
-    raise TierRuleViolation(
-        code='TIER_FORBIDDEN',
-        message='La quedada programada con notificación está disponible solo en Premium.',
-        http_status=403,
-    )
+    ensure_feature_enabled_for_guia(sesion.ruta.guia, 'scheduled_meetup')

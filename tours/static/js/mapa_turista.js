@@ -62,6 +62,8 @@ const CENTRADO_STATES = {
 let estadoCentradoActual = CENTRADO_STATES.PARADA;
 let primeraParadaCentrada = false;
 
+const paradasRole = new Map();
+
 // ── Inicialización ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -184,19 +186,34 @@ function _dibujarRutaYParadas() {
 
     const bounds = [];
 
+    const paradasConCoordenadas = paradasData.filter(p => p.lat != null && p.lng != null);
+    const ordenMin = paradasConCoordenadas.length > 0
+        ? Math.min(...paradasConCoordenadas.map(p => p.orden))
+        : null;
+    const ordenMax = paradasConCoordenadas.length > 0
+        ? Math.max(...paradasConCoordenadas.map(p => p.orden))
+        : null;
+
     paradasData.forEach(parada => {
         if (parada.lat == null || parada.lng == null) return;
 
         bounds.push([parada.lat, parada.lng]);
 
+        let role = null;
+        if (paradasConCoordenadas.length >= 2) {
+            if (parada.orden === ordenMin) role = 'origin';
+            else if (parada.orden === ordenMax) role = 'destination';
+        }
+
+        if (parada.id != null) {
+            paradasRole.set(String(parada.id), role);
+        }
+
         const marker = L.marker([parada.lat, parada.lng], {
-            icon: _buildParadaIcon(parada),
+            icon: _buildParadaIcon(parada, false, role),
         })
         .addTo(map)
-        .bindPopup(
-            `<strong>${parada.nombre}</strong>` +
-            `<br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`
-        );
+        .bindPopup(_buildPopupTour(parada, role));
 
         if (parada.id != null) {
             const paradaId = String(parada.id);
@@ -1196,6 +1213,11 @@ function _initChat() {
 
 
 function _initRecordatorios() {
+    const recordatoriosEnabled = (typeof scheduledMeetupEnabled === 'undefined')
+        ? true
+        : Boolean(scheduledMeetupEnabled);
+    if (!recordatoriosEnabled) return;
+
     const listEl = document.getElementById('recordatorios-list');
     if (!listEl) return;
 
@@ -1573,8 +1595,10 @@ function _resaltarParadaSeleccionada(paradaId) {
     if (paradaSeleccionadaId && paradaSeleccionadaId !== paradaId) {
         const previousMarker = paradasMarkers.get(paradaSeleccionadaId);
         const previousParada = paradasDataById.get(paradaSeleccionadaId);
+        
         if (previousMarker && previousParada) {
-            previousMarker.setIcon(_buildParadaIcon(previousParada));
+            const previousRole = paradasRole.get(paradaSeleccionadaId) || null;
+            previousMarker.setIcon(_buildParadaIcon(previousParada, false, previousRole));
             previousMarker.setZIndexOffset(0);
         }
     }
@@ -1592,8 +1616,10 @@ function _resaltarParadaSeleccionada(paradaId) {
 
     const marker = paradasMarkers.get(paradaId);
     const parada = paradasDataById.get(paradaId);
+
     if (marker && parada) {
-        marker.setIcon(_buildParadaIcon(parada, true));
+        const role = paradasRole.get(paradaId) || null;
+        marker.setIcon(_buildParadaIcon(parada, true, role));
         marker.setZIndexOffset(1200);
     }
 
@@ -1615,32 +1641,21 @@ function _resaltarParadaSeleccionada(paradaId) {
     paradaSeleccionadaId = paradaId;
 }
 
-function _buildParadaIcon(parada, highlighted = false) {
-    const esActual = Boolean(parada && parada.es_actual);
-    const size = highlighted ? 40 : (esActual ? 34 : 26);
-    const backgroundColor = highlighted ? '#f97316' : (esActual ? '#4f46e5' : '#d1d5db');
-    const borderWidth = highlighted ? 3 : (esActual ? 3 : 2);
-    const borderColor = highlighted ? '#fff7ed' : '#ffffff';
-    const shadow = highlighted
-        ? '0 0 0 4px rgba(249,115,22,.25),0 4px 12px rgba(249,115,22,.45)'
-        : (esActual ? '0 2px 10px rgba(79,70,229,.45)' : '0 1px 5px rgba(0,0,0,.18)');
-    const textColor = highlighted || esActual ? '#ffffff' : '#6b7280';
-    const textSize = highlighted ? 15 : (esActual ? 14 : 11);
-    const textWeight = highlighted ? 800 : (esActual ? 700 : 600);
+function _buildPopupTour(parada, role) {
+    let badge = '';
+    if (role === 'origin') {
+        badge = ' <span style="display:inline-block;background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;letter-spacing:.3px;vertical-align:middle;">INICIO</span>';
+    } else if (role === 'destination') {
+        badge = ' <span style="display:inline-block;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;letter-spacing:.3px;vertical-align:middle;">FIN</span>';
+    }
+    return `<strong>${parada.nombre}${badge}</strong><br><span style="color:#6b7280;font-size:.8rem;">Parada ${parada.orden}</span>`;
+}
 
-    return L.divIcon({
-        className: '',
-        html: `<div style="
-                background:${backgroundColor};
-                width:${size}px;height:${size}px;
-                border-radius:50%;border:${borderWidth}px solid ${borderColor};
-                box-shadow:${shadow};
-                display:flex;align-items:center;justify-content:center;">
-                <span style="color:${textColor};font-size:${textSize}px;font-weight:${textWeight};">${parada.orden}</span>
-              </div>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-        popupAnchor: [0, -(size / 2) - 4],
+function _buildParadaIcon(parada, highlighted = false, role = null) {
+    return window.buildAuraMarkerIcon(parada, {
+        highlighted: highlighted,
+        role: role,
+        esActual: Boolean(parada && parada.es_actual)
     });
 }
 

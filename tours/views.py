@@ -27,6 +27,8 @@ from billing.tier_guard import (
     TierRuleViolation,
     ensure_chat_mode_allowed,
     ensure_curiosity_route_allowed,
+    ensure_premium_for_quedada,
+    is_feature_enabled_for_guia,
     ensure_session_capacity_available,
     ensure_session_creation_allowed,
     tier_error_response,
@@ -122,6 +124,18 @@ def _should_persist_location_update(
     if elapsed_seconds < min_interval_seconds and distance_meters < min_distance_meters:
         return False, ultima, elapsed_seconds, distance_meters
     return True, ultima, elapsed_seconds, distance_meters
+def _is_private_chat_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'chat_mode_separate')
+    except Exception:
+        return False
+
+
+def _is_scheduled_meetup_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'scheduled_meetup')
+    except Exception:
+        return False
 
 
 def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -488,6 +502,8 @@ def mapa_turista_anonimo(request, token):
             "paradas_json":        json.dumps(snapshot["paradas"]),
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "current_user_name":   turista.alias,
+            "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
+            "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
         },
     )
 
@@ -840,6 +856,8 @@ def mapa_guia(request, sesion_id):
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "es_guia":             True,
             "current_user_name":   request.user.username,
+            "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
+            "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
         },
     )
 
@@ -1203,6 +1221,10 @@ def recordatorios_sesion(request, sesion_id):
     sesion, error_response = _get_sesion_or_json_404(sesion_id)
     if error_response:
         return error_response
+    try:
+        ensure_premium_for_quedada(sesion)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     if request.method == "GET":
         if not services.tiene_acceso_a_sesion(request, sesion):
@@ -1306,6 +1328,10 @@ def alertas_recordatorios(request, sesion_id):
     sesion, error_response = _get_sesion_or_json_404(sesion_id)
     if error_response:
         return error_response
+    try:
+        ensure_premium_for_quedada(sesion)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     turista = services.obtener_turista_request(request)
     if not turista:
@@ -1435,12 +1461,13 @@ def enviar_mensaje(request, sesion_id):
     if error:
         return JsonResponse({"error": error}, status=403)
 
-    # Validación de tier solo para mensajes públicos
-    if not es_privado:
-        try:
+    try:
+        if es_privado:
+            ensure_chat_mode_allowed(sesion, 'separado')
+        else:
             ensure_chat_mode_allowed(sesion, modo_chat)
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     # Resolución del destinatario privado
     destinatario_turista = None
@@ -1636,6 +1663,11 @@ def bandeja_privada_guia(request, sesion_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
     if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, 'separado')
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
  
     bandeja = services.obtener_bandeja_privada_guia(sesion)
     return JsonResponse({"bandeja": bandeja})
@@ -1656,17 +1688,30 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
     turista = get_object_or_404(Turista, id=turista_id)
  
-    # Verificar que el turista pertenece a la sesión
-    if not TuristaSesion.objects.filter(sesion_tour=sesion, turista=turista).exists():
+    pertenece_a_sesion = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        turista=turista,
+    ).exists()
+    if not pertenece_a_sesion:
         return JsonResponse({"error": "El turista no pertenece a esta sesión."}, status=404)
  
     # Control de acceso: guía o el propio turista
     es_guia_req = request.user.is_authenticated and services.es_guia_de_sesion(request.user, sesion)
     turista_cookie = services.obtener_turista_request(request)
-    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id
+    turista_activo = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        turista=turista,
+        activo=True,
+    ).exists()
+    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id and turista_activo
  
     if not es_guia_req and not es_turista_propio:
         return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, 'separado')
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
  
     desde_str = request.GET.get("desde")
     limite_str = request.GET.get("limite", "50")
