@@ -4,6 +4,7 @@ Tests unitarios para tours/views.py
 Valida las vistas HTTP y redirecciones.
 """
 import json
+from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -816,3 +817,50 @@ class ObtenerUbicacionGuiaTests(TestCase):
         
         self.assertEqual(data['lat'], 37.3891)
         self.assertEqual(data['lng'], -5.9845)
+
+
+class MensajesPrivadosHiloPermisosTests(TestCase):
+    """Regresiones de permisos del endpoint de hilo privado."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.guia_user = User.objects.create_user(username='guia_priv', password='pass123')
+        auth_guia = AuthUser.objects.create(user=self.guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+
+        ruta = Ruta.objects.create(
+            titulo='Ruta Chat Privado',
+            descripcion='Desc',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='PRIV001',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
+        self.turista = Turista.objects.create(alias='TuristaPriv')
+        self.turista_sesion = TuristaSesion.objects.create(
+            turista=self.turista,
+            sesion_tour=self.sesion,
+            activo=True,
+        )
+
+    @patch('tours.views.ensure_chat_mode_allowed')
+    def test_turista_inactivo_no_puede_leer_hilo_privado(self, _mock_chat_mode):
+        self.turista_sesion.activo = False
+        self.turista_sesion.save(update_fields=['activo'])
+
+        session = self.client.session
+        session['turista_id'] = self.turista.id
+        session.save()
+
+        response = self.client.get(
+            reverse('tours:mensajes_privados_hilo', args=[self.sesion.id, self.turista.id])
+        )
+
+        self.assertEqual(response.status_code, 403)

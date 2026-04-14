@@ -1438,14 +1438,22 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
     turista = get_object_or_404(Turista, id=turista_id)
  
-    # Verificar que el turista pertenece a la sesión
-    if not TuristaSesion.objects.filter(sesion_tour=sesion, turista=turista).exists():
+    pertenece_a_sesion = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        turista=turista,
+    ).exists()
+    if not pertenece_a_sesion:
         return JsonResponse({"error": "El turista no pertenece a esta sesión."}, status=404)
  
     # Control de acceso: guía o el propio turista
     es_guia_req = request.user.is_authenticated and services.es_guia_de_sesion(request.user, sesion)
     turista_cookie = services.obtener_turista_request(request)
-    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id
+    turista_activo = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        turista=turista,
+        activo=True,
+    ).exists()
+    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id and turista_activo
  
     if not es_guia_req and not es_turista_propio:
         return JsonResponse({"error": "Acceso denegado."}, status=403)
