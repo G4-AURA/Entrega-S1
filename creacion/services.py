@@ -1170,10 +1170,14 @@ def normalizar_payload_ia(datos):
     if not exigencia_normalizada:
         raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
     if mood is None:
-        raise ErrorValidacionRuta('Debes seleccionar al menos una temática (mood) válida.')
+        raise ErrorValidacionRuta(
+            {'mood': 'Debes seleccionar al menos una etiqueta temática para generar la ruta.'}
+        )
     moods_normalizados = normalizar_moods(mood)
     if not moods_normalizados:
-        raise ErrorValidacionRuta('Debes indicar al menos una temática (mood) válida.')
+        raise ErrorValidacionRuta(
+            {'mood': 'Debes seleccionar al menos una etiqueta temática válida.'}
+        )
     deseos_raw = datos.get('deseos') or []
     if not isinstance(deseos_raw, list):
         raise ErrorValidacionRuta('Los deseos personalizados deben ser una lista.')
