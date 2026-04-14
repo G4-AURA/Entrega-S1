@@ -746,6 +746,13 @@ function actualizarAyudaExigenciaMeta() {
     ayudaExigenciaMeta.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
 }
 
+function getCurrentStopOrder() {
+    return Array.from(listaParadas?.querySelectorAll('.parada-item[data-parada-id]') || [])
+        .map(item => item.dataset.paradaId)
+        .filter(Boolean)
+        .join(',');
+}
+
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
 if (btnEditarMeta)      btnEditarMeta.addEventListener('click', () => formEditarMeta?.classList.toggle('d-none'));
 if (btnEditarEtiquetas) btnEditarEtiquetas.addEventListener('click', () => {
@@ -1051,6 +1058,7 @@ function setReorderMode(enabled) {
     reorderMode = enabled;
     if (enabled) {
         deactivateParadaEditMode();
+        if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
         formAgregarParada?.classList.add('d-none');
         formReordenarParadas.classList.remove('d-none');
         listaParadas.classList.add('reorder-active');
@@ -1081,9 +1089,7 @@ if (listaParadas) {
             draggedItem = null;
             items.forEach(i => i.classList.remove('drag-over'));
             updateVisualOrderLabels();
-            const ordered = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
-                .map(i => i.dataset.paradaId).filter(Boolean);
-            if (stopOrderInput) stopOrderInput.value = ordered.join(',');
+            if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
         });
         item.addEventListener('dragover', e => {
             e.preventDefault();

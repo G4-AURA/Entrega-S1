@@ -391,6 +391,15 @@ class RutasViewsTest(TestCase):
         })
         self.assertRedirects(response, f"{url}?stop_reordered=1")
 
+    def test_ruta_detalle_post_stop_reorder_sin_cambios_success(self):
+        parada2 = Parada.objects.create(orden=2, nombre="P2", coordenadas=Point(1, 1), ruta=self.ruta)
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'stop_reorder',
+            'stop_order': ''
+        })
+        self.assertRedirects(response, f"{url}?stop_reordered=1")
+
     def test_ruta_detalle_post_mood_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
         response = self.client.post(url, {
