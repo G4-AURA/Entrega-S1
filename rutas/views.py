@@ -111,6 +111,57 @@ def _redirect_con_error_tier(path: str, exc: TierRuleViolation):
     )
 
 
+def _responder_error_curiosidad_ia(exc: Exception, contexto: str = "generar") -> JsonResponse:
+    mensaje_bruto = str(exc or "")
+    mensaje_normalizado = mensaje_bruto.lower()
+
+    if any(token in mensaje_normalizado for token in ("503", "unavailable", "high demand", "quota", "resource_exhausted", "rate limit", "429")):
+        return JsonResponse(
+            {
+                "status": "error",
+                "mensaje": (
+                    "La IA no está disponible ahora mismo. "
+                    "Inténtalo de nuevo en unos minutos."
+                ),
+            },
+            status=503,
+        )
+
+    if any(token in mensaje_normalizado for token in ("json", "formato", "invalid", "malform")):
+        return JsonResponse(
+            {
+                "status": "error",
+                "mensaje": (
+                    "La IA devolvió una respuesta inválida. "
+                    "Vuelve a intentarlo más tarde."
+                ),
+            },
+            status=502,
+        )
+
+    if any(token in mensaje_normalizado for token in ("timeout", "timed out", "connect", "connection", "red")):
+        return JsonResponse(
+            {
+                "status": "error",
+                "mensaje": (
+                    "No se pudo conectar con la IA. Comprueba tu conexión e inténtalo de nuevo."
+                ),
+            },
+            status=503,
+        )
+
+    return JsonResponse(
+        {
+            "status": "error",
+            "mensaje": (
+                f"No se pudo {contexto} la curiosidad en este momento. "
+                "Inténtalo de nuevo más tarde."
+            ),
+        },
+        status=502,
+    )
+
+
 # ================================================
 # Guardia de rol: solo guías autenticados
 # ================================================
@@ -873,13 +924,7 @@ def obtener_curiosidad_parada_api(request, parada_id):
                 ciudad=ciudad,
             )
         except Exception as exc:
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "mensaje": f"No se pudo generar la curiosidad: {exc}",
-                },
-                status=502,
-            )
+            return _responder_error_curiosidad_ia(exc, contexto="generar")
 
         return JsonResponse(
             {
@@ -906,13 +951,7 @@ def obtener_curiosidad_parada_api(request, parada_id):
             ciudad=ciudad,
         )
     except Exception as exc:
-        return JsonResponse(
-            {
-                "status": "error",
-                "mensaje": f"No se pudo obtener la curiosidad: {exc}",
-            },
-            status=502,
-        )
+        return _responder_error_curiosidad_ia(exc, contexto="obtener")
 
     return JsonResponse(
         {

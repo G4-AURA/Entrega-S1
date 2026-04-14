@@ -519,6 +519,19 @@ class RutasViewsTest(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 502)
 
+    @patch('rutas.services.generar_curiosidad_parada_preview')
+    def test_obtener_curiosidad_parada_api_error_ia_unavailable(self, mock_preview):
+        mock_preview.side_effect = RuntimeError(
+            "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand.'}}"
+        )
+        url = reverse('parada-curiosidad', args=[self.parada.id]) + '?preview=1'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 503)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('IA no está disponible', data['mensaje'])
+        self.assertNotIn('503 UNAVAILABLE', data['mensaje'])
+
     # 6. S3.1-09 Guardado manual de curiosidad
     def test_guardar_curiosidad_parada_api_post_persiste(self):
         url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
