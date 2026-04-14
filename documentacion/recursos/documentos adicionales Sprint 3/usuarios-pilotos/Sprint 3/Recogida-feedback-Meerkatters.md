@@ -1,8 +1,8 @@
 # **Recogida de Feedback Meerkatters**
-<div align="center">  
-    <p align="center">
-        <img src="../../../logo.png" alt="Logo" width="230"/>
-    </p>
+<div align="center">  
+    <p align="center">
+        <img src="../../../logo.png" alt="AURA Logo" width="230"/>
+    </p>
 </div>
 
 ---
@@ -11,20 +11,21 @@
 
 <div style="border:1px solid #ddd; border-radius:12px; padding:16px;">
 
-**Proyecto:** -  
-**Tipo de documento:** Documento adicional de análisis / Recogida de feedback  
-**Fecha:** 14/04/2026  
+**Proyecto:** AURA  
+**Grupo (EV):** 4  
+**Nombre del grupo:** AURA  
 
-**Horas Trabajadas por Miembro:**
-* **Javier Ramu:** 00:58:02
-* **Felipe:** 00:56:27
-* **Alexis:** 00:59:14
-
+**Tipo de documento:** Documento adicional de análisis  
+**Entrega:** S3  
+**Versión:** v1.0 
+**Fecha:** 14/04/2026  
 </div>
 
 ---
 
-## **Listado casos de uso** ## Gestión de usuarios
+## **Listado casos de uso** 
+
+## Gestión de usuarios
 
 ### UC-01 Registrar usuario
 **Alexis:** 

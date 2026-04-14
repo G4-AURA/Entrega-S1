@@ -1,8 +1,8 @@
 # **Recogida de Feedback Donde Siempre**
-<div align="center">  
-    <p align="center">
-        <img src="../../../logo.png" alt="Donde Siempre Logo" width="230"/>
-    </p>
+<div align="center">  
+    <p align="center">
+        <img src="../../../logo.png" alt="AURA Logo" width="230"/>
+    </p>
 </div>
 
 ---
@@ -11,17 +11,14 @@
 
 <div style="border:1px solid #ddd; border-radius:12px; padding:16px;">
 
-**Proyecto:** Donde Siempre  
-**Grupo:** -  
-**Nombre del grupo:** -  
+**Proyecto:** AURA  
+**Grupo (EV):** 4  
+**Nombre del grupo:** AURA  
 
-**Tipo de documento:** Documento adicional de análisis / Recogida de feedback  
-**Fecha:** 14/04/2026  
-
-**Horas Trabajadas por Miembro:**
-* **Mario:** 1:00:00
-* **Alberto:** 1:00:00
-* **Rafa:** No especificado
+**Tipo de documento:** Documento adicional de análisis  
+**Entrega:** S3  
+**Versión:** v1.0 
+**Fecha:** 14/04/2026  
 </div>
 
 ---
