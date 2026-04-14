@@ -227,10 +227,6 @@ def calcular_objetivo_paradas_ia(datos: dict) -> int:
 # OR-Tools: matriz de distancias
 # ─────────────────────────────────────────────────────────────────────────────
 
-def calcular_distancia_euclidiana(coord1, coord2) -> float:
-    return math.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2)
-
-
 def crear_matriz_datos(pois: list) -> dict:
     cant_nodos = len(pois)
     dist_matrix = {}
@@ -240,8 +236,8 @@ def crear_matriz_datos(pois: list) -> dict:
             if from_node == to_node:
                 dist_matrix[from_node][to_node] = 0
             else:
-                d = calcular_distancia_euclidiana(pois[from_node]['coords'], pois[to_node]['coords'])
-                dist_matrix[from_node][to_node] = int(d * 10000)
+                d_km = distancia_haversine_km(pois[from_node]['coords'], pois[to_node]['coords'])
+                dist_matrix[from_node][to_node] = int(d_km * 1000)
     return {'distance_matrix': dist_matrix, 'num_vehicles': 1, 'depot': 0}
 
 

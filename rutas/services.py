@@ -477,6 +477,23 @@ class ServicioCuriosidadesIA:
     def _obtener_curiosidad_cache(self, parada: Parada) -> Curiosidad | None:
         return Curiosidad.objects.filter(parada=parada).first()
 
+    def obtener_o_crear_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> tuple[Curiosidad, bool]:
+        """
+        Devuelve (Curiosidad, fue_generada). Reutiliza caché si existe.
+        A diferencia de generar_curiosidad(), devuelve el objeto del modelo, no un dict.
+        """
+        curiosidad_cacheada = self._obtener_curiosidad_cache(parada)
+        if curiosidad_cacheada:
+            return curiosidad_cacheada, False
+
+        datos_curiosidad = self._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+        curiosidad_guardada = self._guardar_curiosidad_en_cache(
+            parada=parada,
+            ciudad=ciudad,
+            datos_curiosidad=datos_curiosidad,
+        )
+        return curiosidad_guardada, True
+
     def _serializar_curiosidad(self, curiosidad: Curiosidad) -> dict:
         return {
             "parada_id": curiosidad.parada_id,
@@ -485,7 +502,6 @@ class ServicioCuriosidadesIA:
             "texto": curiosidad.texto,
             "tipo": curiosidad.tipo,
             "imagen_url": curiosidad.imagen_url,
-            "busqueda_imagen": curiosidad.imagen_url,
         }
 
     def _normalizar_payload_curiosidad(self, parada: Parada, datos_curiosidad: dict) -> dict:
@@ -733,19 +749,7 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     Returns:
         (curiosidad, fue_generada)
     """
-    curiosidad_existente = Curiosidad.objects.filter(parada=parada).first()
-    if curiosidad_existente:
-        return curiosidad_existente, False
-
-    servicio_ia = ServicioCuriosidadesIA()
-    datos_ia = servicio_ia._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
-    curiosidad = servicio_ia._guardar_curiosidad_en_cache(
-        parada=parada,
-        ciudad=ciudad,
-        datos_curiosidad=datos_ia,
-    )
-
-    return curiosidad, True
+    return ServicioCuriosidadesIA().obtener_o_crear_curiosidad(parada=parada, ciudad=ciudad)
 
 
 def generar_curiosidad_parada_preview(parada: Parada, ciudad: str = "Sevilla") -> dict:
