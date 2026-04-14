@@ -146,10 +146,18 @@
                         </div>
                     </div>
                     {% if es_guia %}
-                    <button type="button" class="parada-focus-btn" data-parada-id="{{ parada.id }}"
-                        aria-label="Seleccionar parada actual: {{ parada.nombre }}" title="Seleccionar parada actual">
-                        Seleccionar parada actual
-                    </button>
+                    <div class="timeline-item-actions">
+                        <button type="button" class="parada-focus-btn" data-parada-id="{{ parada.id }}"
+                            aria-label="Seleccionar parada actual: {{ parada.nombre }}" title="Seleccionar parada actual">
+                            Seleccionar parada actual
+                        </button>
+                        {% if sesion.estado == 'en_curso' %}
+                        <button type="button" class="mostrar-curiosidad-btn" data-parada-id="{{ parada.id }}"
+                            aria-label="Mostrar curiosidad: {{ parada.nombre }}" title="Mostrar curiosidad de esta parada">
+                            Mostrar curiosidad
+                        </button>
+                        {% endif %}
+                    </div>
                     {% endif %}
                 </div>
                 {% endfor %}

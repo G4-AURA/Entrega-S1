@@ -1127,13 +1127,35 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
     if not parada:
         return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
 
-    try:
-        curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
-            parada=parada,
-            ciudad="Sevilla",
-        )
-    except Exception:
-        return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
+    solo_existente = str(request.GET.get("solo_existente") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "si",
+    }
+
+    if solo_existente:
+        curiosidad = Curiosidad.objects.filter(parada=parada).first()
+        if not curiosidad:
+            return JsonResponse(
+                {
+                    "status": "ok",
+                    "parada": {
+                        "id": parada.id,
+                        "nombre": parada.nombre,
+                        "orden": parada.orden,
+                    },
+                    "curiosidad": None,
+                }
+            )
+    else:
+        try:
+            curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
+                parada=parada,
+                ciudad="Sevilla",
+            )
+        except Exception:
+            return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
 
     return JsonResponse(
         {
