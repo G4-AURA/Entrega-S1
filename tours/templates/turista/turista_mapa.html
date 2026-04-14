@@ -12,7 +12,7 @@
 {% csrf_token %}
 
 {% if es_guia %}
-<a href="{% url 'catalogo' %}" class="btn-back">
+<a href="{% url 'tours:guia_sesion' sesion.id %}" class="btn-back">
     <span class="material-icons-round">arrow_back</span>
 </a>
 {% else %}
@@ -42,6 +42,11 @@
             <span class="material-icons-round">chat</span>
             Chat grupal
             <span class="chat-badge" id="chat-badge" style="display:none;"></span>
+        </button>
+        <button class="tab-btn" data-tab="notificaciones">
+            <span class="material-icons-round">notifications</span>
+            Notificaciones
+            <span class="chat-badge" id="recordatorios-badge" style="display:none;"></span>
         </button>
 
         <button class="tab-btn" data-tab="chat-privado">
@@ -79,7 +84,7 @@
             <div class="session-countdown" id="session-countdown" aria-live="polite">
                 <span class="material-icons-round">timer</span>
                 <span>Tiempo restante</span>
-                <strong id="session-countdown-time">01:00:00</strong>
+                <strong id="session-countdown-time">-- min</strong>
             </div>
 
             {% if es_guia %}
@@ -146,6 +151,41 @@
                     </button>
                 </div>
                 <div class="chat-preview-container" id="chat-preview-container"></div>
+            </div>
+        </div>
+
+        {# ── Pestaña: Notificaciones / Recordatorios ─────────────────────── #}
+        <div class="tab-content" id="tab-notificaciones">
+            {% if es_guia %}
+            <div class="recordatorio-form-card">
+                <h4>Crear recordatorio</h4>
+                <div class="recordatorio-form-grid">
+                    <label>
+                        Hora objetivo
+                        <input type="datetime-local" id="recordatorio-hora" class="recordatorio-input">
+                    </label>
+                    <label>
+                        Avisar antes (min)
+                        <input type="number" id="recordatorio-avisar" class="recordatorio-input" min="0" max="240" value="10">
+                    </label>
+                </div>
+                <label>
+                    Mensaje
+                    <textarea id="recordatorio-mensaje" class="recordatorio-input" rows="3" maxlength="5000" placeholder="Ej: Nos reunimos para continuar la ruta."></textarea>
+                </label>
+                <button type="button" id="recordatorio-crear-btn" class="recordatorio-create-btn">Crear recordatorio</button>
+                <p id="recordatorio-feedback" class="recordatorio-feedback" aria-live="polite"></p>
+            </div>
+            {% endif %}
+
+            <div class="recordatorio-list-block">
+                <h4>Recordatorios activos</h4>
+                <div id="recordatorios-list" class="recordatorios-list">
+                    <div class="chat-empty">
+                        <span class="material-icons-round">notifications_none</span>
+                        <p>Aún no hay recordatorios</p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -247,10 +287,14 @@
   const bandejaPrivadaUrl    = '{% url "tours:bandeja_privada_guia" sesion.id %}';
   const mensajesPrivadosBaseUrl = '/tours/sesiones/{{ sesion.id }}/chat-privado/';
   const enviarMensajeUrl     = '{% url "tours:enviar_mensaje" sesion.id %}';
+    const recordatoriosUrl     = '{% url "tours:recordatorios_sesion" sesion.id %}';
+    const recordatoriosAlertasUrl = '{% url "tours:alertas_recordatorios" sesion.id %}';
   // Turista — ID propio para filtrado de mensajes
   const turistaIdRaw         = '{% if turista %}{{ turista.id }}{% else %}null{% endif %}';
   const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);
 </script>
 <script src="{% static 'js/chat_privado.js' %}?v={% now 'U' %}"></script>
-<script src="{% static 'js/mapa_turista.js' %}?v=2026032401"></script>
+<script src="{% static 'js/mapa_turista.js' %}?v={% now 'U' %}"></script>
+
+<script src="{% static 'js/map_icons.js' %}"></script>
 {% endblock %}

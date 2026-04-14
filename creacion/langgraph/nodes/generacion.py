@@ -16,9 +16,9 @@ import logging
 
 from django.db import DatabaseError
 
+from creacion.exceptions import ErrorIntegracionIA
 from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
-    ErrorIntegracionIA,
     calcular_objetivo_paradas_ia,
     construir_bloque_allowlist,
     construir_bloque_deseos,
@@ -75,12 +75,10 @@ def nodo_generacion(state: State) -> dict:
         - Temática(s): {', '.join(datos.get('mood') or [])}
         {bloque_metadata}
         {bloque_deseos}
-        {bloque_allowlist}
 
-        ## Tarea Cognitiva Avanzada (Evaluación Interna)
-        1. Genera mentalmente 3 posibles variaciones de rutas con EXACTAMENTE {objetivo_paradas} POIs cada una.
-        2. Evalúa internamente esas 3 rutas penalizando si los lugares están muy lejos físicamente entre sí, y premiando la coherencia con las temáticas y la diversidad.
-        3. Selecciona la ruta ganadora de entre esas 3 opciones y descarta el resto.
+        ## Instrucción
+        Genera una lista de EXACTAMENTE {objetivo_paradas} POIs adecuados para estos parámetros basándote en tu conocimiento experto de la ciudad.
+        Ten en cuenta el contexto del solicitante y sus preferencias específicas si las hay.
 
         ## Output Final
         Devuelve ÚNICAMENTE la lista de la ruta ganadora de {objetivo_paradas} POIs. No añadas explicaciones, texto extra, ni bloques de markdown.

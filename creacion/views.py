@@ -171,6 +171,15 @@ def generar_ruta_ia(request):
     except services.ErrorPersistenciaRuta as exc:
         logger.exception('Error de persistencia en generar_ruta_ia')
         return JsonResponse({'status': 'ERROR', 'mensaje': str(exc)}, status=500)
+    except Exception as exc:
+        logger.exception('Error inesperado en generar_ruta_ia')
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'Se produjo un error inesperado al generar la ruta. Inténtalo de nuevo.',
+            },
+            status=500,
+        )
 
 
 @csrf_exempt

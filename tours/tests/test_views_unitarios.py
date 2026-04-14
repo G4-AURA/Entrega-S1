@@ -435,6 +435,9 @@ class EstadoCronometroTests(TestCase):
             self.assertEqual(response.status_code, 200)
             data = json.loads(response.content)
             self.assertEqual(data['estado'], 'en_curso')
+            self.assertIn('minutos_restantes', data)
+            self.assertIsInstance(data['minutos_restantes'], int)
+            self.assertGreaterEqual(data['minutos_restantes'], 0)
 
 
 class SeleccionarParadaActualTests(TestCase):

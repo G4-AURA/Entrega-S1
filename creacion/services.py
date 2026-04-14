@@ -10,6 +10,7 @@ from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Avg
 from django.utils import timezone
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
 from creacion.geo_clients import MapboxGeocodingClient, OSMGeocodingClient
 from creacion.geo_validation import (
@@ -23,48 +24,16 @@ from rutas.models import AuthUser, Guia, Parada, Ruta
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Excepciones de dominio
-# ─────────────────────────────────────────────────────────────────────────────
-
-class ErrorRutaBase(Exception):
-    """Clase base para errores de dominio en creación de rutas."""
-
-
-class ErrorValidacionRuta(ErrorRutaBase):
-    """Errores de validación de payload y datos de ruta."""
-    def __init__(self, errores):
-        if isinstance(errores, str):
-            self.errores = {'general': errores}
-        elif isinstance(errores, dict):
-            self.errores = errores
-        else:
-            self.errores = {'general': str(errores)}
-        super().__init__(str(self.errores))
-
-
-class ErrorPermisosRuta(ErrorRutaBase):
-    """Errores de permisos para crear/guardar rutas."""
-
-
-class ErrorPersistenciaRuta(ErrorRutaBase):
-    """Errores al persistir rutas o su historial en base de datos."""
-
-
-class ErrorIntegracionIA(ErrorRutaBase):
-    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
-
-
-class ErrorSesionGeneracionRuta(ErrorRutaBase):
-    """Errores de estado/checkpoints de sesión de generación IA."""
-
-
-class ErrorSesionGeneracionExpirada(ErrorSesionGeneracionRuta):
-    """La sesión de generación ya no está disponible por expiración."""
-
-
-class ErrorSesionGeneracionNoEncontrada(ErrorSesionGeneracionRuta):
-    """No existe una sesión de generación para el identificador indicado."""
+from .exceptions import (
+    ErrorIntegracionIA,
+    ErrorPermisosRuta,
+    ErrorPersistenciaRuta,
+    ErrorRutaBase,
+    ErrorSesionGeneracionExpirada,
+    ErrorSesionGeneracionNoEncontrada,
+    ErrorSesionGeneracionRuta,
+    ErrorValidacionRuta,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +271,11 @@ def _formatear_exclusiones_para_prompt(
 # Gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
-def llamar_gemini_bypass(prompt, api_key):
+class _GeminiQuotaError(Exception):
+    """Internal marker for quota/rate-limit responses on a concrete API key."""
+
+
+def _llamar_gemini_bypass_con_clave(prompt, api_key):
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
@@ -314,22 +287,33 @@ def llamar_gemini_bypass(prompt, api_key):
     }
     timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
     max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
-    http_reintentable = {408, 409, 425, 429, 500, 502, 503, 504}
+    # 429 is handled as quota fallback to the next key, not retried in-place.
+    http_reintentable = {408, 409, 425, 500, 502, 503, 504}
 
     ultimo_error: Exception | None = None
     for intento in range(max_reintentos + 1):
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
+            if is_quota_or_rate_limit_error(
+                status_code=response.status_code,
+                detail=getattr(response, 'text', ''),
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={response.status_code}.')
+
             if response.status_code in http_reintentable and intento < max_reintentos:
                 logger.warning(
                     'Gemini devolvió status=%s (reintento %s/%s).',
                     response.status_code, intento + 1, max_reintentos,
                 )
                 continue
+
             response.raise_for_status()
             resultado = response.json()
             texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
             return json.loads(texto_json)
+
+        except _GeminiQuotaError:
+            raise
         except requests.Timeout as exc:
             ultimo_error = exc
             if intento < max_reintentos:
@@ -341,6 +325,14 @@ def llamar_gemini_bypass(prompt, api_key):
         except requests.HTTPError as exc:
             ultimo_error = exc
             status = exc.response.status_code if exc.response is not None else 'desconocido'
+            detalle = getattr(exc.response, 'text', '') if exc.response is not None else ''
+            if is_quota_or_rate_limit_error(
+                status_code=status if isinstance(status, int) else None,
+                detail=detalle,
+                exception=exc,
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={status}.') from exc
+
             if status in http_reintentable and intento < max_reintentos:
                 logger.warning('Error HTTP Gemini status=%s (reintento %s/%s).', status, intento + 1, max_reintentos)
                 continue
@@ -355,6 +347,29 @@ def llamar_gemini_bypass(prompt, api_key):
             raise ErrorIntegracionIA('Respuesta no válida de Gemini.') from exc
 
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
+
+def llamar_gemini_bypass(prompt, api_key=None):
+    claves = list(iter_gemini_api_keys(preferred_key=api_key))
+    if not claves:
+        raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
+
+    ultimo_error_cuota: Exception | None = None
+    for indice, clave in enumerate(claves, start=1):
+        try:
+            return _llamar_gemini_bypass_con_clave(prompt, clave)
+        except _GeminiQuotaError as exc:
+            ultimo_error_cuota = exc
+            logger.warning(
+                'Gemini devolvió cuota/429 en clave %s/%s; se intenta fallback.',
+                indice,
+                len(claves),
+            )
+            continue
+
+    if ultimo_error_cuota is not None:
+        raise ErrorIntegracionIA('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+    raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -704,7 +719,7 @@ def _solicitar_pois_adicionales_para_ruta_ia(
         coords_excluidas=coords_excluidas,
     )
     try:
-        respuesta = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+        respuesta = llamar_gemini_bypass(prompt)
     except ErrorIntegracionIA:
         respuesta = None
 
@@ -909,7 +924,7 @@ def _solicitar_candidatos_paradas_ia(
         coords_excluidas=coords_excluidas,
     )
     try:
-        respuesta = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+        respuesta = llamar_gemini_bypass(prompt)
     except ErrorIntegracionIA:
         respuesta = None
 
@@ -1204,11 +1219,13 @@ def normalizar_payload_ia(datos):
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
     mood = datos.get('mood')
-    if not all([ciudad, duracion, personas, exigencia, mood]):
+    if duracion in (None, '') or personas in (None, '') or not exigencia:
         raise ErrorValidacionRuta('Faltan parámetros obligatorios en la petición.')
     exigencia_normalizada = MAPA_EXIGENCIA_RUTA.get(exigencia)
     if not exigencia_normalizada:
         raise ErrorValidacionRuta('El nivel de exigencia indicado no es válido.')
+    if mood is None:
+        raise ErrorValidacionRuta('Debes seleccionar al menos una temática (mood) válida.')
     moods_normalizados = normalizar_moods(mood)
     if not moods_normalizados:
         raise ErrorValidacionRuta('Debes indicar al menos una temática (mood) válida.')
@@ -1764,7 +1781,7 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
         ]
     """
     try:
-        respuesta_ia = llamar_gemini_bypass(prompt, os.getenv('GEMINI_API_KEY'))
+        respuesta_ia = llamar_gemini_bypass(prompt)
     except ErrorIntegracionIA:
         raise
     except (requests.RequestException, TimeoutError, ConnectionError) as exc:

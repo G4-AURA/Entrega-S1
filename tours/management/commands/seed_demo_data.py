@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
 from tours.models import TURISTA, SESION_TOUR, TURISTASESION
+from allowList.models import POI, CategoriaOSM
 
 
 class Command(BaseCommand):
@@ -45,6 +46,9 @@ class Command(BaseCommand):
         # Crear sesiones de tour
         self._create_sessions(rutas, turistas)
         
+        # Poblar Allowlist (POI) para Sevilla
+        self._create_pois()
+        
         self.stdout.write(self.style.SUCCESS('✓ Datos de prueba creados exitosamente'))
 
     def _clean_data(self):
@@ -55,8 +59,9 @@ class Command(BaseCommand):
         Parada.objects.all().delete()
         Ruta.objects.all().delete()
         Guia.objects.all().delete()
+        POI.objects.all().delete()
         # No eliminar Users para no perder referencias
-        self.stdout.write(self.style.SUCCESS('  ✓ Datos limpios'))
+        self.stdout.write(self.style.SUCCESS('  ✓ Datos limpios (incluida Allowlist)'))
 
     def _create_guides(self):
         """Crea guías de prueba"""
@@ -359,3 +364,32 @@ class Command(BaseCommand):
                 f"({len(data['turistas_idx'])} turistas, estado: {data['estado']})"
                 f" {'[creada]' if created else '[actualizada]'}"
             )
+    def _create_pois(self):
+        """Pobla la Allowlist con POIs de Sevilla para garantizar fallback funcional."""
+        self.stdout.write('Poblando Allowlist (POIs de Sevilla)...')
+        
+        pois_data = [
+            {"nombre": "Catedral de Sevilla", "lat": 37.3860, "lng": -5.9926, "cat": CategoriaOSM.IGLESIA},
+            {"nombre": "Real Alcázar", "lat": 37.3838, "lng": -5.9930, "cat": CategoriaOSM.CASTILLO},
+            {"nombre": "Torre del Oro", "lat": 37.3824, "lng": -5.9963, "cat": CategoriaOSM.MONUMENTO},
+            {"nombre": "Plaza de España", "lat": 37.3772, "lng": -5.9869, "cat": CategoriaOSM.MONUMENTO},
+            {"nombre": "Parque de María Luisa", "lat": 37.3750, "lng": -5.9870, "cat": CategoriaOSM.PARQUE},
+            {"nombre": "Archivo de Indias", "lat": 37.3846, "lng": -5.9931, "cat": CategoriaOSM.MUSEO},
+            {"nombre": "Museo de Bellas Artes", "lat": 37.3924, "lng": -5.9996, "cat": CategoriaOSM.MUSEO},
+            {"nombre": "Metropol Parasol (Setas)", "lat": 37.3932, "lng": -5.9917, "cat": CategoriaOSM.MIRADOR},
+            {"nombre": "Barrio de Santa Cruz", "lat": 37.3870, "lng": -5.9880, "cat": CategoriaOSM.MONUMENTO},
+            {"nombre": "Puente de Triana", "lat": 37.3854, "lng": -6.0005, "cat": CategoriaOSM.MONUMENTO},
+            {"nombre": "Mercado de Triana", "lat": 37.3855, "lng": -6.0010, "cat": CategoriaOSM.MERCADO},
+            {"nombre": "Plaza de Toros Maestranza", "lat": 37.3861, "lng": -5.9983, "cat": CategoriaOSM.MONUMENTO},
+            {"nombre": "Teatro de la Maestranza", "lat": 37.3850, "lng": -5.9975, "cat": CategoriaOSM.TEATRO},
+        ]
+
+        for data in pois_data:
+            POI.objects.create(
+                nombre=data["nombre"],
+                categoria=data["cat"],
+                coordenadas=Point(data["lng"], data["lat"], srid=4326),
+                ciudad="Sevilla",
+                fuente=POI.Fuente.MANUAL
+            )
+        self.stdout.write(self.style.SUCCESS(f'  ✓ {len(pois_data)} POIs de Sevilla añadidos a la Allowlist'))

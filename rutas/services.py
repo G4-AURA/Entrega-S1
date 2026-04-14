@@ -13,13 +13,14 @@ S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 import logging
 import json
 import math
+import time
 
-from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import DatabaseError, IntegrityError
 from django.db.models import Prefetch
 import requests
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
 from .models import Curiosidad, Parada, Ruta
 from tours.models import SESION_TOUR
@@ -29,6 +30,8 @@ MIN_DURACION_HORAS = 0.5
 MAX_DURACION_HORAS = 24.0
 MIN_NUM_PERSONAS = 1
 MAX_NUM_PERSONAS = 50
+MAX_REINTENTOS_CURIOSIDAD_IA = 3
+BACKOFF_BASE_CURIOSIDAD_IA_S = 1.0
 
 
 def _es_incremento_media_hora(valor):
@@ -236,7 +239,7 @@ def _validar_coordenadas(raw_lat, raw_lon):
         raise ValueError("Coordenadas inválidas")
 
 
-def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
+def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -244,10 +247,12 @@ def editar_parada(parada, raw_nombre, raw_lat, raw_lon):
         raise ValueError("El nombre de la parada no puede superar los 255 caracteres")
 
     lat, lon = _validar_coordenadas(raw_lat, raw_lon)
+    descripcion_limpia = (descripcion or '').strip()[:500]
 
     parada.nombre = nombre
+    parada.descripcion = descripcion_limpia
     parada.coordenadas = Point(lon, lat, srid=4326)
-    parada.save(update_fields=["nombre", "coordenadas"])
+    parada.save(update_fields=["nombre", "descripcion", "coordenadas"])
 
 
 def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
@@ -447,7 +452,7 @@ class ServicioCuriosidadesIA:
 
     def __init__(self):
         from google import genai
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self._genai = genai
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
         """
@@ -580,34 +585,56 @@ class ServicioCuriosidadesIA:
         }}
         """
 
-        try:
-            respuesta = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            
-            texto_ia = respuesta.text.strip()
+        claves = list(iter_gemini_api_keys())
+        if not claves:
+            raise RuntimeError('No hay API key de Gemini configurada.')
 
-            if texto_ia.startswith("```json"):
-                texto_ia = texto_ia[7:-3].strip()
-            elif texto_ia.startswith("```"):
-                texto_ia = texto_ia[3:-3].strip()
+        ultimo_error_cuota: Exception | None = None
+        for indice, clave in enumerate(claves, start=1):
+            client = self._genai.Client(api_key=clave)
+            try:
+                respuesta = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
 
-            datos_curiosidad = json.loads(texto_ia)
-            busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
-            datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
-                busqueda_imagen=busqueda_imagen,
-                parada=parada,
-                ciudad=ciudad,
-            )
-            return datos_curiosidad
+                texto_ia = str(getattr(respuesta, 'text', '') or '').strip()
 
-        except json.JSONDecodeError:
-            raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
-        except (requests.RequestException, TimeoutError, ConnectionError) as e:
-            raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
-        except (AttributeError, KeyError, IndexError) as e:
-            raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+                if texto_ia.startswith("```json"):
+                    texto_ia = texto_ia[7:-3].strip()
+                elif texto_ia.startswith("```"):
+                    texto_ia = texto_ia[3:-3].strip()
+
+                datos_curiosidad = json.loads(texto_ia)
+                busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
+                datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
+                    busqueda_imagen=busqueda_imagen,
+                    parada=parada,
+                    ciudad=ciudad,
+                )
+                return datos_curiosidad
+
+            except json.JSONDecodeError:
+                raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
+            except (requests.RequestException, TimeoutError, ConnectionError) as e:
+                raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
+            except (AttributeError, KeyError, IndexError) as e:
+                raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+            except Exception as exc:
+                if is_quota_or_rate_limit_error(exception=exc):
+                    ultimo_error_cuota = exc
+                    logger.warning(
+                        'Gemini devolvió cuota/429 al generar curiosidad (clave %s/%s).',
+                        indice,
+                        len(claves),
+                    )
+                    continue
+                raise
+
+        if ultimo_error_cuota is not None:
+            raise RuntimeError('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+        raise RuntimeError('No se pudo generar curiosidad con Gemini.')
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """
@@ -719,3 +746,17 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     )
 
     return curiosidad, True
+
+
+def generar_curiosidad_parada_preview(parada: Parada, ciudad: str = "Sevilla") -> dict:
+    """
+    Genera una curiosidad para previsualización sin persistir en BD.
+
+    Se usa en UI para que el usuario pueda cancelar sin guardar cambios.
+    """
+    servicio_ia = ServicioCuriosidadesIA()
+    datos_ia = servicio_ia._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+    payload = servicio_ia._normalizar_payload_curiosidad(parada=parada, datos_curiosidad=datos_ia)
+    payload["parada_id"] = parada.id
+    payload["ciudad"] = (str(ciudad or "").strip() or "Sevilla")[:100]
+    return payload

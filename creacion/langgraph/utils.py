@@ -18,18 +18,11 @@ import time
 
 import requests
 from django.utils import timezone
-from creacion.models import Historial_ia
+
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
+from creacion.exceptions import ErrorIntegracionIA
 
 logger = logging.getLogger(__name__)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Excepción de integración IA
-# services.py es la fuente canónica; esta es un alias de importación segura.
-# ─────────────────────────────────────────────────────────────────────────────
-
-class ErrorIntegracionIA(Exception):
-    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +49,9 @@ _KEYWORDS_MOOD = {
 # Gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
+class _GeminiQuotaError(Exception):
+    """Internal marker for quota/rate-limit responses on a concrete API key."""
+
 def _leer_int_env(nombre: str, default: int) -> int:
     try:
         return int(os.getenv(nombre, str(default)))
@@ -63,34 +59,36 @@ def _leer_int_env(nombre: str, default: int) -> int:
         return default
 
 
-def llamar_gemini(prompt: str, historial_id: int = None) -> list | dict:
-    """
-    Llama a Gemini y devuelve la respuesta parseada como JSON.
-    Lanza ErrorIntegracionIA ante cualquier fallo.
-    """
-    api_key = os.getenv('GEMINI_API_KEY')
+def _llamar_gemini_con_clave(prompt: str, api_key: str, historial_id: int = None) -> list | dict:
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
-    url = (
-        f'https://generativelanguage.googleapis.com/v1beta/models/'
-        f'gemini-2.5-flash:generateContent?key={api_key}'
-    )
+    # USAMOS 2.5-FLASH ESTABLE PARA EVITAR 404/503
+    model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}'
     headers = {'Content-Type': 'application/json'}
     data = {
         'contents': [{'parts': [{'text': prompt}]}],
-        'generationConfig': {'response_mime_type': 'application/json'},
+        'generation_config': {'response_mime_type': 'application/json'},
     }
-    timeout_s = max(60, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 60))
-    max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 3)) # Max 3 based on user requirements 
-    http_reintentable = {408, 409, 425, 429, 500, 502, 503, 504}
+
+    timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
+    max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
+    # 429 is handled as quota fallback to the next key, not retried in-place.
+    http_reintentable = {408, 409, 425, 500, 502, 503, 504}
 
     ultimo_error: Exception | None = None
     for intento in range(max_reintentos + 1):
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
+            if is_quota_or_rate_limit_error(
+                status_code=response.status_code,
+                detail=getattr(response, 'text', ''),
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={response.status_code}.')
+
             if response.status_code in http_reintentable and intento < max_reintentos:
-                tiempo_espera = 15 * (2 ** intento) # Exponential backoff: 15s, 30s, 60s
+                tiempo_espera = 15 * (2 ** intento)
                 logger.warning('Gemini status=%s. Esperando %s s... (reintento %s/%s).', response.status_code, tiempo_espera, intento + 1, max_reintentos)
                 
                 etapa_previa = None
@@ -110,32 +108,28 @@ def llamar_gemini(prompt: str, historial_id: int = None) -> list | dict:
             resultado = response.json()
             texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
             return json.loads(texto_json)
+        except _GeminiQuotaError:
+            raise
         except requests.Timeout as exc:
             ultimo_error = exc
             if intento < max_reintentos:
-                tiempo_espera = 10 * (2 ** intento)
-                time.sleep(tiempo_espera)
+                time.sleep(10)
                 continue
             raise ErrorIntegracionIA(f'Timeout tras {max_reintentos + 1} intentos.') from exc
         except requests.HTTPError as exc:
             ultimo_error = exc
             status = exc.response.status_code if exc.response is not None else 'desconocido'
+            detalle = getattr(exc.response, 'text', '') if exc.response is not None else ''
+            if is_quota_or_rate_limit_error(
+                status_code=status if isinstance(status, int) else None,
+                detail=detalle,
+                exception=exc,
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={status}.') from exc
+
             if status in http_reintentable and intento < max_reintentos:
                 tiempo_espera = 15 * (2 ** intento)
-                logger.warning('Gemini HTTPError status=%s. Esperando %s s... (reintento %s/%s).', status, tiempo_espera, intento + 1, max_reintentos)
-                
-                etapa_previa = None
-                if historial_id:
-                    from creacion.models import Historial_ia
-                    hist = Historial_ia.objects.filter(id=historial_id).first()
-                    etapa_previa = hist.etapa_actual if hist else None
-                    Historial_ia.objects.filter(id=historial_id).update(etapa_actual='esperando_cuota')
-                
                 time.sleep(tiempo_espera)
-                
-                if historial_id and etapa_previa:
-                    from creacion.models import Historial_ia
-                    Historial_ia.objects.filter(id=historial_id).update(etapa_actual=etapa_previa)
                 continue
             raise ErrorIntegracionIA(f'Error HTTP de Gemini (status={status}).') from exc
         except requests.RequestException as exc:
@@ -150,6 +144,32 @@ def llamar_gemini(prompt: str, historial_id: int = None) -> list | dict:
             raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
+
+
+def llamar_gemini(prompt: str, historial_id: int = None) -> list | dict:
+    """
+    Llama a Gemini con rotación de claves y soporte para historial (telemetría).
+    """
+    claves = list(iter_gemini_api_keys())
+    if not claves:
+        raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
+    ultimo_error_cuota: Exception | None = None
+    for indice, clave in enumerate(claves, start=1):
+        try:
+            return _llamar_gemini_con_clave(prompt, clave, historial_id=historial_id)
+        except _GeminiQuotaError as exc:
+            ultimo_error_cuota = exc
+            logger.warning(
+                'Gemini devolvió cuota/429 en clave %s/%s; se intenta fallback.',
+                indice,
+                len(claves),
+            )
+            continue
+
+    if ultimo_error_cuota is not None:
+        raise ErrorIntegracionIA('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+    raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -356,7 +376,6 @@ def medir_tiempo_nodo(funcion_nodo):
         
         if historial_id:
             from creacion.models import Historial_ia
-            from django.utils import timezone
             Historial_ia.objects.filter(id=historial_id).update(
                 etapa_actual=nombre_nodo,
                 timestamp_inicio_etapa=timezone.now()
