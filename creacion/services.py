@@ -21,49 +21,20 @@ from rutas.models import AuthUser, Guia, Parada, Ruta
 
 logger = logging.getLogger(__name__)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Excepciones de dominio
-# ─────────────────────────────────────────────────────────────────────────────
-
-class ErrorRutaBase(Exception):
-    """Clase base para errores de dominio en creación de rutas."""
+# Grafo compilado una sola vez al cargar el módulo. Es inmutable y reutilizable.
+_GRAFO_COMPILADO = construir_grafo()
 
 
-class ErrorValidacionRuta(ErrorRutaBase):
-    """Errores de validación de payload y datos de ruta."""
-    def __init__(self, errores):
-        if isinstance(errores, str):
-            self.errores = {'general': errores}
-        elif isinstance(errores, dict):
-            self.errores = errores
-        else:
-            self.errores = {'general': str(errores)}
-        super().__init__(str(self.errores))
-
-
-class ErrorPermisosRuta(ErrorRutaBase):
-    """Errores de permisos para crear/guardar rutas."""
-
-
-class ErrorPersistenciaRuta(ErrorRutaBase):
-    """Errores al persistir rutas o su historial en base de datos."""
-
-
-class ErrorIntegracionIA(ErrorRutaBase):
-    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
-
-
-class ErrorSesionGeneracionRuta(ErrorRutaBase):
-    """Errores de estado/checkpoints de sesión de generación IA."""
-
-
-class ErrorSesionGeneracionExpirada(ErrorSesionGeneracionRuta):
-    """La sesión de generación ya no está disponible por expiración."""
-
-
-class ErrorSesionGeneracionNoEncontrada(ErrorSesionGeneracionRuta):
-    """No existe una sesión de generación para el identificador indicado."""
+from .exceptions import (
+    ErrorIntegracionIA,
+    ErrorPermisosRuta,
+    ErrorPersistenciaRuta,
+    ErrorRutaBase,
+    ErrorSesionGeneracionExpirada,
+    ErrorSesionGeneracionNoEncontrada,
+    ErrorSesionGeneracionRuta,
+    ErrorValidacionRuta,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -267,13 +238,8 @@ def _calcular_objetivo_paradas_ia(datos: dict) -> int:
     return max(MIN_PARADAS_IA, min(MAX_PARADAS_IA, estimado))
 
 
-def calcular_distancia(coord1, coord2) -> float:
-    """Distancia euclidiana entre dos puntos [lat, lon]. Usada por OR-Tools."""
-    return math.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2)
-
-
 def crear_matriz_datos(pois) -> dict:
-    """Genera la matriz de distancias para OR-Tools."""
+    """Genera la matriz de distancias para OR-Tools usando Haversine en metros."""
     cant_nodos = len(pois)
     dist_matrix = {}
     for from_node in range(cant_nodos):
@@ -282,8 +248,8 @@ def crear_matriz_datos(pois) -> dict:
             if from_node == to_node:
                 dist_matrix[from_node][to_node] = 0
             else:
-                d = calcular_distancia(pois[from_node]['coords'], pois[to_node]['coords'])
-                dist_matrix[from_node][to_node] = int(d * 10000)
+                d_km = _distancia_haversine_km(pois[from_node]['coords'], pois[to_node]['coords'])
+                dist_matrix[from_node][to_node] = int(d_km * 1000)
     return {'distance_matrix': dist_matrix, 'num_vehicles': 1, 'depot': 0}
 
 
@@ -1829,7 +1795,7 @@ def _ejecutar_grafo_para_alternativa(payload: dict, variacion: str) -> dict:
         }
     """
     payload_variacion = {**payload, '_variacion': variacion}
-    grafo = construir_grafo()
+    grafo = _GRAFO_COMPILADO
 
     try:
         state_resultado = grafo.invoke({'usuario_input': payload_variacion})
