@@ -96,3 +96,14 @@ class RegistroUsuarioFormTest(TestCase):
         form = RegistroUsuarioForm(data=data)
         self.assertFalse(form.is_valid())
         self.assertIn('password2', form.errors)
+
+    def test_contrasena_comun_muestra_mensaje_explicativo(self):
+        data = self.get_valid_data()
+        data['password1'] = 'password'
+        data['password2'] = 'password'
+        form = RegistroUsuarioForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        errores_password = " ".join(form.errors.get('password2', []))
+        self.assertIn('Esta contraseña es demasiado común.', errores_password)
+        self.assertIn('listados de contraseñas usadas frecuentemente', errores_password)
