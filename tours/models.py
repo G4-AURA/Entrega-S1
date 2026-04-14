@@ -54,6 +54,9 @@ class SesionTour(models.Model):
         max_length=20, choices=ESTADO_CHOICES, default=PENDIENTE
     )
     fecha_inicio = models.DateTimeField()
+    cronometro_pausado = models.BooleanField(default=False)
+    cronometro_pausado_desde = models.DateTimeField(null=True, blank=True)
+    cronometro_segundos_pausa_acumulados = models.PositiveIntegerField(default=0)
     ruta = models.ForeignKey(
         Ruta, on_delete=models.CASCADE, related_name="sesiones"
     )

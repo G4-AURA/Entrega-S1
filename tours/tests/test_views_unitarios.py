@@ -4,9 +4,10 @@ Tests unitarios para tours/views.py
 Valida las vistas HTTP y redirecciones.
 """
 import json
+from datetime import timedelta
 from unittest.mock import patch
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.gis.geos import Point
@@ -363,6 +364,9 @@ class IniciarTourTests(TestCase):
         
         self.sesion.refresh_from_db()
         self.assertEqual(self.sesion.estado, SesionTour.EN_CURSO)
+        self.assertFalse(self.sesion.cronometro_pausado)
+        self.assertIsNone(self.sesion.cronometro_pausado_desde)
+        self.assertEqual(self.sesion.cronometro_segundos_pausa_acumulados, 0)
         self.assertEqual(data['estado'], 'en_curso')
 
     def test_iniciar_sesion_finalizada_error(self):
@@ -439,6 +443,98 @@ class EstadoCronometroTests(TestCase):
             self.assertIn('minutos_restantes', data)
             self.assertIsInstance(data['minutos_restantes'], int)
             self.assertGreaterEqual(data['minutos_restantes'], 0)
+
+
+class ControlCronometroTests(TestCase):
+    """Tests para pausar y reanudar el cronómetro durante la sesión."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.guia_user = User.objects.create_user(
+            username='guia_control_crono', password='pass123'
+        )
+        auth_guia = AuthUser.objects.create(user=self.guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+        ruta = Ruta.objects.create(
+            titulo='Ruta Control Cronómetro',
+            descripcion='Desc',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='CRNCTL1',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
+
+    def test_guia_puede_pausar_cronometro(self):
+        self.client.force_login(self.guia_user)
+
+        response = self.client.post(
+            reverse('tours:pausar_cronometro', args=[self.sesion.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.sesion.refresh_from_db()
+        self.assertTrue(self.sesion.cronometro_pausado)
+        data = response.json()
+        self.assertTrue(data['cronometro_pausado'])
+
+    def test_guia_puede_reanudar_cronometro(self):
+        self.client.force_login(self.guia_user)
+        self.sesion.cronometro_pausado = True
+        self.sesion.cronometro_pausado_desde = timezone.now() - timedelta(minutes=3)
+        self.sesion.save(
+            update_fields=['cronometro_pausado', 'cronometro_pausado_desde']
+        )
+
+        response = self.client.post(
+            reverse('tours:reanudar_cronometro', args=[self.sesion.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.sesion.refresh_from_db()
+        self.assertFalse(self.sesion.cronometro_pausado)
+        self.assertIsNone(self.sesion.cronometro_pausado_desde)
+        self.assertGreaterEqual(self.sesion.cronometro_segundos_pausa_acumulados, 180)
+        data = response.json()
+        self.assertFalse(data['cronometro_pausado'])
+
+    def test_pausar_cronometro_requiere_guia_propietario(self):
+        otro_user = User.objects.create_user(username='otro_control', password='pass123')
+        self.client.force_login(otro_user)
+
+        response = self.client.post(
+            reverse('tours:pausar_cronometro', args=[self.sesion.id])
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_estado_cronometro_informa_pausado(self):
+        turista = Turista.objects.create(alias='turista_control_crono')
+        TuristaSesion.objects.create(
+            turista=turista,
+            sesion_tour=self.sesion,
+            activo=True,
+        )
+        self.sesion.cronometro_pausado = True
+        self.sesion.cronometro_pausado_desde = timezone.now()
+        self.sesion.save(update_fields=['cronometro_pausado', 'cronometro_pausado_desde'])
+
+        session = self.client.session
+        session['turista_id'] = turista.id
+        session.save()
+
+        response = self.client.get(
+            reverse('tours:estado_cronometro', args=[self.sesion.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['cronometro_pausado'])
 
 
 class SeleccionarParadaActualTests(TestCase):
@@ -764,6 +860,109 @@ class RegistrarUbicacionTests(TestCase):
         
         self.assertEqual(data['latitud'], 37.3891)
         self.assertTrue(UbicacionVivo.objects.filter(id=data['ubicacion_id']).exists())
+
+    @override_settings(
+        TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS=30,
+        TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS=1000,
+    )
+    def test_registrar_ubicacion_deduplicada_si_llega_muy_pronto_y_sin_movimiento(self):
+        self.client.force_login(self.guia_user)
+        payload = json.dumps(
+            {
+                'sesion_id': self.sesion.id,
+                'latitud': 37.3891,
+                'longitud': -5.9845,
+            }
+        )
+
+        first = self.client.post(
+            reverse('tours:registrar_ubicacion'),
+            payload,
+            content_type='application/json',
+        )
+        second = self.client.post(
+            reverse('tours:registrar_ubicacion'),
+            payload,
+            content_type='application/json',
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json().get('status'), 'ignored')
+        self.assertEqual(
+            UbicacionVivo.objects.filter(
+                sesion_tour=self.sesion,
+                usuario=self.guia_user,
+            ).count(),
+            1,
+        )
+
+
+class RegistrarUbicacionTuristaTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+        guia_user = User.objects.create_user(username='guia_ubi_tur', password='pass123')
+        auth_guia = AuthUser.objects.create(user=guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+        ruta = Ruta.objects.create(
+            titulo='Ruta Ubicación Turista',
+            descripcion='Desc',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='UBITUR1',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
+        self.turista = Turista.objects.create(alias='turista_ubicacion')
+        TuristaSesion.objects.create(
+            turista=self.turista,
+            sesion_tour=self.sesion,
+            activo=True,
+        )
+
+        session = self.client.session
+        session['turista_id'] = self.turista.id
+        session.save()
+
+    @override_settings(
+        TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS=30,
+        TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS=1000,
+    )
+    def test_registrar_ubicacion_turista_deduplicada_si_llega_muy_pronto_y_sin_movimiento(self):
+        payload = json.dumps(
+            {
+                'latitud': 37.3891,
+                'longitud': -5.9845,
+            }
+        )
+
+        first = self.client.post(
+            reverse('tours:registrar_ubicacion_turista', args=[self.sesion.id]),
+            payload,
+            content_type='application/json',
+        )
+        second = self.client.post(
+            reverse('tours:registrar_ubicacion_turista', args=[self.sesion.id]),
+            payload,
+            content_type='application/json',
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json().get('status'), 'ignored')
+        self.assertEqual(
+            UbicacionVivo.objects.filter(
+                sesion_tour=self.sesion,
+                turista=self.turista,
+            ).count(),
+            1,
+        )
 
 
 class ObtenerUbicacionGuiaTests(TestCase):
