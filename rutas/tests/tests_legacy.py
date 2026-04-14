@@ -652,6 +652,33 @@ class ServicioCuriosidadesIACacheTest(TestCase):
 
     @patch('rutas.services.requests.get')
     @patch('google.genai.Client')
+    def test_fallback_a_siguiente_key_si_recibe_cuota_429(self, mock_client_class, mock_requests_get):
+        """Si la primera key agota cuota/429, se prueba automáticamente la siguiente."""
+        cliente_cuota = Mock()
+        cliente_cuota.models.generate_content.side_effect = Exception('429 RESOURCE_EXHAUSTED')
+
+        cliente_ok = Mock()
+        cliente_ok.models.generate_content.return_value = Mock(
+            text='{"titulo":"Fallback OK","texto":"Texto válido","tipo":"Historia","busqueda_imagen":""}'
+        )
+        mock_client_class.side_effect = [cliente_cuota, cliente_ok]
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {}
+        mock_requests_get.return_value = mock_response
+
+        with self.settings(GEMINI_API_KEYS=('key-a', 'key-b'), GEMINI_API_KEY='key-a'):
+            servicio = ServicioCuriosidadesIA()
+            resultado = servicio.generar_curiosidad(self.parada, ciudad='Sevilla')
+
+        self.assertEqual(resultado['titulo'], 'Fallback OK')
+        self.assertEqual(mock_client_class.call_count, 2)
+        claves_usadas = [call.kwargs.get('api_key') for call in mock_client_class.call_args_list]
+        self.assertEqual(claves_usadas, ['key-a', 'key-b'])
+
+    @patch('rutas.services.requests.get')
+    @patch('google.genai.Client')
     def test_ia_tipo_invalido_usa_default(self, mock_client_class, mock_requests_get):
         """Caso borde: IA inventa un 'tipo'. El sistema hace fallback al por defecto."""
         mock_client = mock_client_class.return_value
