@@ -341,6 +341,40 @@ class BillingDowngradeViewTest(SimpleTestCase):
         STRIPE_ENABLED=True,
         STRIPE_SECRET_KEY='sk_test_123',
     )
+    def test_programa_baja_seed_mock_sin_llamar_a_stripe(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=11, tipo_suscripcion=Guia.Suscripcion.PREMIUM)
+        subscription_mock = SimpleNamespace(
+            stripe_subscription_id='sub_seed_demo_data_despliegue3_guia_ana',
+            cancel_at_period_end=False,
+            status='active',
+            current_period_end=None,
+            canceled_at=None,
+            metadata={
+                'seed_source': 'seed_demo_data_despliegue3',
+                'stripe_mode': 'mock',
+            },
+            save=MagicMock(),
+        )
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._obtener_suscripcion_premium_cancelable', return_value=subscription_mock), \
+             patch('billing.views.schedule_subscription_cancel_at_period_end') as mock_schedule:
+            response = schedule_downgrade_view(request)
+
+        body = self._json(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body.get('status'), 'OK')
+        self.assertTrue(subscription_mock.cancel_at_period_end)
+        self.assertEqual(subscription_mock.metadata.get('downgrade_via'), 'seed_mock')
+        subscription_mock.save.assert_called_once()
+        mock_schedule.assert_not_called()
+
+    @override_settings(
+        STRIPE_ENABLED=True,
+        STRIPE_SECRET_KEY='sk_test_123',
+    )
     def test_programa_baja_con_exito(self):
         request = self._request()
         request.user = self._auth_user()

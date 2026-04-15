@@ -639,6 +639,7 @@ class Command(BaseCommand):
                     **existing_metadata,
                     "seed_source": SEED_SOURCE,
                     "seed_command": "seed_demo_data_despliegue3",
+                    "stripe_mode": "mock",
                 }
                 subscription.save()
                 self.stdout.write(f"  ✓ Premium activo para {username}")

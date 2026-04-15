@@ -50,7 +50,23 @@ jobs:
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
+    - name: Recolectar archivos estáticos
+      env:
+        DB_NAME: mi_db_espacial
+        DB_USER: mi_usuario
+        DB_PASSWORD: mi_password_seguro
+        DB_HOST: localhost
+        DB_PORT: 5432
+        CELERY_BROKER_URL: redis://localhost:6379/0
+        CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        SECRET_KEY: clave_secreta_para_testing_github_actions
+        DEBUG: True
+        MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
+        GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
+        GEMINI_API_KEY: dummy_gemini_key_para_tests_github
+        SECURE_SSL_REDIRECT: 'False'
+      run: |
+        python manage.py collectstatic --noinput --clear
     - name: Ejecutar Tests Nativos de Django
       env:
         DB_NAME: mi_db_espacial
