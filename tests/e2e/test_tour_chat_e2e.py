@@ -66,8 +66,10 @@ class Sel:
     BTN_ENTRAR      = "#enter-btn"
 
     # ── Mapa / Chat grupal ─────────────────────────────────────────────────
-    # Tab del chat grupal
-    TAB_CHAT        = "[data-tab='chat']"
+    # Botón visible de navegación inferior para abrir el panel de chat
+    BTN_CHAT_PANEL  = ".session-nav-btn[data-open-tab='chat']"
+    # Fallback legacy (pestaña interna, actualmente oculta en la UI)
+    TAB_CHAT_LEGACY = "[data-tab='chat']"
     # Input de texto del chat
     CHAT_INPUT      = "#chat-input"
     # Botón de envío
@@ -262,12 +264,25 @@ def unirse_como_turista(
 
 
 def abrir_tab_chat(page: Page) -> None:
-    """Hace clic en la pestaña de chat grupal del panel inferior del mapa."""
-    tab = page.locator(Sel.TAB_CHAT)
-    expect(tab).to_be_visible(timeout=PAGE_READY_TIMEOUT)
-    tab.click()
-    # Verificar que el input del chat está habilitado (sesión en curso).
-    expect(page.locator(Sel.CHAT_INPUT)).to_be_enabled(timeout=PAGE_READY_TIMEOUT)
+    """Abre el chat grupal usando el trigger visible de navegación inferior."""
+    chat_input = page.locator(Sel.CHAT_INPUT)
+    if chat_input.is_visible():
+        expect(chat_input).to_be_enabled(timeout=PAGE_READY_TIMEOUT)
+        return
+
+    btn_chat_panel = page.locator(Sel.BTN_CHAT_PANEL).first
+    if btn_chat_panel.count() > 0:
+        expect(btn_chat_panel).to_be_visible(timeout=PAGE_READY_TIMEOUT)
+        btn_chat_panel.click()
+    else:
+        # Compatibilidad con la UI previa (si no existe la barra inferior).
+        tab_legacy = page.locator(Sel.TAB_CHAT_LEGACY).first
+        expect(tab_legacy).to_be_visible(timeout=PAGE_READY_TIMEOUT)
+        tab_legacy.click()
+
+    # Verificar que el input del chat está visible y habilitado.
+    expect(chat_input).to_be_visible(timeout=PAGE_READY_TIMEOUT)
+    expect(chat_input).to_be_enabled(timeout=PAGE_READY_TIMEOUT)
 
 
 def enviar_mensaje_chat(page: Page, texto: str) -> None:

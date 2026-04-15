@@ -2,10 +2,19 @@
 Django settings for config project.
 """
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url  # <--- NECESARIO PARA NEON (Asegúrate de tenerlo en requirements.txt)
 from django.core.exceptions import ImproperlyConfigured
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return str(raw).strip().lower() in ('true', '1', 't', 'yes', 'y', 'on')
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,7 +41,15 @@ GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH') or None
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 # DEBUG: En la nube será False. En local (si está en .env) será True.
-DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
+DEBUG = _env_bool('DEBUG', default=False)
+DATABASE_URL = os.getenv('DATABASE_URL')
+GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', '').strip()
+USE_GCS_MEDIA = bool(GS_BUCKET_NAME)
+IS_TESTING = (
+    'test' in sys.argv
+    or Path(sys.argv[0]).name in {'pytest', 'py.test'}
+    or os.getenv('PYTEST_CURRENT_TEST') is not None
+)
 
 # 1. ALLOWED_HOSTS: El punto al principio (.run.app) es la clave para subdominios
 ALLOWED_HOSTS = [
@@ -69,6 +86,15 @@ INSTALLED_APPS = [
     'allowList',
     'billing',
 ]
+
+if USE_GCS_MEDIA:
+    try:
+        import storages  # noqa: F401
+    except ModuleNotFoundError as exc:
+        raise ImproperlyConfigured(
+            'GS_BUCKET_NAME está definido pero falta instalar django-storages[google].'
+        ) from exc
+    INSTALLED_APPS.append('storages')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -120,9 +146,12 @@ DATABASES = {
 
 # Configuración para NUBE (Neon)
 # Si existe la variable DATABASE_URL, dj_database_url la usa para sobreescribir la configuración local.
-db_from_env = dj_database_url.config(conn_max_age=600, ssl_require=not DEBUG)
-
-if db_from_env:
+if DATABASE_URL:
+    db_from_env = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=not DEBUG,
+    )
     DATABASES['default'].update(db_from_env)
     # IMPORTANTE: dj_database_url pone el motor estándar de postgres.
     # Nosotros necesitamos PostGIS, así que lo forzamos aquí:
@@ -148,7 +177,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # --- INTERNATIONALIZATION ---
 LANGUAGE_CODE = 'es-es'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Madrid'
 USE_I18N = True
 USE_TZ = True
 
@@ -163,9 +192,22 @@ CELERY_TIMEZONE = TIME_ZONE
 
 
 # --- CACHE CONFIGURATION (S2.2-29) ---
-USE_REDIS_CACHE = os.getenv('USE_REDIS_CACHE', 'False').lower() in ('true', '1', 't')
-REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+IS_CLOUD_RUN = bool(os.getenv('K_SERVICE'))
+REDIS_CACHE_URL = (
+    os.getenv('REDIS_CACHE_URL')
+    or os.getenv('REDIS_URL')  # compatibilidad con proveedores que exponen REDIS_URL
+    or 'redis://localhost:6379/1'
+)
+USE_REDIS_CACHE = _env_bool(
+    'USE_REDIS_CACHE',
+    default=bool(os.getenv('REDIS_CACHE_URL') or os.getenv('REDIS_URL')),
+)
+CACHE_IGNORE_EXCEPTIONS = _env_bool(
+    'CACHE_IGNORE_EXCEPTIONS',
+    default=not IS_CLOUD_RUN,
+)
 ROUTE_SNAPSHOT_CACHE_TTL = int(os.getenv('ROUTE_SNAPSHOT_CACHE_TTL', '180'))
+TOURS_CURIOSITY_STATE_CACHE_TTL = int(os.getenv('TOURS_CURIOSITY_STATE_CACHE_TTL', str(12 * 60 * 60)))
 
 # --- TOUR LOCATION UPDATE THRESHOLDS ---
 # Backend dedup thresholds for GPS updates sent during live tours.
@@ -181,7 +223,7 @@ if USE_REDIS_CACHE:
             'LOCATION': REDIS_CACHE_URL,
             'OPTIONS': {
                 'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-                'IGNORE_EXCEPTIONS': True,
+                'IGNORE_EXCEPTIONS': CACHE_IGNORE_EXCEPTIONS,
             },
         }
     }
@@ -195,19 +237,41 @@ else:
 
 
 # --- STATIC FILES ---
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_BACKEND = (
+    'django.contrib.staticfiles.storage.StaticFilesStorage'
+    if IS_TESTING
+    else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+)
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
-# Almacenamiento eficiente para producción (Whitenoise)
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# --- MEDIA FILES ---
+if GS_BUCKET_NAME:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.gcloud.GoogleCloudStorage',
+        },
+        'staticfiles': {
+            'BACKEND': STATICFILES_BACKEND,
+        },
+    }
+    GS_DEFAULT_ACL = None
+    GS_QUERYSTRING_AUTH = False
+    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+else:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': STATICFILES_BACKEND,
+        },
+    }
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 
 # --- LOGIN / LOGOUT ---
 LOGIN_URL = '/accounts/login/'
@@ -297,7 +361,7 @@ _validar_configuracion_stripe()
 
 
 # --- SEGURIDAD SSL (SOLO PRODUCCIÓN) ---
-if not DEBUG:
+if not DEBUG and not IS_TESTING:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

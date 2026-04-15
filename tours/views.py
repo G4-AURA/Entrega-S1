@@ -11,7 +11,7 @@ import json
 import logging
 import math
 import os
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -319,6 +319,8 @@ def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
         segundos_restantes = max(0, total_segundos - segundos_transcurridos)
         minutos_restantes = math.ceil(segundos_restantes / 60) if total_segundos > 0 else 0
 
+    curiosity_state = services.get_curiosity_state(sesion.id)
+
     return {
         "estado": sesion.estado,
         "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
@@ -332,6 +334,8 @@ def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
             else None
         ),
         "parada_actual_id": sesion.parada_actual_id,
+        "curiosidad_visible_parada_id": curiosity_state.get("visible_parada_id"),
+        "curiosidades_historial_paradas_ids": curiosity_state.get("history_parada_ids", []),
     }
 
 
@@ -1127,13 +1131,35 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
     if not parada:
         return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
 
-    try:
-        curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
-            parada=parada,
-            ciudad="Sevilla",
-        )
-    except Exception:
-        return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
+    solo_existente = str(request.GET.get("solo_existente") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "si",
+    }
+
+    if solo_existente:
+        curiosidad = Curiosidad.objects.filter(parada=parada).first()
+        if not curiosidad:
+            return JsonResponse(
+                {
+                    "status": "ok",
+                    "parada": {
+                        "id": parada.id,
+                        "nombre": parada.nombre,
+                        "orden": parada.orden,
+                    },
+                    "curiosidad": None,
+                }
+            )
+    else:
+        try:
+            curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
+                parada=parada,
+                ciudad="Sevilla",
+            )
+        except Exception:
+            return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
 
     return JsonResponse(
         {
@@ -1152,6 +1178,69 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
                 "imagen_url": curiosidad.imagen_public_url,
                 "manual_url": curiosidad.manual_url,
             },
+        }
+    )
+
+
+@login_required
+@require_POST
+def actualizar_visibilidad_curiosidad(request, sesion_id, parada_id):
+    """Permite al guía mostrar/ocultar una curiosidad en el mapa de turistas."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "La sesión no está en curso."}, status=409)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        body = {}
+
+    visible = bool(body.get("visible"))
+    new_state = services.set_curiosity_visible_parada(
+        sesion.id,
+        parada_id if visible else None,
+    )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "parada_id": parada_id,
+            "visible": visible,
+            "curiosidad_visible_parada_id": new_state.get("visible_parada_id"),
+            "curiosidades_historial_paradas_ids": new_state.get("history_parada_ids", []),
+        }
+    )
+
+
+@require_GET
+def estado_curiosidades_sesion(request, sesion_id):
+    """Estado de visibilidad e historial de curiosidades para sincronizar turistas."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "La sesión está finalizada."}, status=410)
+
+    state = services.get_curiosity_state(sesion.id)
+    return JsonResponse(
+        {
+            "status": "ok",
+            "curiosidad_visible_parada_id": state.get("visible_parada_id"),
+            "curiosidades_historial_paradas_ids": state.get("history_parada_ids", []),
         }
     )
 
@@ -1592,6 +1681,9 @@ def obtener_mensajes(request, sesion_id):
         parsed = parse_datetime(desde_str)
         if not parsed:
             return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        if timezone.is_naive(parsed):
+            # Compatibilidad: cuando no se indica zona horaria, tratamos el corte como UTC.
+            parsed = timezone.make_aware(parsed, dt_timezone.utc)
         desde_dt = parsed
         primer_id_mismo_momento = qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
         if primer_id_mismo_momento is None:
@@ -1734,6 +1826,9 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
         desde_dt = parse_datetime(desde_str)
         if not desde_dt:
             return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        if timezone.is_naive(desde_dt):
+            # Compatibilidad con clientes que envían ISO sin offset.
+            desde_dt = timezone.make_aware(desde_dt, dt_timezone.utc)
  
     mensajes = services.obtener_mensajes_privados_turista(sesion, turista, desde=desde_dt, limite=limite)
  

@@ -17,9 +17,7 @@ jobs:
     # --- LEVANTAMOS LA INFRAESTRUCTURA (DB + REDIS) ---
     - name: Levantar DB (PostGIS + pgvector) y Redis
       run: |
-        # Usamos vuestro docker-compose.yml oficial
         docker compose up -d db redis
-        # Damos 15 segundos para asegurar que Postgres arranca y ejecuta init-extensions.sql
         sleep 15 
 
     - name: Configurar Python 3.12
@@ -33,11 +31,14 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y binutils libproj-dev gdal-bin python3-gdal
 
-    - name: Instalar dependencias de Python
+    - name: Instalar dependencias de Python y E2E
       run: |
         python -m pip install --upgrade pip
-        pip install flake8
+        pip install flake8 pytest pytest-django pytest-playwright
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Instalar navegadores de Playwright (Chromium)
+      run: playwright install --with-deps chromium
 
     - name: Instalar Bandit (Seguridad)
       run: pip install bandit
@@ -49,37 +50,64 @@ jobs:
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Ejecutar Tests Nativos de Django
+    - name: Recolectar archivos estáticos
       env:
-        # Credenciales de DB mapeadas desde el docker-compose.yml
         DB_NAME: mi_db_espacial
         DB_USER: mi_usuario
         DB_PASSWORD: mi_password_seguro
         DB_HOST: localhost
         DB_PORT: 5432
-        
-        # Variables de Celery/Redis mapeadas desde config/settings.py
         CELERY_BROKER_URL: redis://localhost:6379/0
         CELERY_RESULT_BACKEND: redis://localhost:6379/0
-        
         SECRET_KEY: clave_secreta_para_testing_github_actions
         DEBUG: True
-        
-        # Claves Dummy para simular las APIs (Mocks)
         MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
         GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
         GEMINI_API_KEY: dummy_gemini_key_para_tests_github
-
         SECURE_SSL_REDIRECT: 'False'
-        
       run: |
-        # Django creará una base de datos temporal llamada "test_mi_db_espacial"
+        python manage.py collectstatic --noinput --clear
+    - name: Ejecutar Tests Nativos de Django
+      env:
+        DB_NAME: mi_db_espacial
+        DB_USER: mi_usuario
+        DB_PASSWORD: mi_password_seguro
+        DB_HOST: localhost
+        DB_PORT: 5432
+        CELERY_BROKER_URL: redis://localhost:6379/0
+        CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        SECRET_KEY: clave_secreta_para_testing_github_actions
+        DEBUG: True
+        MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
+        GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
+        GEMINI_API_KEY: dummy_gemini_key_para_tests_github
+        SECURE_SSL_REDIRECT: 'False'
+      run: |
         python manage.py test
+
+    - name: Ejecutar Tests E2E con Playwright
+      env:
+        # Reutilizamos las credenciales para que pytest-django pueda clonar la DB
+        DB_NAME: mi_db_espacial
+        DB_USER: mi_usuario
+        DB_PASSWORD: mi_password_seguro
+        DB_HOST: localhost
+        DB_PORT: 5432
+        CELERY_BROKER_URL: redis://localhost:6379/0
+        CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        SECRET_KEY: clave_secreta_para_testing_github_actions
+        DEBUG: True
+        MAPBOX_ACCESS_TOKEN: pk.dummy_token_para_tests_github
+        GRAPHHOPPER_API_KEY: dummy_api_key_para_tests_github
+        GEMINI_API_KEY: dummy_gemini_key_para_tests_github
+        SECURE_SSL_REDIRECT: 'False'
+      run: |
+        # Ejecutamos el modo headless por defecto para CI
+        pytest tests/e2e/test_tour_chat_e2e.py -v
 
     - name: Notificar a Discord (Solo PR)
       if: success() && github.event_name == 'pull_request'
       run: |
         curl -H "Content-Type: application/json" \
-        -d '{"content": "🟢 **¡Nueva PR lista para revisar!**\nEl código de la rama `'"${GITHUB_HEAD_REF}"'` ha pasado con éxito Bandit, Flake8 y los Tests de Django.\nLa rama está estable y lista para que la apruebes en GitHub."}' \
+        -d '{"content": "🟢 **¡Nueva PR lista para revisar!**\nEl código de la rama `'"${GITHUB_HEAD_REF}"'` ha pasado con éxito Bandit, Flake8, Tests Unitarios y Tests E2E.\nLa rama está estable y lista para que la apruebes en GitHub."}' \
         ${{ secrets.DISCORD_WEBHOOK }}

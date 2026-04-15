@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load l10n static %}
+{% load l10n static tz %}
 
 {% block title %}AURA - Detalle de Ruta{% endblock %}
 
@@ -198,7 +198,7 @@
         </div>
 
         {# Panel de paradas #}
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-4 col-itinerario-fijo">
             <h4 class="h5 mb-3">Itinerario</h4>
 
             <div class="d-flex gap-2 mb-2">
@@ -267,7 +267,7 @@
                     </div>
 
                     {% if parada.descripcion %}
-                    <div class="small text-muted fst-italic mt-1">{{ parada.descripcion }}</div>
+                    <div class="small text-muted fst-italic mt-1 parada-descripcion">{{ parada.descripcion }}</div>
                     {% endif %}
 
                     <div class="small text-muted">
@@ -446,6 +446,49 @@
             </div>
         </div>
     </div>
+
+    {% if auditoria_ruta %}
+    <details class="card shadow-sm border-0 mt-3 auditoria-card">
+        <summary class="auditoria-summary">
+            <span class="auditoria-summary-left">
+                <span class="h6 mb-0 d-inline">Auditoría de cambios</span>
+            </span>
+            <span class="auditoria-summary-arrow" aria-hidden="true">▾</span>
+            <span class="auditoria-summary-count">{{ auditoria_ruta|length }} eventos</span>
+        </summary>
+        <div class="card-body pt-0">
+            <div class="list-group list-group-flush auditoria-list">
+                {% for evento in auditoria_ruta %}
+                <div class="list-group-item px-0">
+                    <div class="d-flex justify-content-between gap-3">
+                        <div>
+                            <div class="small fw-semibold">{{ evento.get_tipo_evento_display }}</div>
+                            <div class="small text-muted">
+                                {% if evento.parada_nombre_snapshot %}
+                                    Parada: {{ evento.parada_nombre_snapshot }}
+                                {% elif evento.parada %}
+                                    Parada: {{ evento.parada.nombre }}
+                                {% else %}
+                                    Cambio sobre la ruta
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="text-end small text-muted">
+                            {{ evento.fecha_creacion|localtime|date:"d/m/Y H:i" }}
+                            {% if evento.usuario %}
+                                <div>{{ evento.usuario.username }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if evento.motivo %}
+                    <div class="small mt-1">Motivo: {{ evento.motivo }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+    {% endif %}
 
     <div class="recalc-cta mt-4">
         <button type="button" id="btn-recalcular" class="btn-recalcular" title="Recalcular ruta con GraphHopper"
@@ -744,6 +787,13 @@ function actualizarAyudaExigenciaMeta() {
     if (!selectExigenciaMeta || !ayudaExigenciaMeta) return;
     const clave = String(selectExigenciaMeta.value || '').trim().toLowerCase();
     ayudaExigenciaMeta.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
+}
+
+function getCurrentStopOrder() {
+    return Array.from(listaParadas?.querySelectorAll('.parada-item[data-parada-id]') || [])
+        .map(item => item.dataset.paradaId)
+        .filter(Boolean)
+        .join(',');
 }
 
 if (btnEditarTitulo)    btnEditarTitulo.addEventListener('click', () => formEditarTitulo?.classList.toggle('d-none'));
@@ -1051,6 +1101,7 @@ function setReorderMode(enabled) {
     reorderMode = enabled;
     if (enabled) {
         deactivateParadaEditMode();
+        if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
         formAgregarParada?.classList.add('d-none');
         formReordenarParadas.classList.remove('d-none');
         listaParadas.classList.add('reorder-active');
@@ -1081,9 +1132,7 @@ if (listaParadas) {
             draggedItem = null;
             items.forEach(i => i.classList.remove('drag-over'));
             updateVisualOrderLabels();
-            const ordered = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
-                .map(i => i.dataset.paradaId).filter(Boolean);
-            if (stopOrderInput) stopOrderInput.value = ordered.join(',');
+            if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
         });
         item.addEventListener('dragover', e => {
             e.preventDefault();

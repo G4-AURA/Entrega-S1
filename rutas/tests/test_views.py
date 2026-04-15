@@ -8,7 +8,7 @@ from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
-from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
+from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad, RutaAuditoria
 from billing.models import Subscription, TierUsageEvent
 from unittest.mock import patch, Mock
 from django.utils import timezone
@@ -391,6 +391,15 @@ class RutasViewsTest(TestCase):
         })
         self.assertRedirects(response, f"{url}?stop_reordered=1")
 
+    def test_ruta_detalle_post_stop_reorder_sin_cambios_success(self):
+        parada2 = Parada.objects.create(orden=2, nombre="P2", coordenadas=Point(1, 1), ruta=self.ruta)
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'stop_reorder',
+            'stop_order': ''
+        })
+        self.assertRedirects(response, f"{url}?stop_reordered=1")
+
     def test_ruta_detalle_post_mood_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
         response = self.client.post(url, {
@@ -440,6 +449,28 @@ class RutasViewsTest(TestCase):
             'lon': '5.0'
         })
         self.assertRedirects(response, f"{url}?stop_error=1")
+
+    def test_ruta_detalle_view_muestra_auditoria_de_cambios(self):
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=["es_generada_ia"])
+        RutaAuditoria.objects.create(
+            ruta=self.ruta,
+            parada=self.parada,
+            parada_id_snapshot=self.parada.id,
+            parada_nombre_snapshot=self.parada.nombre,
+            parada_orden_snapshot=self.parada.orden,
+            tipo_evento=RutaAuditoria.TipoEvento.PARADA_MODIFICADA,
+            usuario=self.user,
+            motivo='Corrección manual',
+            detalles={'antes': {'nombre': self.parada.nombre}},
+        )
+
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Auditoría de cambios')
+        self.assertContains(response, 'Parada modificada')
+        self.assertContains(response, 'Corrección manual')
 
     def test_ruta_detalle_post_stop_add_error(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])

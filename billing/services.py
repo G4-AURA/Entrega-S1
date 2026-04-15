@@ -155,6 +155,89 @@ def create_checkout_session(
     return {'id': session_id, 'url': checkout_url}
 
 
+def fetch_checkout_session(
+    *,
+    secret_key: str,
+    checkout_session_id: str,
+) -> dict:
+    """
+    Recupera una sesión de Stripe Checkout.
+
+    Devuelve al menos:
+      {
+        'id': 'cs_...',
+        'mode': 'subscription|...',
+        'status': 'open|complete|expired',
+        'payment_status': 'paid|unpaid|no_payment_required',
+        'customer': 'cus_...' | '',
+        'subscription': 'sub_...' | '',
+        'client_reference_id': '...' | '',
+        'metadata': {...},
+      }
+    """
+    if not secret_key:
+        raise StripeAPIError('Falta STRIPE_SECRET_KEY.')
+    if not checkout_session_id:
+        raise StripeAPIError('Falta checkout_session_id.')
+
+    try:
+        response = requests.get(
+            f'https://api.stripe.com/v1/checkout/sessions/{checkout_session_id}',
+            headers={'Authorization': f'Bearer {secret_key}'},
+            params={'expand[]': 'subscription'},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        raise StripeAPIError(f'No se pudo contactar con Stripe: {exc}') from exc
+
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+
+    if response.status_code >= 400:
+        stripe_error = (
+            payload.get('error', {}).get('message')
+            if isinstance(payload, dict)
+            else None
+        )
+        raise StripeAPIError(
+            stripe_error or 'Stripe devolvió un error al recuperar la sesión de checkout.'
+        )
+
+    session_id = payload.get('id') if isinstance(payload, dict) else None
+    if not session_id:
+        raise StripeAPIError('Stripe no devolvió id de sesión de checkout.')
+
+    subscription_raw = payload.get('subscription') if isinstance(payload, dict) else None
+    if isinstance(subscription_raw, dict):
+        subscription_id = str(subscription_raw.get('id') or '').strip()
+    else:
+        subscription_id = str(subscription_raw or '').strip()
+
+    metadata_raw = payload.get('metadata') if isinstance(payload, dict) else None
+    metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
+
+    return {
+        'id': str(session_id).strip(),
+        'mode': str(payload.get('mode') or '').strip() if isinstance(payload, dict) else '',
+        'status': str(payload.get('status') or '').strip() if isinstance(payload, dict) else '',
+        'payment_status': (
+            str(payload.get('payment_status') or '').strip()
+            if isinstance(payload, dict)
+            else ''
+        ),
+        'customer': str(payload.get('customer') or '').strip() if isinstance(payload, dict) else '',
+        'subscription': subscription_id,
+        'client_reference_id': (
+            str(payload.get('client_reference_id') or '').strip()
+            if isinstance(payload, dict)
+            else ''
+        ),
+        'metadata': metadata,
+    }
+
+
 def schedule_subscription_cancel_at_period_end(
     *,
     secret_key: str,

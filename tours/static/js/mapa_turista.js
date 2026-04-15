@@ -21,6 +21,7 @@ let miUbicacionMarker = null;
 const turistasMarkers = new Map();
 let countdownTimerId  = null;
 let countdownPollId   = null;
+let curiosidadStatePollId = null;
 
 // --- Variables para el control del fin de sesión del tour ---
 let ubicacionPollId   = null;
@@ -48,8 +49,11 @@ const paradasMarkers  = new Map();
 const paradasDataById = new Map();
 let paradaSeleccionadaId = null;
 const curiosidadesMostradas = new Set();
+const curiosidadesCachePorParada = new Map();
+const curiosidadesTimelineCargando = new Set();
 let paradaEnRadioActual = null;
 let solicitudCuriosidadEnCurso = false;
+let curiosidadPopupActual = null;
 let sesionEstadoActual = (typeof sesionEstado !== 'undefined' && sesionEstado) ? sesionEstado : '';
 const RADIO_PARADA_METROS = 75;
 
@@ -98,6 +102,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Dibujar recorrido y paradas ───────────────────────────────────────
     _dibujarRutaYParadas();
     _initParadaFocusButtons();
+    _initMostrarCuriosidadButtons();
 
 
     // ── Posición propia ───────────────────────────────────────────────────
@@ -112,14 +117,101 @@ document.addEventListener('DOMContentLoaded', function () {
         ubicacionPollId = setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
-    // ── Panel expandible ──────────────────────────────────────────────────
-    const panelHeader = document.querySelector('.panel-header');
-    const tourPanel   = document.querySelector('.tour-panel');
-    if (panelHeader && tourPanel) {
-        panelHeader.addEventListener('click', () => tourPanel.classList.toggle('expanded'));
-    }
+    // ── Overlay de sesión + navegación inferior ────────────────────────────
+    const tourPanel = document.querySelector('.tour-panel');
+    const sessionPanelTitle = document.getElementById('session-panel-title');
+    const sessionNavButtons = document.querySelectorAll('.session-nav-btn');
+    const chatSwitch = document.getElementById('session-chat-switch');
+    const chatSwitchButtons = document.querySelectorAll('.session-chat-switch-btn');
+    let lastChatTab = privateChatEnabled ? 'chat' : 'chat';
+    document.body.classList.remove('session-overlay-open');
 
-    // ── Tabs Itinerario / Chat ─────────────────────────────────────────────
+    const setActiveTab = (target) => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${target}"]`);
+        if (!btn) return;
+        btn.click();
+    };
+
+    const getActiveTab = () => {
+        const activeBtn = document.querySelector('.tab-btn.active');
+        return activeBtn ? activeBtn.getAttribute('data-tab') : null;
+    };
+
+    const syncSessionChrome = () => {
+        const activeTab = getActiveTab();
+        const panelOpen = Boolean(tourPanel && tourPanel.classList.contains('session-open'));
+
+        if (activeTab === 'chat' || activeTab === 'chat-privado') {
+            lastChatTab = activeTab;
+        }
+
+        if (sessionPanelTitle) {
+            if (activeTab === 'notificaciones') sessionPanelTitle.textContent = 'Alertas';
+            else if (activeTab === 'chat' || activeTab === 'chat-privado') sessionPanelTitle.textContent = 'Chats';
+            else sessionPanelTitle.textContent = 'Itinerario';
+        }
+
+        sessionNavButtons.forEach((btn) => {
+            const target = btn.getAttribute('data-open-tab');
+            const isChatNav = target === 'chat' && (activeTab === 'chat' || activeTab === 'chat-privado');
+            const isCurrent = target === activeTab || isChatNav;
+            btn.classList.toggle('active', panelOpen && isCurrent);
+        });
+
+        const showChatSwitch = panelOpen && privateChatEnabled
+            && (activeTab === 'chat' || activeTab === 'chat-privado');
+        if (chatSwitch) {
+            chatSwitch.style.display = showChatSwitch ? 'inline-flex' : 'none';
+        }
+        chatSwitchButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.getAttribute('data-chat-tab') === activeTab);
+        });
+    };
+
+    const closeSessionPanel = () => {
+        if (!tourPanel) return;
+        tourPanel.classList.remove('session-open');
+        document.body.classList.remove('session-overlay-open');
+        document.dispatchEvent(new CustomEvent('chatClosed'));
+        document.dispatchEvent(new CustomEvent('privateChatClosed'));
+        syncSessionChrome();
+    };
+
+    const openSessionPanel = (tabRequested) => {
+        if (!tourPanel) return;
+        const targetTab = tabRequested === 'chat' ? lastChatTab : tabRequested;
+        tourPanel.classList.add('session-open');
+        document.body.classList.add('session-overlay-open');
+        setActiveTab(targetTab);
+        syncSessionChrome();
+    };
+
+    sessionNavButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-open-tab');
+            if (!target) return;
+            const panelOpen = Boolean(tourPanel && tourPanel.classList.contains('session-open'));
+            const activeTab = getActiveTab();
+            const isChatTarget = target === 'chat' && (activeTab === 'chat' || activeTab === 'chat-privado');
+            const isCurrent = target === activeTab || isChatTarget;
+            if (panelOpen && isCurrent) {
+                closeSessionPanel();
+                return;
+            }
+            openSessionPanel(target);
+        });
+    });
+
+    chatSwitchButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-chat-tab');
+            if (!target) return;
+            setActiveTab(target);
+            syncSessionChrome();
+        });
+    });
+
+    // ── Tabs internas (se mantienen para reutilizar lógica existente) ──────
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             const target = this.getAttribute('data-tab');
@@ -143,13 +235,18 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 document.dispatchEvent(new CustomEvent('privateChatClosed'));
             }
+
             if (target === 'notificaciones') {
                 const badge = document.getElementById('recordatorios-badge');
                 if (badge) badge.style.display = 'none';
                 document.dispatchEvent(new CustomEvent('recordatoriosOpened'));
             }
+
+            syncSessionChrome();
         });
     });
+
+    syncSessionChrome();
 
     // ── Inicializar botón de centrado ──────────────────────────────────────
     _initBotónCentraMapa();
@@ -159,6 +256,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── Chat ──────────────────────────────────────────────────────────────
     _initSessionCountdown();
+    _initCuriosidadStateSync();
     _initChat();
     _initRecordatorios();
 });
@@ -523,40 +621,39 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
                          
     const tieneImagen = curiosidad.imagen_url && curiosidad.imagen_url.trim() !== '';
     const finalImgUrl = tieneImagen ? curiosidad.imagen_url : urlSeguridad;
-    
-    const existing = document.getElementById('curiosidad-auto-card');
-    if (existing) existing.remove();
 
-    const card = document.createElement('div');
-    card.id = 'curiosidad-auto-card';
-    card.setAttribute('role', 'status');
-    card.style.position = 'fixed';
-    card.style.left = '50%';
-    card.style.transform = 'translateX(-50%)';
-    card.style.top = '16px';
-    card.style.zIndex = '9999';
-    card.style.maxWidth = 'min(92vw, 400px)'; 
-    card.style.width = '100%';
-    card.style.background = '#ffffff';
-    card.style.border = '1px solid #e5e7eb';
-    card.style.borderLeft = '6px solid #4f46e5';
-    card.style.borderRadius = '12px';
-    card.style.padding = '12px 14px';
-    card.style.boxShadow = '0 8px 28px rgba(15, 23, 42, 0.18)';
+    const paradaId = parada && parada.id != null ? String(parada.id) : null;
+    if (paradaId && !esGuia) {
+        curiosidadesCachePorParada.set(paradaId, { parada, curiosidad });
+        _renderCuriosidadEnTimeline(paradaId, curiosidad);
+    }
+
+    _cerrarCuriosidadVisible();
+
+    const popupContent = document.createElement('div');
+    popupContent.id = 'curiosidad-auto-card';
+    if (parada && parada.id) {
+        popupContent.setAttribute('data-parada-id', String(parada.id));
+    }
+    popupContent.setAttribute('role', 'status');
+    popupContent.style.maxWidth = '320px';
+    popupContent.style.minWidth = '240px';
+    popupContent.style.fontFamily = "'Manrope', sans-serif";
+    popupContent.style.color = '#111827';
 
     const paradaTexto = parada?.nombre ? `Parada: ${parada.nombre}` : 'Parada actual';
     const tipoTexto = curiosidad.tipo ? `<span style="font-size:.72rem;color:#4338ca;font-weight:700;text-transform:uppercase;">${_escapeHtml(curiosidad.tipo)}</span>` : '';
     const tituloTexto = curiosidad.titulo ? _escapeHtml(curiosidad.titulo) : 'Curiosidad de esta parada';
     const cuerpoTexto = curiosidad.texto ? _escapeHtml(curiosidad.texto) : '';
 
-    card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
+    popupContent.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px; gap: 12px;">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <strong style="font-size:.8rem;color:#111827;">${_escapeHtml(paradaTexto)}</strong>
                 ${tipoTexto}
             </div>
             <button type="button" id="curiosidad-auto-close" aria-label="Cerrar curiosidad"
-                style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;">×</button>
+                style="border:none;background:transparent;color:#6b7280;cursor:pointer;font-size:1.25rem;line-height:1;flex-shrink:0;">×</button>
         </div>
         <div id="curiosidad-auto-img-container"></div>
         <div>
@@ -564,7 +661,7 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
             <p style="margin:0;font-size:.9rem;color:#374151;line-height:1.35;">${cuerpoTexto}</p>
         </div>`;
 
-    const imgContainer = card.querySelector('#curiosidad-auto-img-container');
+    const imgContainer = popupContent.querySelector('#curiosidad-auto-img-container');
     if (imgContainer) {
         const imgEl = document.createElement('img');
         imgEl.src = finalImgUrl;
@@ -577,52 +674,244 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
         imgContainer.appendChild(imgEl);
     }
 
-    document.body.appendChild(card);
-
-    const closeBtn = document.getElementById('curiosidad-auto-close');
+    const closeBtn = popupContent.querySelector('#curiosidad-auto-close');
     if (closeBtn) {
-        closeBtn.addEventListener('click', () => card.remove());
+        closeBtn.addEventListener('click', async () => {
+            if (esGuia && parada && parada.id) {
+                try {
+                    await _setCuriosidadVisibilityOnServer(parada.id, false);
+                } catch {
+                    // Si falla, al menos cerramos localmente.
+                }
+            }
+            _cerrarCuriosidadVisible();
+            if (esGuia) _syncCuriosidadButtons(null);
+        });
     }
 
-    if (parada && parada.id) {
-        const contenedorId = `curiosidad-timeline-${parada.id}`;
-        const contenedor = document.getElementById(contenedorId);
-        
-        if (contenedor) {
-            const tipoEl = document.getElementById(`curiosidad-timeline-tipo-${parada.id}`);
-            if (tipoEl && curiosidad.tipo) tipoEl.textContent = curiosidad.tipo;
-            
-            const tituloEl = document.getElementById(`curiosidad-timeline-titulo-${parada.id}`);
-            if (tituloEl && curiosidad.titulo) tituloEl.textContent = curiosidad.titulo;
-            
-            const textoEl = document.getElementById(`curiosidad-timeline-texto-${parada.id}`);
-            if (textoEl && curiosidad.texto) textoEl.textContent = curiosidad.texto;
-            
-            const imgEl = document.getElementById(`curiosidad-timeline-img-${parada.id}`);
-            if (imgEl) {
-                imgEl.src = finalImgUrl;
-                imgEl.onerror = function() {
-                    this.onerror = null;
-                    this.src = urlSeguridad;
-                };
-                imgEl.style.display = 'block';
-            }
-         
-            contenedor.style.display = 'block';
-           
-            const timelineItem = contenedor.closest('.timeline-item');
-            if (timelineItem) {
-                // Marcar que esta parada ha mostrado una curiosidad sin alterar
-                // el estado de selección (`active` / `text-muted`).
-                timelineItem.classList.add('has-curiosidad');
-            }
+    const latLng = parada && Number.isFinite(parada.lat) && Number.isFinite(parada.lng)
+        ? [parada.lat, parada.lng]
+        : (parada && parada.id && paradasMarkers.get(String(parada.id))
+            ? paradasMarkers.get(String(parada.id)).getLatLng()
+            : (map ? map.getCenter() : [0, 0]));
+
+    curiosidadPopupActual = L.popup({
+        closeButton: false,
+        autoClose: true,
+        closeOnClick: false,
+        className: 'curiosidad-popup-map',
+        offset: [0, -12],
+        maxWidth: 360,
+    })
+        .setLatLng(latLng)
+        .setContent(popupContent)
+        .openOn(map);
+
+    curiosidadPopupActual.on('remove', () => {
+        if (curiosidadPopupActual && curiosidadPopupActual.getElement && curiosidadPopupActual.getElement()) {
+            // noop: guardamos el mismo flujo aunque el popup se cierre externamente.
+        }
+    });
+
+    if (parada && parada.id && esGuia) {
+        _setCuriosidadButtonLabel(parada.id, 'Ocultar curiosidad');
+    }
+
+    // La curiosidad permanece visible hasta que el guía la cierre manualmente.
+}
+
+function _cerrarCuriosidadVisible() {
+    const popup = curiosidadPopupActual;
+    if (!popup) return;
+
+    const popupContent = popup.getContent ? popup.getContent() : null;
+    const paradaId = popupContent && popupContent.getAttribute ? popupContent.getAttribute('data-parada-id') : null;
+    if (paradaId && esGuia) {
+        _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+    }
+
+    if (map) {
+        map.closePopup(popup);
+    }
+
+    curiosidadPopupActual = null;
+}
+
+function _setCuriosidadButtonLabel(paradaId, label) {
+    const button = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
+    if (!button) return;
+    button.textContent = label;
+}
+
+async function _setCuriosidadVisibilityOnServer(paradaId, visible) {
+    if (!esGuia || !paradaId) return null;
+    const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${paradaId}/curiosidad/visibilidad/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': _getCsrf(),
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({ visible: Boolean(visible) }),
+    });
+    if (!response.ok) {
+        throw new Error('No se pudo actualizar la visibilidad de la curiosidad.');
+    }
+    return response.json();
+}
+
+function _parseParadaId(value) {
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function _getPopupParadaId() {
+    const popupContent = curiosidadPopupActual?.getContent?.();
+    const raw = popupContent?.getAttribute?.('data-parada-id');
+    return _parseParadaId(raw);
+}
+
+function _renderCuriosidadEnTimeline(paradaId, curiosidad) {
+    if (!paradaId || !curiosidad) return;
+
+    const contenedor = document.getElementById(`curiosidad-timeline-${paradaId}`);
+    if (!contenedor) return;
+
+    const tipoEl = document.getElementById(`curiosidad-timeline-tipo-${paradaId}`);
+    const tituloEl = document.getElementById(`curiosidad-timeline-titulo-${paradaId}`);
+    const textoEl = document.getElementById(`curiosidad-timeline-texto-${paradaId}`);
+    const imgEl = document.getElementById(`curiosidad-timeline-img-${paradaId}`);
+
+    if (tipoEl) tipoEl.textContent = curiosidad.tipo || '';
+    if (tituloEl) tituloEl.textContent = curiosidad.titulo || 'Curiosidad';
+    if (textoEl) textoEl.textContent = curiosidad.texto || '';
+
+    const imgUrl = curiosidad.imagen_url || curiosidad.manual_url || '';
+    if (imgEl) {
+        if (imgUrl) {
+            imgEl.src = imgUrl;
+            imgEl.style.display = 'block';
+        } else {
+            imgEl.removeAttribute('src');
+            imgEl.style.display = 'none';
         }
     }
-  
-    setTimeout(() => {
-        const mounted = document.getElementById('curiosidad-auto-card');
-        if (mounted) mounted.remove();
-    }, 30000);
+
+    contenedor.style.display = 'block';
+}
+
+async function _ensureCuriosidadTimeline(paradaId) {
+    const key = String(paradaId);
+    if (!key || curiosidadesTimelineCargando.has(key)) return;
+
+    const cacheEntry = curiosidadesCachePorParada.get(key);
+    if (cacheEntry?.curiosidad) {
+        _renderCuriosidadEnTimeline(key, cacheEntry.curiosidad);
+        return;
+    }
+
+    curiosidadesTimelineCargando.add(key);
+    try {
+        const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${key}/curiosidad/?solo_existente=1`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!payload?.curiosidad) return;
+        curiosidadesCachePorParada.set(key, { parada: payload.parada, curiosidad: payload.curiosidad });
+        _renderCuriosidadEnTimeline(key, payload.curiosidad);
+    } catch {
+        return;
+    } finally {
+        curiosidadesTimelineCargando.delete(key);
+    }
+}
+
+function _syncCuriosidadButtons(visibleParadaId) {
+    if (!esGuia) return;
+    document.querySelectorAll('.mostrar-curiosidad-btn').forEach((btn) => {
+        const btnParadaId = _parseParadaId(btn.getAttribute('data-parada-id'));
+        if (!btnParadaId) return;
+        btn.textContent = (visibleParadaId && btnParadaId === visibleParadaId)
+            ? 'Ocultar curiosidad'
+            : 'Mostrar curiosidad';
+    });
+}
+
+function _syncCuriosidadStateFromRemote(data) {
+    if (!data) return;
+
+    if (esGuia) return;
+    const visibleParadaId = _parseParadaId(data.curiosidad_visible_parada_id);
+
+    const historyIds = Array.isArray(data.curiosidades_historial_paradas_ids)
+        ? data.curiosidades_historial_paradas_ids.map(_parseParadaId).filter(Boolean)
+        : [];
+
+    historyIds.forEach((id) => {
+        _ensureCuriosidadTimeline(id);
+    });
+
+    const popupParadaId = _getPopupParadaId();
+    if (!visibleParadaId) {
+        if (popupParadaId) _cerrarCuriosidadVisible();
+        return;
+    }
+
+    if (popupParadaId === visibleParadaId) return;
+
+    const cached = curiosidadesCachePorParada.get(String(visibleParadaId));
+    if (cached?.curiosidad) {
+        _mostrarCuriosidadAutomatica(cached.parada, cached.curiosidad);
+        return;
+    }
+
+    _ensureCuriosidadTimeline(visibleParadaId).then(() => {
+        const loaded = curiosidadesCachePorParada.get(String(visibleParadaId));
+        if (loaded?.curiosidad) {
+            _mostrarCuriosidadAutomatica(loaded.parada, loaded.curiosidad);
+        }
+    }).catch(() => {});
+}
+
+function _initCuriosidadStateSync() {
+    if (esGuia) return;
+    if (typeof curiosidadesEstadoUrl === 'undefined' || !curiosidadesEstadoUrl) return;
+
+    const poll = () => {
+        if (tourFinalizado) return;
+        const separator = curiosidadesEstadoUrl.includes('?') ? '&' : '?';
+        const liveUrl = `${curiosidadesEstadoUrl}${separator}_=${Date.now()}`;
+        fetch(liveUrl, { cache: 'no-store' })
+            .then((r) => {
+                if ([401, 403, 410].includes(r.status)) {
+                    return Promise.reject();
+                }
+                if (!r.ok) return Promise.reject();
+                return r.json();
+            })
+            .then((data) => {
+                _syncCuriosidadStateFromRemote(data);
+            })
+            .catch(() => {});
+    };
+
+    poll();
+    curiosidadStatePollId = setInterval(poll, 4000);
+}
+
+function _flashCuriosidadButtonLabel(paradaId, temporaryLabel, restoreLabel, timeoutMs = 2400) {
+    const button = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
+    if (!button) return;
+
+    button.textContent = temporaryLabel;
+    window.setTimeout(() => {
+        const currentButton = document.querySelector(`.mostrar-curiosidad-btn[data-parada-id="${CSS.escape(String(paradaId))}"]`);
+        if (currentButton) {
+            currentButton.textContent = restoreLabel;
+        }
+    }, timeoutMs);
 }
 
 function _escapeHtml(value) {
@@ -643,6 +932,7 @@ function _manejarFinDeTour() {
     // 1. Limpiar todos los intervalos de peticiones
     if (countdownPollId) clearInterval(countdownPollId);
     if (countdownTimerId) clearInterval(countdownTimerId);
+    if (curiosidadStatePollId) clearInterval(curiosidadStatePollId);
     if (ubicacionPollId) clearInterval(ubicacionPollId);
     if (chatPollId) clearInterval(chatPollId);
 
@@ -659,7 +949,7 @@ function _manejarFinDeTour() {
     if (timerContainer && timerValue) {
         timerContainer.classList.remove('waiting', 'en_curso', 'paused');
         timerContainer.classList.add('finished');
-        timerValue.textContent = '00:00:00';
+        timerValue.textContent = '00:00';
     }
     if (startBtn) startBtn.disabled = true;
     if (pauseBtn) {
@@ -702,10 +992,12 @@ function _initSessionCountdown() {
     if (!timerContainer || !timerValue) return;
 
     const MINUTE_MS = 60 * 1000;
+    const COUNTDOWN_STATUS_POLL_MS = 5000;
     const horasBase = (typeof duracionRutaHoras !== 'undefined' && Number.isFinite(duracionRutaHoras) && duracionRutaHoras > 0)
         ? duracionRutaHoras
         : 1;
     const countdownMs = Math.round(horasBase * 60 * 60 * 1000);
+    const countdownTotalMinutes = Math.max(1, Math.ceil(countdownMs / MINUTE_MS));
     let sesionIniciada = (typeof sesionEstado !== 'undefined' && sesionEstado === 'en_curso');
     let cronometroPausado = false;
     let startTimestamp = (typeof sesionFechaInicioEpochMs !== 'undefined' && Number.isFinite(sesionFechaInicioEpochMs))
@@ -726,22 +1018,31 @@ function _initSessionCountdown() {
         if (!sesionIniciada) {
             pauseBtn.classList.add('d-none');
             pauseBtn.disabled = true;
-            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+            pauseBtn.textContent = 'Pausar cronómetro';
             return;
         }
 
         pauseBtn.classList.remove('d-none');
         pauseBtn.disabled = pauseBtnRequestInFlight;
         if (cronometroPausado) {
-            pauseBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Reanudar cronómetro';
+            pauseBtn.textContent = 'Reanudar cronómetro';
         } else {
-            pauseBtn.innerHTML = '<span class="material-icons-round">pause</span>Pausar cronómetro';
+            pauseBtn.textContent = 'Pausar cronómetro';
         }
+    };
+
+    const setCountdownProgress = (remainingMinutes) => {
+        const normalizedRemaining = Number.isFinite(remainingMinutes)
+            ? Math.max(0, Math.min(countdownTotalMinutes, Math.ceil(remainingMinutes)))
+            : countdownTotalMinutes;
+        const progress = 1 - (normalizedRemaining / countdownTotalMinutes);
+        timerContainer.style.setProperty('--countdown-progress', String(Math.max(0, Math.min(1, progress))));
     };
 
     const setWaitingUi = () => {
         stopTicker();
-        timerValue.textContent = _formatRemainingMinutes(Math.ceil(countdownMs / MINUTE_MS));
+        timerValue.textContent = _formatRemainingMinutes(countdownTotalMinutes);
+        setCountdownProgress(countdownTotalMinutes);
         timerContainer.classList.remove('finished', 'paused');
         timerContainer.classList.add('waiting');
     };
@@ -761,6 +1062,7 @@ function _initSessionCountdown() {
         const render = () => {
             const remainingMinutes = Math.max(0, Math.ceil((endTimestamp - Date.now()) / MINUTE_MS));
             timerValue.textContent = _formatRemainingMinutes(remainingMinutes);
+            setCountdownProgress(remainingMinutes);
 
             if (remainingMinutes === 0) {
                 timerContainer.classList.add('finished');
@@ -786,6 +1088,7 @@ function _initSessionCountdown() {
 
         if (Number.isFinite(remoteRemainingMinutes) && remoteRemainingMinutes >= 0) {
             timerValue.textContent = _formatRemainingMinutes(remoteRemainingMinutes);
+            setCountdownProgress(remoteRemainingMinutes);
         }
     };
 
@@ -811,7 +1114,7 @@ function _initSessionCountdown() {
             sesionIniciada = true;
             if (startBtn) {
                 startBtn.disabled = true;
-                startBtn.innerHTML = '<span class="material-icons-round">check</span>Cronómetro iniciado';
+                startBtn.textContent = 'Cronómetro iniciado';
             }
             const remoteMinutes = Number(data.minutos_restantes);
             if (cronometroPausado) {
@@ -825,7 +1128,7 @@ function _initSessionCountdown() {
             setWaitingUi();
             if (startBtn) {
                 startBtn.disabled = false;
-                startBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Iniciar cronómetro';
+                startBtn.textContent = 'Iniciar cronómetro';
             }
         }
         setPauseButtonState();
@@ -859,7 +1162,7 @@ function _initSessionCountdown() {
     setPauseButtonState();
 
     fetchCountdownState();
-    countdownPollId = setInterval(fetchCountdownState, MINUTE_MS);
+    countdownPollId = setInterval(fetchCountdownState, COUNTDOWN_STATUS_POLL_MS);
 
     if (startBtn) {
         startBtn.addEventListener('click', () => {
@@ -920,7 +1223,9 @@ function _initSessionCountdown() {
 
 function _formatRemainingMinutes(totalMinutes) {
     const safeMinutes = Number.isFinite(totalMinutes) ? Math.max(0, Math.ceil(totalMinutes)) : 0;
-    return `${safeMinutes} min`;
+    const hours = Math.floor(safeMinutes / 60);
+    const minutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 
@@ -1348,8 +1653,10 @@ function _initRecordatorios() {
                 osc.type = 'sine';
                 osc.frequency.value = freq;
                 gain.gain.setValueAtTime(0.0001, startAt);
-                gain.gain.exponentialRampToValueAtTime(0.2, startAt + 0.02);
+
+                gain.gain.exponentialRampToValueAtTime(0.8, startAt + 0.02); 
                 gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.3);
+                
                 osc.connect(gain);
                 gain.connect(context.destination);
                 osc.start(startAt);
@@ -1357,13 +1664,18 @@ function _initRecordatorios() {
             };
 
             const now = context.currentTime;
-            beep(now, 880);
-            beep(now + 0.35, 660);
-            beep(now + 0.7, 880);
+            
+            for (let i = 0; i < 7; i++) {
+                let offset = i * 1.2; 
+                beep(now + offset, 880);
+                beep(now + offset + 0.35, 660);
+                beep(now + offset + 0.7, 880);
+            }
 
             setTimeout(() => {
                 context.close().catch(() => {});
-            }, 1500);
+            }, 4500); 
+            
         } catch {
             return;
         }
@@ -1589,6 +1901,62 @@ function _initParadaFocusButtons() {
     });
 }
 
+function _initMostrarCuriosidadButtons() {
+    const curiosidadButtons = document.querySelectorAll('.mostrar-curiosidad-btn');
+    if (!curiosidadButtons.length) return;
+
+    curiosidadButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const paradaId = button.getAttribute('data-parada-id');
+            if (!paradaId) return;
+
+            const popupParadaId = curiosidadPopupActual?.getContent?.()?.getAttribute?.('data-parada-id');
+            if (curiosidadPopupActual && popupParadaId === String(paradaId)) {
+                button.disabled = true;
+                try {
+                    await _setCuriosidadVisibilityOnServer(paradaId, false);
+                    _cerrarCuriosidadVisible();
+                    _syncCuriosidadButtons(null);
+                } catch {
+                    return;
+                } finally {
+                    button.disabled = false;
+                }
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const response = await fetch(`/tours/sesiones/${sesionId}/paradas/${paradaId}/curiosidad/?solo_existente=1`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                });
+
+                if (!response.ok) {
+                    _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+                    return;
+                }
+
+                const payload = await response.json();
+                if (!payload?.curiosidad) {
+                    _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+                    _flashCuriosidadButtonLabel(paradaId, 'Sin curiosidad', 'Mostrar curiosidad');
+                    return;
+                }
+
+                await _setCuriosidadVisibilityOnServer(paradaId, true);
+                curiosidadesMostradas.add(String(paradaId));
+                _mostrarCuriosidadAutomatica(payload.parada, payload.curiosidad);
+                _syncCuriosidadButtons(_parseParadaId(paradaId));
+            } catch {
+                _setCuriosidadButtonLabel(paradaId, 'Mostrar curiosidad');
+            } finally {
+                button.disabled = false;
+            }
+        });
+    });
+}
+
 function _resaltarParadaSeleccionada(paradaId) {
     if (!paradaId) return;
 
@@ -1608,6 +1976,8 @@ function _resaltarParadaSeleccionada(paradaId) {
         item.classList.remove('active', 'selected-stop');
         const stopName = item.querySelector('.timeline-stop-name');
         if (stopName) stopName.classList.add('text-muted');
+        const liveBadge = item.querySelector('.timeline-stop-live-badge');
+        if (liveBadge) liveBadge.classList.add('d-none');
     });
 
     document.querySelectorAll('.timeline-item.selected-stop').forEach(item => {
@@ -1629,6 +1999,8 @@ function _resaltarParadaSeleccionada(paradaId) {
         timelineItem.classList.add('selected-stop');
         const stopName = timelineItem.querySelector('.timeline-stop-name');
         if (stopName) stopName.classList.remove('text-muted');
+        const liveBadge = timelineItem.querySelector('.timeline-stop-live-badge');
+        if (liveBadge) liveBadge.classList.remove('d-none');
     }
 
     document.querySelectorAll('.parada-focus-btn').forEach(btn => {

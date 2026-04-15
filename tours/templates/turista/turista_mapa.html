@@ -4,7 +4,7 @@
 {% block title %}AURA - Mapa del Tour{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v=2026032301">
+<link rel="stylesheet" href="{% static 'css/turista_mapa.css' %}?v={% now 'U' %}">
 <link rel="stylesheet" href="{% static 'css/chat_privado.css' %}">
 {% endblock %}
 
@@ -27,13 +27,13 @@
     <span class="material-icons-round">my_location</span>
 </button>
 
-<div class="tour-panel">
+<div class="tour-panel {% if es_guia %}role-guia{% else %}role-turista{% endif %}">
 
-    <div class="panel-header">
+    <div class="panel-header d-none">
         <div class="panel-drag-handle"></div>
     </div>
 
-    <div class="panel-tabs">
+    <div class="panel-tabs d-none">
         <button class="tab-btn active" data-tab="itinerario">
             <span class="material-icons-round">map</span>
             Itinerario
@@ -58,6 +58,16 @@
             <span class="chat-badge" id="chat-privado-badge" style="display:none;"></span>
         </button>
         {% endif %}
+    </div>
+
+    <div class="session-panel-toolbar">
+        <h3 id="session-panel-title" class="session-panel-title">Itinerario</h3>
+        <div id="session-chat-switch" class="session-chat-switch" style="display:none;">
+            <button type="button" class="session-chat-switch-btn active" data-chat-tab="chat">Grupal</button>
+            {% if private_chat_enabled %}
+            <button type="button" class="session-chat-switch-btn" data-chat-tab="chat-privado">Privado</button>
+            {% endif %}
+        </div>
     </div>
 
     <div class="panel-content">
@@ -85,38 +95,45 @@
                 <span style="color:var(--text-muted);font-size:.8rem;font-weight:500;">{{ sesion.ruta.titulo }}</span>
             </div>
 
-            <div class="session-countdown" id="session-countdown" aria-live="polite">
-                <span class="material-icons-round">timer</span>
-                <span>Tiempo restante</span>
-                <strong id="session-countdown-time">-- min</strong>
-            </div>
+            <div class="countdown-layout {% if es_guia %}countdown-layout-guia{% endif %}">
+                <div class="session-countdown" id="session-countdown" aria-live="polite">
+                    <span class="session-countdown-label">Tiempo restante</span>
+                    <div class="session-countdown-clock">
+                        <strong id="session-countdown-time">--:--</strong>
+                    </div>
+                </div>
 
-            {% if es_guia %}
-            <div class="countdown-controls">
-                <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
-                    <span class="material-icons-round">play_arrow</span>
-                    {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
-                </button>
-                <button id="pause-countdown-btn" class="start-countdown-btn countdown-pause-btn d-none">
-                    <span class="material-icons-round">pause</span>
-                    Pausar cronómetro
-                </button>
+                {% if es_guia %}
+                <div class="countdown-controls">
+                    <button id="start-countdown-btn" class="start-countdown-btn" {% if sesion.estado == 'en_curso' %}disabled{% endif %}>
+                        {% if sesion.estado == 'en_curso' %}Cronómetro iniciado{% else %}Iniciar cronómetro{% endif %}
+                    </button>
+                    <button id="pause-countdown-btn" class="start-countdown-btn countdown-pause-btn d-none">
+                        Pausar cronómetro
+                    </button>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
 
             <div class="timeline">
                 {% for parada in paradas %}
                 <div class="timeline-item {% if sesion.parada_actual_id == parada.id %}active{% endif %}"
                     data-parada-id="{{ parada.id }}">
                     <div class="timeline-item-main">
-                        <h6 class="timeline-stop-name mb-1 {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}"
-                            style="font-family:'Manrope',sans-serif;font-size:.9rem;letter-spacing:-.02em;">
+                        <div class="timeline-item-topline">
+                            <span class="timeline-stop-order">Parada {{ parada.orden }}</span>
+                            {% if not es_guia %}
+                            <span class="timeline-stop-live-badge {% if sesion.parada_actual_id != parada.id %}d-none{% endif %}">Actual</span>
+                            {% endif %}
+                        </div>
+                        <h6 class="timeline-stop-name {% if sesion.parada_actual_id != parada.id %}text-muted{% endif %}">
                             {{ parada.nombre }}
                         </h6>
-                        <p style="color:var(--text-muted);font-size:.78rem;margin:0;">
-                            Parada {{ parada.orden }} del recorrido
+                        <p class="timeline-stop-description">
+                            {{ parada.descripcion|default:"Sin descripción disponible para esta parada." }}
                         </p>
 
+                        {% if not es_guia %}
                         <div class="curiosidad-timeline-container" id="curiosidad-timeline-{{ parada.id }}"
                             style="display: none; margin-top: 10px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 6px;">
                             <img id="curiosidad-timeline-img-{{ parada.id }}" alt="Imagen de la curiosidad"
@@ -128,12 +145,21 @@
                             <p id="curiosidad-timeline-texto-{{ parada.id }}"
                                 style="font-size: 0.8rem; color: #475569; margin: 0; line-height: 1.4;"></p>
                         </div>
+                        {% endif %}
                     </div>
                     {% if es_guia %}
-                    <button type="button" class="parada-focus-btn" data-parada-id="{{ parada.id }}"
-                        aria-label="Seleccionar parada actual: {{ parada.nombre }}" title="Seleccionar parada actual">
-                        Seleccionar parada actual
-                    </button>
+                    <div class="timeline-item-actions">
+                        <button type="button" class="parada-focus-btn" data-parada-id="{{ parada.id }}"
+                            aria-label="Seleccionar parada actual: {{ parada.nombre }}" title="Seleccionar parada actual">
+                            Seleccionar parada actual
+                        </button>
+                        {% if sesion.estado == 'en_curso' %}
+                        <button type="button" class="mostrar-curiosidad-btn" data-parada-id="{{ parada.id }}"
+                            aria-label="Mostrar curiosidad: {{ parada.nombre }}" title="Mostrar curiosidad de esta parada">
+                            Mostrar curiosidad
+                        </button>
+                        {% endif %}
+                    </div>
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -276,6 +302,23 @@
 
     </div>
 </div>
+
+<nav class="session-bottom-nav" id="session-bottom-nav" aria-label="Navegación de sesión">
+    {% if scheduled_meetup_enabled %}
+    <button type="button" class="session-nav-btn" data-open-tab="notificaciones">
+        <span class="material-icons-round">notifications</span>
+        Alertas
+    </button>
+    {% endif %}
+    <button type="button" class="session-nav-btn" data-open-tab="itinerario">
+        <span class="material-icons-round">map</span>
+        Itinerario
+    </button>
+    <button type="button" class="session-nav-btn" data-open-tab="chat">
+        <span class="material-icons-round">chat</span>
+        Chats
+    </button>
+</nav>
 {% endblock %}
 
 {% block extra_js %}
@@ -307,6 +350,7 @@
   const enviarMensajeUrl     = '{% url "tours:enviar_mensaje" sesion.id %}';
   const recordatoriosUrl     = '{% url "tours:recordatorios_sesion" sesion.id %}';
   const recordatoriosAlertasUrl = '{% url "tours:alertas_recordatorios" sesion.id %}';
+  const curiosidadesEstadoUrl = '{% url "tours:estado_curiosidades_sesion" sesion.id %}';
   // Turista — ID propio para filtrado de mensajes
   const turistaIdRaw         = '{% if turista %}{{ turista.id }}{% else %}null{% endif %}';
   const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);

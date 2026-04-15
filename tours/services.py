@@ -6,6 +6,7 @@ Turistas: siempre anónimos, identificados por cookie de sesión Django.
 Guías: siempre autenticados via Django Auth.
 """
 import json
+import logging
 import secrets
 import string
 from typing import Optional, Tuple
@@ -19,6 +20,8 @@ from django.utils import timezone
 from rutas.models import Guia
 
 from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -100,10 +103,105 @@ def generar_codigo_unico(length: int = 6) -> str:
 # ---------------------------------------------------------------------------
 
 ROUTE_SNAPSHOT_CACHE_PREFIX = "tour:session"
+CURIOUSITY_STATE_CACHE_PREFIX = "tour:session:curiosity_state"
 
 
 def route_snapshot_cache_key(sesion_id: int) -> str:
     return f"{ROUTE_SNAPSHOT_CACHE_PREFIX}:{sesion_id}:route_snapshot"
+
+
+def curiosity_state_cache_key(sesion_id: int) -> str:
+    return f"{CURIOUSITY_STATE_CACHE_PREFIX}:{sesion_id}"
+
+
+def _cache_get_safe(key: str):
+    try:
+        return cache.get(key)
+    except Exception:
+        logger.exception("Error leyendo clave de cache '%s'.", key)
+        return None
+
+
+def _cache_set_safe(key: str, value, timeout: int | None = None) -> None:
+    try:
+        cache.set(key, value, timeout=timeout)
+    except Exception:
+        logger.exception("Error escribiendo clave de cache '%s'.", key)
+
+
+def _cache_delete_safe(key: str) -> None:
+    try:
+        cache.delete(key)
+    except Exception:
+        logger.exception("Error eliminando clave de cache '%s'.", key)
+
+
+def _cache_delete_many_safe(keys: list[str]) -> None:
+    if not keys:
+        return
+    try:
+        cache.delete_many(keys)
+    except Exception:
+        logger.exception("Error eliminando %s claves de cache.", len(keys))
+
+
+def _normalize_curiosity_history(raw_ids) -> list[int]:
+    if not isinstance(raw_ids, list):
+        return []
+    normalized: list[int] = []
+    for raw_id in raw_ids:
+        try:
+            parsed = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0 or parsed in normalized:
+            continue
+        normalized.append(parsed)
+    return normalized
+
+
+def get_curiosity_state(sesion_id: int) -> dict:
+    state = _cache_get_safe(curiosity_state_cache_key(sesion_id))
+    if not isinstance(state, dict):
+        return {"visible_parada_id": None, "history_parada_ids": []}
+
+    visible_raw = state.get("visible_parada_id")
+    try:
+        visible_id = int(visible_raw) if visible_raw is not None else None
+    except (TypeError, ValueError):
+        visible_id = None
+    if visible_id is not None and visible_id <= 0:
+        visible_id = None
+
+    history_ids = _normalize_curiosity_history(state.get("history_parada_ids"))
+    if visible_id is not None and visible_id not in history_ids:
+        history_ids.append(visible_id)
+
+    return {
+        "visible_parada_id": visible_id,
+        "history_parada_ids": history_ids,
+    }
+
+
+def set_curiosity_visible_parada(sesion_id: int, parada_id: int | None) -> dict:
+    current = get_curiosity_state(sesion_id)
+    history_ids = list(current.get("history_parada_ids") or [])
+
+    visible_id: int | None = None
+    if parada_id is not None:
+        visible_id = int(parada_id)
+        if visible_id > 0 and visible_id not in history_ids:
+            history_ids.append(visible_id)
+    payload = {
+        "visible_parada_id": visible_id if visible_id and visible_id > 0 else None,
+        "history_parada_ids": history_ids,
+    }
+    _cache_set_safe(
+        curiosity_state_cache_key(sesion_id),
+        payload,
+        timeout=getattr(settings, "TOURS_CURIOSITY_STATE_CACHE_TTL", 12 * 60 * 60),
+    )
+    return payload
 
 
 def _build_route_snapshot(sesion: SesionTour) -> dict:
@@ -112,6 +210,7 @@ def _build_route_snapshot(sesion: SesionTour) -> dict:
         {
             "id": p.id,
             "nombre": p.nombre,
+            "descripcion": p.descripcion or "",
             "orden": p.orden,
             "lat": p.coordenadas.y if p.coordenadas else None,
             "lng": p.coordenadas.x if p.coordenadas else None,
@@ -133,7 +232,7 @@ def _build_route_snapshot(sesion: SesionTour) -> dict:
 
 def set_route_snapshot(sesion: SesionTour) -> dict:
     snapshot = _build_route_snapshot(sesion)
-    cache.set(
+    _cache_set_safe(
         route_snapshot_cache_key(sesion.id),
         snapshot,
         timeout=getattr(settings, "ROUTE_SNAPSHOT_CACHE_TTL", 180),
@@ -143,21 +242,29 @@ def set_route_snapshot(sesion: SesionTour) -> dict:
 
 def get_route_snapshot(sesion: SesionTour) -> dict:
     key = route_snapshot_cache_key(sesion.id)
-    snapshot = cache.get(key)
-    if snapshot:
-        return snapshot
+    snapshot = _cache_get_safe(key)
+    if isinstance(snapshot, dict):
+        # Compatibilidad con snapshots antiguos sin "descripcion" por parada.
+        paradas = snapshot.get("paradas", [])
+        if all(isinstance(p, dict) and "descripcion" in p for p in paradas):
+            return snapshot
+    elif snapshot is not None:
+        logger.warning(
+            "Payload inválido en cache para snapshot de sesión %s (tipo=%s).",
+            sesion.id,
+            type(snapshot).__name__,
+        )
     return set_route_snapshot(sesion)
 
 
 def invalidate_route_snapshot(sesion_id: int) -> None:
-    cache.delete(route_snapshot_cache_key(sesion_id))
+    _cache_delete_safe(route_snapshot_cache_key(sesion_id))
 
 
 def invalidate_route_snapshots_for_route(ruta_id: int) -> None:
     sesion_ids = SesionTour.objects.filter(ruta_id=ruta_id).values_list("id", flat=True)
     keys = [route_snapshot_cache_key(sesion_id) for sesion_id in sesion_ids]
-    if keys:
-        cache.delete_many(keys)
+    _cache_delete_many_safe(keys)
 
 def serializar_paradas(sesion: SesionTour) -> str:
     """
@@ -169,6 +276,7 @@ def serializar_paradas(sesion: SesionTour) -> str:
         {
             "id": p.id,
             "nombre": p.nombre,
+            "descripcion": p.descripcion or "",
             "orden": p.orden,
             "lat": p.coordenadas.y if p.coordenadas else None,
             "lng": p.coordenadas.x if p.coordenadas else None,
