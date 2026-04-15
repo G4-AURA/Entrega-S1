@@ -949,7 +949,7 @@ function _manejarFinDeTour() {
     if (timerContainer && timerValue) {
         timerContainer.classList.remove('waiting', 'en_curso', 'paused');
         timerContainer.classList.add('finished');
-        timerValue.textContent = '00:00:00';
+        timerValue.textContent = '00:00';
     }
     if (startBtn) startBtn.disabled = true;
     if (pauseBtn) {
