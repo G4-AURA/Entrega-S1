@@ -39,9 +39,9 @@ Documento que contiene el acuerdo firmado por el equipo. En este se constan las 
 ## 4. Plan de lanzamiento y contingencia
 Documento que recoge la estrategia integral para el lanzamiento de **AURA** al mercado.
 
-[Enlace Plan de lanzamiento y contingencia](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/Te%CC%81rminos-y-condiciones.md)
+[Enlace Plan de lanzamiento y contingencia](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/plan-de-lanzamiento-y-contingencia.md)
 
 ## 5. Términos y condiciones
 Documento que establece el marco legal y las condiciones generales que regulan el acceso y uso de la aplicación AURA
 
-[Enlace Términos y condiciones](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/plan-de-lanzamiento-y-contingencia.md)
+[Enlace Términos y condiciones](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/Te%CC%81rminos-y-condiciones.md)

@@ -20,6 +20,7 @@
 **Versión:** v1.0 
 **Fecha:** 14/04/2026  
 </div>
+
 ---
 
 ## 1. Contenido
