@@ -20,6 +20,7 @@
 **Versión:** v1.0 
 **Fecha:** 14/04/2026  
 </div>
+
 ---
 
 Debido al requisito de contar con un mínimo de dos revisores por sección, se ha procedido a organizar al equipo de usuarios piloto (compuesto por seis integrantes) en dos grupos de tres personas. Cada grupo asumirá la responsabilidad de revisar una app distinta. 
