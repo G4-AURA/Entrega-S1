@@ -74,6 +74,10 @@
     background: var(--bg-white);
     transition: all 0.2s;
     overflow: hidden;
+    /* Mantiene la altura igual en toda la fila */
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .ruta-card:hover {
@@ -84,11 +88,27 @@
 .ruta-card-link {
     text-decoration: none;
     color: inherit;
-    display: block;
+    /* Permite que el enlace ocupe todo el alto de la tarjeta */
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
 }
 
 .ruta-card-body {
-    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    justify-content: flex-start !important;
+}
+
+.ruta-card-main {
+    flex-grow: 0;
+}
+
+.ruta-card-footer {
+    margin-top: auto !important; 
+    padding-top: 2rem; /* Este es el hueco que querías */
+    border-top: 1px solid var(--border-color); /* Opcional: una línea fina queda muy bien ahí */
 }
 
 .ruta-title {
@@ -99,16 +119,14 @@
 }
 
 .ruta-description {
-    color: var(--text-muted);
-    font-size: 0.875rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
 }
 
-.ruta-info {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 1rem;
+.ruta-info, 
+.mood-tags, 
+.badge-ia {
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
 }
 
 .info-item {
@@ -153,33 +171,13 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-bottom: 0.75rem;
-}
-
-.mood-tag {
-    display: inline-block;
-    padding: 0.3rem 0.65rem;
-    border-radius: 4px;
-    background: var(--brand-light);
-    color: var(--brand-color);
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.badge-ia {
-    display: inline-block;
-    background: #dbeafe;
-    color: #0284c7;
-    padding: 0.3rem 0.7rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
+    padding-bottom: 0;
 }
 
 .guia-info {
     font-size: 0.82rem;
     color: var(--text-muted);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
 }
 
 .ruta-card-actions {
