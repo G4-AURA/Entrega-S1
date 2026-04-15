@@ -276,11 +276,6 @@ def eliminar_parada_y_reordenar(ruta, parada, *, usuario=None, motivo=''):
         if parada_restante.orden != index:
             parada_restante.orden = index
             parada_restante.save(update_fields=["orden"])
-    parada.delete()
-    for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
-        if parada_restante.orden != index:
-            parada_restante.orden = index
-            parada_restante.save(update_fields=["orden"])
 
 
 def _validar_coordenadas(raw_lat, raw_lon):

@@ -244,6 +244,12 @@ class RutasServicesValidationTest(TestCase):
     def test_eliminar_parada_registra_auditoria_en_ruta_ia(self):
         self.ruta.es_generada_ia = True
         self.ruta.save(update_fields=["es_generada_ia"])
+        Parada.objects.create(
+            orden=3,
+            nombre="P3",
+            coordenadas=Point(2, 2),
+            ruta=self.ruta,
+        )
 
         eliminar_parada_y_reordenar(
             self.ruta,

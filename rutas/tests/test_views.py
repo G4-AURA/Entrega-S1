@@ -397,7 +397,7 @@ class RutasViewsTest(TestCase):
         self.assertRedirects(response, f"{url}?stop_deleted=1")
         self.assertEqual(self.ruta.paradas.count(), 2)
         self.assertTrue(Parada.objects.filter(id=parada2.id).exists())
-
+    
     def test_ruta_detalle_post_stop_reorder_success(self):
         parada2 = Parada.objects.create(orden=2, nombre="P2", coordenadas=Point(1, 1), ruta=self.ruta)
         url = reverse('ruta-detalle', args=[self.ruta.id])
