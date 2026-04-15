@@ -26,6 +26,51 @@
         console.warn('[AURA feedback]', message);
     };
 
+    async function syncCheckoutAfterSuccessRedirect() {
+        const searchParams = new URLSearchParams(window.location.search || '');
+        
+        if (searchParams.get('billing') !== 'success') {
+            return;
+        }
+
+        const sessionId = (searchParams.get('session_id') || '').trim();
+        try {
+            const response = await fetch('/billing/sync-checkout-session/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(sessionId ? { session_id: sessionId } : {})
+            });
+            
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                if (payload.code === 'BILLING_NOTHING_TO_SYNC') return;
+                avisar(payload.mensaje || 'No se pudo sincronizar el checkout.', 'warning');
+                return;
+            }
+
+            const premiumStates = ['active', 'trialing', 'past_due'];
+            if (premiumStates.includes(String(payload.subscription_status || '').toLowerCase())) {
+                avisar('Pago confirmado. ¡Ya eres Premium! Actualizando la página...', 'success');
+                
+                window.setTimeout(function () {
+                    window.location.assign(window.location.pathname);
+                }, 1500);
+                return;
+            }
+
+            avisar('Checkout recibido. La suscripción está en verificación.', 'warning');
+        } catch (_error) {
+            avisar('Error de conexión. Recarga la página en unos segundos.', 'warning');
+        }
+    }
+
+    syncCheckoutAfterSuccessRedirect();
+    // ---------------------------------------------------
+
     let currentLimit = 3;
     let pageManual = 1;
     let pageIa = 1;
