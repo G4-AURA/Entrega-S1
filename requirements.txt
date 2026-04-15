@@ -13,3 +13,4 @@ whitenoise==6.6.0
 dj-database-url==2.3.0
 stripe
 Pillow==11.2.1
+django-storages[google]==1.14.4

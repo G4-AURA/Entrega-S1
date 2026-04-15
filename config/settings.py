@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis', # GeoDjango
+    'storages',
     'tours',
     'creacion',
     'rutas',
@@ -221,11 +222,31 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
 # Almacenamiento eficiente para producción (Whitenoise)
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# --- MEDIA FILES (imágenes subidas por usuarios) ---
+# En Cloud Run los contenedores son efímeros: sin un backend persistente las
+# imágenes desaparecen al reiniciar y nunca son accesibles desde /media/ en
+# producción (DEBUG=False elimina el handler de django.conf.urls.static).
+#
+# Si GS_BUCKET_NAME está definido (entorno Cloud Run) se usa Google Cloud
+# Storage como backend. En local, sin esa variable, se usa el filesystem.
+GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', '')
+
+if GS_BUCKET_NAME:
+    # --- Google Cloud Storage backend ---
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+    GS_DEFAULT_ACL = None          # Usar IAM uniforme a nivel de bucket (recomendado)
+    GS_QUERYSTRING_AUTH = False    # URLs públicas sin firma — requiere que el bucket sea público
+    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+    # MEDIA_ROOT no tiene significado cuando se usa GCS, pero lo definimos para
+    # evitar errores en código que lo referencia.
+    MEDIA_ROOT = BASE_DIR / 'media'
+else:
+    # --- Filesystem local (desarrollo) ---
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
