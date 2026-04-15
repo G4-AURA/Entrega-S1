@@ -5,6 +5,15 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url  # <--- NECESARIO PARA NEON (Asegúrate de tenerlo en requirements.txt)
+from django.core.exceptions import ImproperlyConfigured
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return str(raw).strip().lower() in ('true', '1', 't', 'yes', 'y', 'on')
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,7 +40,7 @@ GEOS_LIBRARY_PATH = os.getenv('GEOS_LIBRARY_PATH') or None
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 # DEBUG: En la nube será False. En local (si está en .env) será True.
-DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
+DEBUG = _env_bool('DEBUG', default=False)
 
 # 1. ALLOWED_HOSTS: El punto al principio (.run.app) es la clave para subdominios
 ALLOWED_HOSTS = [
@@ -66,6 +75,7 @@ INSTALLED_APPS = [
     'creacion',
     'rutas',
     'allowList',
+    'billing',
 ]
 
 MIDDLEWARE = [
@@ -73,6 +83,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware', # <--- Whitenoise para estáticos
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'config.middleware.ApiErrorMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -135,7 +146,7 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        'NAME': 'config.validators.ExplainableCommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
@@ -145,7 +156,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # --- INTERNATIONALIZATION ---
 LANGUAGE_CODE = 'es-es'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Madrid'
 USE_I18N = True
 USE_TZ = True
 
@@ -160,9 +171,29 @@ CELERY_TIMEZONE = TIME_ZONE
 
 
 # --- CACHE CONFIGURATION (S2.2-29) ---
-USE_REDIS_CACHE = os.getenv('USE_REDIS_CACHE', 'False').lower() in ('true', '1', 't')
-REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+IS_CLOUD_RUN = bool(os.getenv('K_SERVICE'))
+REDIS_CACHE_URL = (
+    os.getenv('REDIS_CACHE_URL')
+    or os.getenv('REDIS_URL')  # compatibilidad con proveedores que exponen REDIS_URL
+    or 'redis://localhost:6379/1'
+)
+USE_REDIS_CACHE = _env_bool(
+    'USE_REDIS_CACHE',
+    default=bool(os.getenv('REDIS_CACHE_URL') or os.getenv('REDIS_URL')),
+)
+CACHE_IGNORE_EXCEPTIONS = _env_bool(
+    'CACHE_IGNORE_EXCEPTIONS',
+    default=not IS_CLOUD_RUN,
+)
 ROUTE_SNAPSHOT_CACHE_TTL = int(os.getenv('ROUTE_SNAPSHOT_CACHE_TTL', '180'))
+TOURS_CURIOSITY_STATE_CACHE_TTL = int(os.getenv('TOURS_CURIOSITY_STATE_CACHE_TTL', str(12 * 60 * 60)))
+
+# --- TOUR LOCATION UPDATE THRESHOLDS ---
+# Backend dedup thresholds for GPS updates sent during live tours.
+TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS = float(os.getenv('TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS', '3.0'))
+TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS = float(os.getenv('TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS', '4.0'))
+TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS = float(os.getenv('TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS', '10.0'))
+TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS = float(os.getenv('TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS', '8.0'))
 
 if USE_REDIS_CACHE:
     CACHES = {
@@ -171,7 +202,7 @@ if USE_REDIS_CACHE:
             'LOCATION': REDIS_CACHE_URL,
             'OPTIONS': {
                 'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-                'IGNORE_EXCEPTIONS': True,
+                'IGNORE_EXCEPTIONS': CACHE_IGNORE_EXCEPTIONS,
             },
         }
     }
@@ -206,9 +237,84 @@ LOGOUT_REDIRECT_URL = '/'
 
 
 # --- API KEYS ---
+
+def _parse_csv_env_list(raw_value: str | None) -> tuple[str, ...]:
+    """Parses comma/newline separated env values preserving order and uniqueness."""
+    if not raw_value:
+        return tuple()
+
+    values = str(raw_value).replace('\n', ',').split(',')
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+    return tuple(deduped)
+
+
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_API_KEYS = _parse_csv_env_list(os.getenv('GEMINI_API_KEYS'))
+
+if GEMINI_API_KEYS:
+    GEMINI_API_KEY = GEMINI_API_KEYS[0]
+elif GEMINI_API_KEY:
+    GEMINI_API_KEYS = (GEMINI_API_KEY,)
+
+
+# --- STRIPE (TIERS FREEMIUM/PREMIUM) ---
+STRIPE_ENABLED = os.getenv('STRIPE_ENABLED', 'False').lower() in ('true', '1', 't')
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_PREMIUM_PRICE_ID = os.getenv('STRIPE_PREMIUM_PRICE_ID')
+STRIPE_CHECKOUT_SUCCESS_URL = os.getenv('STRIPE_CHECKOUT_SUCCESS_URL', '')
+STRIPE_CHECKOUT_CANCEL_URL = os.getenv('STRIPE_CHECKOUT_CANCEL_URL', '')
+STRIPE_WEBHOOK_TOLERANCE_SECONDS = int(os.getenv('STRIPE_WEBHOOK_TOLERANCE_SECONDS', '300'))
+
+
+def _validar_configuracion_stripe() -> None:
+    """
+    Valida configuración mínima de Stripe al arrancar.
+    Se aplica solo si STRIPE_ENABLED=True para no bloquear entornos sin pagos.
+    """
+    if not STRIPE_ENABLED:
+        return
+
+    required = {
+        'STRIPE_PUBLISHABLE_KEY': STRIPE_PUBLISHABLE_KEY,
+        'STRIPE_SECRET_KEY': STRIPE_SECRET_KEY,
+        'STRIPE_WEBHOOK_SECRET': STRIPE_WEBHOOK_SECRET,
+        'STRIPE_PREMIUM_PRICE_ID': STRIPE_PREMIUM_PRICE_ID,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise ImproperlyConfigured(
+            f"Stripe está habilitado pero faltan variables: {', '.join(missing)}."
+        )
+
+    prefix_checks = {
+        'STRIPE_PUBLISHABLE_KEY': ('pk_', STRIPE_PUBLISHABLE_KEY),
+        'STRIPE_SECRET_KEY': ('sk_', STRIPE_SECRET_KEY),
+        'STRIPE_WEBHOOK_SECRET': ('whsec_', STRIPE_WEBHOOK_SECRET),
+        'STRIPE_PREMIUM_PRICE_ID': ('price_', STRIPE_PREMIUM_PRICE_ID),
+    }
+    invalid = [
+        f"{name} (debe empezar por '{prefix}')"
+        for name, (prefix, value) in prefix_checks.items()
+        if not value.startswith(prefix)
+    ]
+    if invalid:
+        raise ImproperlyConfigured(
+            "Formato inválido en variables Stripe: " + ", ".join(invalid) + "."
+        )
+
+
+_validar_configuracion_stripe()
 
 
 # --- SEGURIDAD SSL (SOLO PRODUCCIÓN) ---

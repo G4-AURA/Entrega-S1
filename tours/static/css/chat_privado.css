@@ -1,0 +1,236 @@
+/* ============================================================
+   AURA — Chat Privado (chat_privado.css)
+   Añadir al final de tours/static/css/turista_mapa.css
+   o importar como hoja independiente.
+   ============================================================ */
+
+/* ── Lista de conversaciones estilo WhatsApp ────────────────── */
+.private-inbox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.private-inbox-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+  outline: none;
+}
+
+.private-inbox-item:hover,
+.private-inbox-item:focus {
+  background: var(--brand-light);
+  border-color: rgba(79, 70, 229, 0.15);
+}
+
+.private-inbox-item.active {
+  background: linear-gradient(145deg, #eef2ff 0%, #ffffff 100%);
+  border-color: var(--brand-color);
+  box-shadow: 0 14px 26px rgba(79, 70, 229, 0.16);
+}
+
+/* Avatar circular con gradiente de marca */
+.inbox-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-color, #4f46e5), #7c3aed);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.inbox-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-alias {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-preview {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.inbox-time {
+  font-size: 0.68rem;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+}
+
+/* ── Estado vacío de bandeja ────────────────────────────────── */
+.inbox-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted, #94a3b8);
+}
+
+.inbox-empty .material-icons-round {
+  font-size: 40px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+
+.inbox-empty p {
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Vista de conversación privada ──────────────────────────── */
+.private-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.private-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.btn-back-inbox {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-surface, #fff);
+  color: var(--text-secondary, #475569);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-back-inbox:hover {
+  background: var(--brand-light, #eef2ff);
+  color: var(--brand-color, #4f46e5);
+  border-color: var(--brand-color, #4f46e5);
+}
+
+.btn-back-inbox .material-icons-round {
+  font-size: 18px;
+}
+
+.private-chat-name {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary, #0f172a);
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.private-chat-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: 'Manrope', sans-serif;
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: #ffffff;
+  border: 1px solid rgba(79, 70, 229, 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+/* ── Burbujas del chat privado ──────────────────────────────── */
+
+/* Guía enviando (enviado = sent) */
+.chat-message.private-sent .chat-message-bubble {
+  background: linear-gradient(135deg, var(--brand-color, #4f46e5), #7c3aed);
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+/* Turista enviando (recibido por el guía) */
+.chat-message.private-received .chat-message-bubble {
+  background: #f5f3ff;
+  color: var(--text-primary, #0f172a);
+  border: 1px solid #ddd6fe;
+  border-bottom-left-radius: 4px;
+}
+
+/* ── Indicador "Chat con el Guía" para el turista ────────────── */
+.private-chat-to-guide-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(238, 242, 255, 0.9);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: #5b21b6;
+  font-weight: 600;
+  font-family: 'Manrope', sans-serif;
+  flex-shrink: 0;
+}
+
+.private-chat-to-guide-hint .material-icons-round {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ── Nota intro en la bandeja del guía ──────────────────────── */
+.private-inbox-intro {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+  margin: 8px 0 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}

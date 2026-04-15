@@ -1,12 +1,4 @@
 (function () {
-    const LIMITES_MANUAL = {
-        duracionMin: 0.5,
-        duracionMax: 24,
-        personasMin: 1,
-        personasMax: 50,
-        paradasMin: 2,
-    };
-
     const configElement = document.getElementById('creacion-manual-config');
     const config = configElement
         ? JSON.parse(configElement.textContent)
@@ -17,7 +9,22 @@
                   volver: '/crear-ruta/',
                   catalogo: '/catalogo/',
               },
+              limits: {
+                  personasMax: 50,
+                  paradasMax: 15,
+              },
           };
+
+    const personasMaxConfig = Number(config?.limits?.personasMax);
+    const paradasMaxConfig = Number(config?.limits?.paradasMax);
+    const LIMITES_MANUAL = {
+        duracionMin: 0.5,
+        duracionMax: 24,
+        personasMin: 1,
+        personasMax: Number.isFinite(personasMaxConfig) ? personasMaxConfig : 50,
+        paradasMin: 2,
+        paradasMax: Number.isFinite(paradasMaxConfig) ? paradasMaxConfig : 15,
+    };
 
     const feedback = window.AuraFeedback;
     const avisar = (message, type = 'info', duration = 3200) => {
@@ -73,6 +80,14 @@
 
     function updateDisplay() {
         display.innerText = stopCount;
+        if (btnRemoveStop) {
+            btnRemoveStop.disabled = stopCount <= LIMITES_MANUAL.paradasMin;
+            btnRemoveStop.setAttribute('aria-disabled', String(stopCount <= LIMITES_MANUAL.paradasMin));
+        }
+        if (btnAddStop) {
+            btnAddStop.disabled = stopCount >= LIMITES_MANUAL.paradasMax;
+            btnAddStop.setAttribute('aria-disabled', String(stopCount >= LIMITES_MANUAL.paradasMax));
+        }
     }
     
     function actualizarAyudaExigencia() {
@@ -82,6 +97,43 @@
 
         const clave = String(selectExigencia.value || '').trim().toLowerCase();
         exigenciaAyuda.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
+    }
+
+    function configurarIncrementoDuracionMediaHora(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) {
+            return;
+        }
+
+        input.step = '0.5';
+        input.setAttribute('step', '0.5');
+
+        input.addEventListener('keydown', function (event) {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                return;
+            }
+
+            event.preventDefault();
+
+            const current = Number(input.value);
+            const min = Number(input.min);
+            const max = Number(input.max);
+            const base = Number.isFinite(current)
+                ? current
+                : (Number.isFinite(min) ? min : LIMITES_MANUAL.duracionMin);
+            const delta = event.key === 'ArrowUp' ? 0.5 : -0.5;
+            let next = Math.round((base + delta) * 2) / 2;
+
+            if (Number.isFinite(min)) {
+                next = Math.max(min, next);
+            }
+            if (Number.isFinite(max)) {
+                next = Math.min(max, next);
+            }
+
+            input.value = next.toFixed(1);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
     }
 
     function crearTarjetaParada(index) {
@@ -146,6 +198,14 @@
     }
 
     function addStop() {
+        if (stopCount >= LIMITES_MANUAL.paradasMax) {
+            avisar(
+                `Tu plan permite un máximo de ${LIMITES_MANUAL.paradasMax} paradas por ruta.`,
+                'error',
+                3600,
+            );
+            return;
+        }
         stopCount += 1;
         updateDisplay();
 
@@ -160,7 +220,12 @@
     }
 
     function removeStop() {
-        if (stopCount <= 1) {
+        if (stopCount <= LIMITES_MANUAL.paradasMin) {
+            avisar(
+                `Esta ruta requiere al menos ${LIMITES_MANUAL.paradasMin} paradas.`,
+                'warning',
+                3200,
+            );
             return;
         }
 
@@ -230,10 +295,13 @@
             return 'El número de personas debe ser un entero válido.';
         }
         if (personas < LIMITES_MANUAL.personasMin || personas > LIMITES_MANUAL.personasMax) {
-            return 'El número de personas debe estar entre 1 y 50.';
+            return `El número de personas debe estar entre 1 y ${LIMITES_MANUAL.personasMax}.`;
         }
         if (paradas.length < LIMITES_MANUAL.paradasMin) {
             return 'Debes añadir al menos 2 paradas.';
+        }
+        if (paradas.length > LIMITES_MANUAL.paradasMax) {
+            return `Tu plan permite un máximo de ${LIMITES_MANUAL.paradasMax} paradas por ruta.`;
         }
 
         for (let i = 0; i < paradas.length; i += 1) {
@@ -447,6 +515,8 @@
         selectExigencia.addEventListener('change', actualizarAyudaExigencia);
         actualizarAyudaExigencia();
     }
+
+    configurarIncrementoDuracionMediaHora('ruta-duracion');
 
     document.querySelectorAll('#ruta-etiquetas .manual-tag-pill input[type="checkbox"]').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {

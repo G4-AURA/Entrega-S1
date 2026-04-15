@@ -54,6 +54,9 @@ class SesionTour(models.Model):
         max_length=20, choices=ESTADO_CHOICES, default=PENDIENTE
     )
     fecha_inicio = models.DateTimeField()
+    cronometro_pausado = models.BooleanField(default=False)
+    cronometro_pausado_desde = models.DateTimeField(null=True, blank=True)
+    cronometro_segundos_pausa_acumulados = models.PositiveIntegerField(default=0)
     ruta = models.ForeignKey(
         Ruta, on_delete=models.CASCADE, related_name="sesiones"
     )
@@ -174,15 +177,100 @@ class MensajeChat(models.Model):
     )
     momento = models.DateTimeField(auto_now_add=True)
 
+    # ── Campos de privacidad ─────────────────────────────────────────────────
+    es_privado = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True para mensajes del canal privado Guía ↔ Turista individual.",
+    )
+    destinatario_turista = models.ForeignKey(
+        Turista,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="mensajes_recibidos_privados",
+        help_text="Destinatario cuando el guía envía un mensaje privado a un turista concreto.",
+    )
+
     class Meta:
         db_table = "tours_mensaje_chat"
         ordering = ["momento"]
         verbose_name = "Mensaje de Chat"
         verbose_name_plural = "Mensajes de Chat"
+        indexes = [
+            # Optimiza la consulta de mensajes por sesión y tipo
+            models.Index(fields=["sesion_tour", "es_privado", "momento"]),
+            # Optimiza la bandeja privada del guía (conversaciones por turista)
+            models.Index(fields=["sesion_tour", "turista", "destinatario_turista"]),
+        ]
 
     def __str__(self) -> str:
         hora = self.momento.strftime("%H:%M") if self.momento else "S/F"
-        return f"[{hora}] {self.nombre_remitente}: {self.texto[:30]}"
+        tipo = "[P]" if self.es_privado else "[G]"
+        return f"{tipo} [{hora}] {self.nombre_remitente}: {self.texto[:30]}"
+
+
+class RecordatorioSesion(models.Model):
+    """
+    Recordatorio programado por el guía para la sesión.
+    """
+    sesion_tour = models.ForeignKey(
+        SesionTour,
+        on_delete=models.CASCADE,
+        related_name="recordatorios",
+    )
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recordatorios_creados",
+    )
+    mensaje = models.TextField()
+    hora_objetivo = models.DateTimeField()
+    avisar_minutos_antes = models.PositiveIntegerField(default=10)
+    ubicacion_quedada = gis_models.PointField(null=True, blank=True)
+    etiqueta_quedada = models.CharField(max_length=120, blank=True, default="")
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "tours_recordatorio_sesion"
+        verbose_name = "Recordatorio de Sesión"
+        verbose_name_plural = "Recordatorios de Sesión"
+        ordering = ["hora_objetivo", "id"]
+        indexes = [
+            models.Index(fields=["sesion_tour", "activo", "hora_objetivo"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.sesion_tour.codigo_acceso} @ {self.hora_objetivo:%H:%M}"
+
+
+class EntregaRecordatorioTurista(models.Model):
+    """
+    Registro de alertas ya entregadas a cada turista para evitar duplicados.
+    """
+    recordatorio = models.ForeignKey(
+        RecordatorioSesion,
+        on_delete=models.CASCADE,
+        related_name="entregas",
+    )
+    turista = models.ForeignKey(
+        Turista,
+        on_delete=models.CASCADE,
+        related_name="recordatorios_entregados",
+    )
+    entregado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "tours_entrega_recordatorio_turista"
+        verbose_name = "Entrega de Recordatorio"
+        verbose_name_plural = "Entregas de Recordatorio"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recordatorio", "turista"],
+                name="unique_recordatorio_turista_entrega",
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -193,3 +281,5 @@ SESION_TOUR = SesionTour
 TURISTASESION = TuristaSesion
 UBICACION_VIVO = UbicacionVivo
 MENSAJE_CHAT = MensajeChat
+RECORDATORIO_SESION = RecordatorioSesion
+ENTREGA_RECORDATORIO_TURISTA = EntregaRecordatorioTurista

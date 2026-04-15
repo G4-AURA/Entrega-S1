@@ -14,9 +14,11 @@ importación circular.
 
 import logging
 
+from django.db import DatabaseError
+
+from creacion.exceptions import ErrorIntegracionIA
 from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
-    ErrorIntegracionIA,
     calcular_objetivo_paradas_ia,
     construir_bloque_allowlist,
     construir_bloque_deseos,
@@ -32,7 +34,7 @@ def _obtener_pois_allowlist(ciudad: str, moods: list) -> list:
     try:
         from creacion.services import _obtener_pois_allowlist as _svc
         return _svc(ciudad=ciudad, moods=moods)
-    except Exception as exc:
+    except (ImportError, AttributeError, DatabaseError) as exc:
         logger.warning('No se pudo obtener allowlist: %s', exc)
         return []
 
@@ -42,7 +44,7 @@ def _construir_pois_fallback_allowlist(ciudad: str, moods: list, cantidad_objeti
     try:
         from creacion.services import _construir_pois_fallback_allowlist as _svc
         return _svc(ciudad=ciudad, moods=moods, cantidad_objetivo=cantidad_objetivo)
-    except Exception as exc:
+    except (ImportError, AttributeError, DatabaseError) as exc:
         logger.warning('No se pudo construir fallback allowlist: %s', exc)
         return []
 
@@ -73,13 +75,10 @@ def nodo_generacion(state: State) -> dict:
         - Temática(s): {', '.join(datos.get('mood') or [])}
         {bloque_metadata}
         {bloque_deseos}
-        {bloque_allowlist}
 
         ## Instrucción
-        Genera una lista de EXACTAMENTE {objetivo_paradas} POIs adecuados para estos parámetros.
+        Genera una lista de EXACTAMENTE {objetivo_paradas} POIs adecuados para estos parámetros basándote en tu conocimiento experto de la ciudad.
         Ten en cuenta el contexto del solicitante y sus preferencias específicas si las hay.
-        Si se han proporcionado POIs recomendados (allowlist), dales prioridad frente a otros lugares
-        siempre que encajen con la temática. Puedes complementar con otros POIs si son necesarios.
 
         Responde ÚNICAMENTE con un JSON válido (sin texto extra) con esta estructura:
         [

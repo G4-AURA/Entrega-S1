@@ -1,5 +1,6 @@
 (function () {
     const config = JSON.parse(document.getElementById('personalizacion-config').textContent);
+    const PERSONAS_MAX_PLAN = Number(config?.limits?.personasMax) || 50;
 
     const form = document.getElementById('form-personalizacion-ruta');
     const boton = document.getElementById('btn-generar-ruta');
@@ -18,6 +19,8 @@
     const btnConfirmarSeleccion = document.getElementById('btn-confirmar-seleccion');
     const btnGenerarAdicionales = document.getElementById('btn-generar-adicionales');
     const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
+    const moodButtonsContainer = form?.querySelector('.mood-buttons');
+    const moodError = document.getElementById('mood-error');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
     const feedback = window.AuraFeedback;
 
@@ -77,6 +80,45 @@
         const clave = String(selectExigencia.value || '').toLowerCase();
         exigenciaAyuda.textContent = EXIGENCIA_DESCRIPCIONES[clave] || EXIGENCIA_DESCRIPCIONES.media;
     }
+
+    function configurarIncrementoDuracionMediaHora(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) {
+            return;
+        }
+
+        input.step = '0.5';
+        input.setAttribute('step', '0.5');
+
+        input.addEventListener('keydown', function (event) {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                return;
+            }
+
+            event.preventDefault();
+
+            const current = Number(input.value);
+            const min = Number(input.min);
+            const max = Number(input.max);
+            const base = Number.isFinite(current)
+                ? current
+                : (Number.isFinite(min) ? min : 0.5);
+            const delta = event.key === 'ArrowUp' ? 0.5 : -0.5;
+            let next = Math.round((base + delta) * 2) / 2;
+
+            if (Number.isFinite(min)) {
+                next = Math.max(min, next);
+            }
+            if (Number.isFinite(max)) {
+                next = Math.min(max, next);
+            }
+
+            input.value = next.toFixed(1);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    configurarIncrementoDuracionMediaHora('duracion');
 
     function guardarSesionGeneracionEnStorage(rutaId, sesionGeneracionId) {
         if (!rutaId || !sesionGeneracionId) return;
@@ -257,6 +299,37 @@
         };
     }
 
+    function normalizarMensajeError(errorValue) {
+        if (Array.isArray(errorValue)) {
+            return errorValue.map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+        }
+        if (errorValue == null) return '';
+        return String(errorValue).trim();
+    }
+
+    function limpiarErrorMood() {
+        if (moodError) {
+            moodError.textContent = '';
+            moodError.classList.add('d-none');
+        }
+        moodButtonsContainer?.classList.remove('mood-buttons--error');
+    }
+
+    function limpiarErroresFormulario() {
+        limpiarErrorMood();
+    }
+
+    function aplicarErroresDeCampo(errores) {
+        const moodMensaje = normalizarMensajeError(errores?.mood);
+        if (moodMensaje && moodError) {
+            moodError.textContent = moodMensaje;
+            moodError.classList.remove('d-none');
+            moodButtonsContainer?.classList.add('mood-buttons--error');
+            return true;
+        }
+        return false;
+    }
+
     async function enviarPeticion(payload) {
         const response = await fetch(config.urls.generar, {
             method: 'POST',
@@ -267,9 +340,29 @@
             body: JSON.stringify(payload),
         });
 
-        const data = await response.json();
+        const rawText = await response.text();
+        let data = null;
+        try {
+            data = rawText ? JSON.parse(rawText) : null;
+        } catch (_error) {
+            data = null;
+        }
+
+        if (!data) {
+            const snippet = rawText ? rawText.slice(0, 120).replace(/\s+/g, ' ').trim() : '';
+            throw new Error(
+                response.ok
+                    ? 'La respuesta del servidor no es JSON válido.'
+                    : `El servidor respondió con un error no JSON${snippet ? `: ${snippet}` : '.'}`,
+            );
+        }
+
         if (!response.ok || data.status !== 'OK') {
-            throw new Error(data.mensaje || 'Error desconocido al generar la ruta');
+            const error = new Error(data.mensaje || 'Error desconocido al generar la ruta');
+            if (data?.errores && typeof data.errores === 'object') {
+                error.fieldErrors = data.errores;
+            }
+            throw error;
         }
 
         return data;
@@ -277,6 +370,7 @@
 
     function validarPayloadPersonalizacion(payload) {
         const duracion = Number(payload?.duracion);
+        const personas = Number(payload?.personas);
         if (!Number.isFinite(duracion)) {
             throw new Error('La duración debe ser un número válido.');
         }
@@ -286,8 +380,15 @@
         if (Math.abs(duracion * 2 - Math.round(duracion * 2)) > 1e-9) {
             throw new Error('La duración debe indicarse en bloques de 0.5 horas.');
         }
+        if (!Number.isInteger(personas)) {
+            throw new Error('El número de personas debe ser un entero válido.');
+        }
+        if (personas < 1 || personas > PERSONAS_MAX_PLAN) {
+            throw new Error(`El número de personas debe estar entre 1 y ${PERSONAS_MAX_PLAN}.`);
+        }
 
         payload.duracion = duracion;
+        payload.personas = personas;
         return payload;
     }
 
@@ -332,9 +433,17 @@
         window.MapaCreacion.renderizarParadasEnMapa(leafletMap, paradas || []);
     }
 
-    function renderizarErrores(mensaje) {
+    function renderizarErrores(mensaje, errores = null) {
+        const hayErrorMood = aplicarErroresDeCampo(errores);
+        const mensajeGeneral = normalizarMensajeError(mensaje);
+
+        if (hayErrorMood && !normalizarMensajeError(errores?.general)) {
+            estado.classList.add('d-none');
+            return;
+        }
+
         estado.className = 'alert alert-danger mt-3';
-        estado.textContent = `Error: ${mensaje}`;
+        estado.textContent = `Error: ${mensajeGeneral || 'Revisa los datos introducidos.'}`;
         estado.classList.remove('d-none');
     }
 
@@ -492,6 +601,9 @@
     document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {
             this.closest('.mood-btn').classList.toggle('active', this.checked);
+            if (this.checked) {
+                limpiarErrorMood();
+            }
         });
     });
 
@@ -503,6 +615,7 @@
     form.addEventListener('submit', async function (event) {
         event.preventDefault();
         estado.classList.add('d-none');
+        limpiarErroresFormulario();
         setCargando(true);
         iniciarMensajesProgreso('generar');
 
@@ -524,7 +637,7 @@
             estado.classList.remove('d-none');
         } catch (error) {
             console.error(error);
-            renderizarErrores(error.message);
+            renderizarErrores(error.message, error.fieldErrors || null);
         } finally {
             setCargando(false);
         }

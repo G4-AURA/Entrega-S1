@@ -32,10 +32,19 @@
                 <label class="input-label">Duración (horas)</label>
 
                 <input type="number" id="ruta-duracion" class="input-field" step="0.5" min="0.5" max="24" value="2.0" placeholder="Ej: 2.5">
+                <div class="input-help">Valores permitidos: de 0.5 a 24 horas, en intervalos de 0.5.</div>
             </div>
             <div class="form-group" style="margin-bottom:0;">
                 <label class="input-label">Nº Máx. Personas</label>
-                <input type="number" id="ruta-personas" class="input-field" min="1" max="50" placeholder="Ej: 15">
+                <input
+                    type="number"
+                    id="ruta-personas"
+                    class="input-field"
+                    min="1"
+                    max="{{ tier_max_personas }}"
+                    placeholder="Ej: {{ tier_max_personas }}"
+                >
+                <div class="input-help">Valores permitidos: de 1 a {{ tier_max_personas }} personas.</div>
             </div>
             <div class="form-group" style="margin-bottom:0;">
                 <label class="input-label">Nivel de Exigencia</label>
@@ -53,42 +62,12 @@
         <div class="form-group" style="margin-bottom:0;">
             <label class="input-label">Etiquetas del tour (puedes elegir varias)</label>
             <div class="manual-tags-grid" id="ruta-etiquetas">
+                {% for value, label in mood_choices_disponibles %}
                 <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="historia">
-                    <span>Historia</span>
+                    <input type="checkbox" name="mood" value="{{ value }}">
+                    <span>{{ label }}</span>
                 </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="gastronomia">
-                    <span>Gastronomía</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="naturaleza">
-                    <span>Naturaleza</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="misterio-leyendas">
-                    <span>Misterio y Leyendas</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="local">
-                    <span>Local</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="cine-series">
-                    <span>Cine y Series</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="religioso-espiritual">
-                    <span>Religioso y Espiritual</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="arquitectura-diseno">
-                    <span>Arquitectura y Diseño</span>
-                </label>
-                <label class="manual-tag-pill">
-                    <input type="checkbox" name="mood" value="ocio-cultural">
-                    <span>Ocio/Cultural</span>
-                </label>
+                {% endfor %}
             </div>
         </div>
     </div>
@@ -97,6 +76,7 @@
         <div class="stops-info">
             <span class="stops-label">Paradas</span>
             <span class="counter-number" id="counter-display">2</span>
+            <span class="stops-range">Mínimo 2</span>
         </div>
         <div class="counter-actions">
             <button class="btn-counter" data-action="remove-stop" type="button">
@@ -196,6 +176,10 @@
 <script id="creacion-manual-config" type="application/json">
 {
     "csrfToken": "{{ csrf_token }}",
+    "limits": {
+        "personasMax": {{ tier_max_personas }},
+        "paradasMax": {{ tier_max_stops }}
+    },
     "urls": {
         "guardarManual": "{% url 'creacion:guardar_ruta_manual' %}",
         "volver": "{% url 'creacion:seleccion_tipo_ruta' %}",

@@ -32,6 +32,7 @@ urlpatterns = [
     path('crear-ruta/', include('creacion.urls')),
     path('api/ubicacion/', tours_views.registrar_ubicacion, name='api_ubicacion'),
     path('tours/', include('tours.urls')),
+    path('billing/', include('billing.urls')),
     path('', include('rutas.urls')),
     path('personalizacion/', TemplateView.as_view(template_name='creacion/personalizacion.html'), name='personalizacion'),
     path("allowList/", include("allowList.urls")),
@@ -39,6 +40,7 @@ urlpatterns = [
     path('accounts/login/', views.SuperuserAwareLoginView.as_view(), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('registro/', registro, name='registro'),
+    path('terminos-de-uso/', TemplateView.as_view(template_name='terminos_y_condiciones.html'), name='terminos_uso'),
 
 # Home router - debe ir al final para que no intercepte otras rutas
     path('', views.home_router, name='home'),

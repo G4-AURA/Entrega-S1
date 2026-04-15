@@ -357,6 +357,53 @@ class EnviarMensajeAPITest(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_chat_privado_bloqueado_en_freemium_aunque_no_envien_modo_chat(self):
+        """Test: Un payload privado directo no debe saltarse la regla Premium."""
+        response = self.client_guia.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion_activa.id]),
+            data=json.dumps(
+                {
+                    'texto': 'Privado directo',
+                    'es_privado': True,
+                    'destinatario_turista_id': self.turista.id,
+                }
+            ),
+            content_type='application/json'
+        )
+
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertEqual(data.get('status'), 'ERROR')
+        self.assertEqual(data.get('code'), 'TIER_FORBIDDEN')
+
+    def test_guia_privado_sin_destinatario_es_rechazado(self):
+        """Test: Evita mensajes privados huérfanos del guía sin destinatario."""
+        self.guia.tipo_suscripcion = Guia.Suscripcion.PREMIUM
+        self.guia.save(update_fields=['tipo_suscripcion'])
+
+        response = self.client_guia.post(
+            reverse('tours:enviar_mensaje', args=[self.sesion_activa.id]),
+            data=json.dumps(
+                {
+                    'texto': 'Privado sin destinatario',
+                    'es_privado': True,
+                }
+            ),
+            content_type='application/json'
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn('error', data)
+        self.assertIn('destinatario_turista_id', data['error'])
+        self.assertFalse(
+            MensajeChat.objects.filter(
+                sesion_tour=self.sesion_activa,
+                es_privado=True,
+                texto='Privado sin destinatario',
+            ).exists()
+        )
+
     def test_guia_diferente_no_puede_enviar(self):
         """Test: Un guía que no es de la sesión no puede enviar."""
         # Crear otro guía

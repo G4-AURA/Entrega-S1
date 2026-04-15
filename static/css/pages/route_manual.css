@@ -126,6 +126,16 @@ textarea.input-field {
     gap: 12px;
 }
 
+.stops-range {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    background: rgb(255 255 255 / 18%);
+    border: 1px solid rgb(255 255 255 / 28%);
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+
 .stops-label {
     font-size: 14px;
     font-weight: 600;
@@ -155,6 +165,12 @@ textarea.input-field {
 
 .btn-counter:hover {
     background: rgb(255 255 255 / 30%);
+}
+
+.btn-counter:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: rgb(255 255 255 / 14%);
 }
 
 .counter-actions {
@@ -429,23 +445,137 @@ textarea.input-field {
 
 @media (max-width: 768px) {
     .creacion-manual__container {
-        padding: 12px;
+        padding: 10px;
+    }
+
+    .creacion-manual .header {
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .header-title {
+        font-size: 18px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .input-label {
+        margin-bottom: 6px;
+    }
+
+    .input-help {
+        margin-top: 4px;
+        font-size: 0.92rem;
+    }
+
+    .exigencia-help-manual {
+        min-height: 2rem;
+    }
+
+    .main-card {
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+
+    .stops-controller {
+        padding: 14px 16px;
+        margin-bottom: 16px;
+    }
+
+    .stops-info {
+        gap: 8px;
+    }
+
+    .stops-range {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+
+    .counter-number {
+        font-size: 24px;
+    }
+
+    .counter-actions {
+        gap: 8px;
+    }
+
+    .btn-counter {
+        width: 36px;
+        height: 36px;
     }
 
     #stops-container {
         grid-template-columns: 1fr;
-        gap: 16px;
+        gap: 12px;
+        margin-bottom: 88px;
     }
 
     .stop-card {
-        padding: 16px;
+        padding: 14px;
     }
 
     .header-title {
-        font-size: 20px;
+        font-size: 18px;
     }
 
     .form-row {
-        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .stop-header {
+        margin-bottom: 12px;
+    }
+
+    .image-upload-area {
+        height: 150px;
+        margin-bottom: 14px;
+    }
+
+    .image-upload-area .material-icons-round {
+        font-size: 40px;
+        margin-bottom: 4px;
+    }
+
+    .location-group {
+        gap: 8px;
+    }
+
+    .btn-map {
+        width: 46px;
+        height: 46px;
+    }
+
+    .manual-tags-grid {
+        gap: 8px;
+    }
+
+    .manual-tag-pill {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+
+    .footer-action {
+        padding: 12px;
+    }
+
+    .btn-save {
+        padding: 14px 24px;
+    }
+
+    .map-modal-header,
+    .map-modal-footer {
+        padding: 12px 14px;
+    }
+
+    #leaflet-map {
+        height: 320px;
+    }
+
+    .btn-secondary,
+    .btn-confirm-map {
+        padding: 9px 14px;
     }
 }

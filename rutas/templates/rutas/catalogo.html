@@ -13,6 +13,21 @@
     <p class="catalog-subtitle">Gestiona tus rutas y crea sesiones de tour para tus grupos.</p>
 </div>
 
+{% if guia %}
+<section class="catalog-plan-card">
+    <div>
+        <p class="catalog-plan-label">Plan actual</p>
+        <p class="catalog-plan-tier">{{ guia.tipo_suscripcion }}</p>
+    </div>
+    <div class="catalog-plan-actions">
+        <a href="{% url 'plan' %}" class="btn btn-outline-primary btn-sm">Ver plan</a>
+        {% if es_freemium %}
+        <a href="{% url 'plan' %}" class="btn btn-brand btn-sm">Pasar a Premium</a>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
 <div id="loading" class="text-center py-5">
     <div class="spinner-border" role="status" style="color:var(--brand-color);width:2rem;height:2rem;">
         <span class="visually-hidden">Cargando...</span>

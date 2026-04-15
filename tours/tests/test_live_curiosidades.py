@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.test import Client, TestCase
@@ -83,8 +85,11 @@ class LiveCuriosidadesEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertEqual(set(payload.keys()), {"status", "parada", "curiosidad"})
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["parada"]["id"], self.parada_1.id)
+        self.assertIn("nombre", payload["parada"])
+        self.assertIn("orden", payload["parada"])
         self.assertEqual(payload["curiosidad"]["id"], self.curiosidad.id)
         self.assertEqual(payload["curiosidad"]["titulo"], "Una puerta escondida")
 
@@ -95,6 +100,7 @@ class LiveCuriosidadesEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"], "Acceso denegado.")
 
     def test_rechaza_parada_fuera_de_ruta(self):
         client = self._client_turista()
@@ -103,8 +109,51 @@ class LiveCuriosidadesEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "La parada no pertenece a la ruta de la sesión.")
 
-    def test_404_si_parada_sin_curiosidad(self):
+    @patch("rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia")
+    def test_solo_existente_devuelve_200_si_no_hay_curiosidad(self, mock_generar_curiosidad):
+        parada_sin_curiosidad = Parada.objects.create(
+            ruta=self.ruta,
+            orden=3,
+            nombre="Puerta de Jerez",
+            coordenadas=Point(-5.9922, 37.3838, srid=4326),
+        )
+
+        client = self._client_turista()
+        response = client.get(
+            reverse("tours:obtener_curiosidad_parada", args=[self.sesion.id, parada_sin_curiosidad.id]),
+            {"solo_existente": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertIsNone(payload["curiosidad"])
+        mock_generar_curiosidad.assert_not_called()
+
+    @patch("rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia")
+    def test_solo_existente_devuelve_curiosidad_existente_sin_generar(self, mock_generar_curiosidad):
+        client = self._client_turista()
+        response = client.get(
+            reverse("tours:obtener_curiosidad_parada", args=[self.sesion.id, self.parada_1.id]),
+            {"solo_existente": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["curiosidad"]["id"], self.curiosidad.id)
+        mock_generar_curiosidad.assert_not_called()
+
+    @patch("rutas.services.ServicioCuriosidadesIA._generar_curiosidad_ia")
+    def test_genera_curiosidad_si_parada_sin_curiosidad(self, mock_generar_curiosidad):
+        mock_generar_curiosidad.return_value = {
+            "titulo": "Leyenda de la torre",
+            "texto": "Cuenta la tradición que los mercaderes anunciaban su llegada con campanas.",
+            "tipo": Curiosidad.TipoCuriosidad.HISTORIA,
+            "imagen_url": "https://example.com/torre.jpg",
+        }
+
         parada_sin_curiosidad = Parada.objects.create(
             ruta=self.ruta,
             orden=2,
@@ -117,4 +166,15 @@ class LiveCuriosidadesEndpointTests(TestCase):
             reverse("tours:obtener_curiosidad_parada", args=[self.sesion.id, parada_sin_curiosidad.id])
         )
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(set(payload.keys()), {"status", "parada", "curiosidad"})
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["parada"]["id"], parada_sin_curiosidad.id)
+
+        curiosidad_bd = Curiosidad.objects.get(parada=parada_sin_curiosidad)
+        self.assertEqual(payload["curiosidad"]["id"], curiosidad_bd.id)
+        self.assertEqual(payload["curiosidad"]["titulo"], "Leyenda de la torre")
+        self.assertEqual(payload["curiosidad"]["tipo"], Curiosidad.TipoCuriosidad.HISTORIA)
+        self.assertEqual(payload["curiosidad"]["ciudad"], "Sevilla")
+        mock_generar_curiosidad.assert_called_once()

@@ -24,6 +24,8 @@ urlpatterns = [
     path("sesiones/<int:sesion_id>/cerrar_acceso/", views.cerrar_acceso, name="cerrar_acceso"),
     path("sesiones/<int:sesion_id>/participantes/", views.participantes_sesion, name="participantes_sesion"),
     path("sesiones/<int:sesion_id>/cronometro/estado/", views.estado_cronometro, name="estado_cronometro"),
+    path("sesiones/<int:sesion_id>/cronometro/pausar/", views.pausar_cronometro, name="pausar_cronometro"),
+    path("sesiones/<int:sesion_id>/cronometro/reanudar/", views.reanudar_cronometro, name="reanudar_cronometro"),
     path("sesiones/<int:sesion_id>/parada_actual/", views.seleccionar_parada_actual, name="seleccionar_parada_actual"),
     # ------------------------------------------------------------------
     # API REST — ubicación y chat
@@ -31,13 +33,38 @@ urlpatterns = [
     path("ubicacion/", views.registrar_ubicacion, name="registrar_ubicacion"),
     path("sesiones/<int:sesion_id>/ubicacion_turista/", views.registrar_ubicacion_turista, name="registrar_ubicacion_turista"),
     path("sesiones/<int:sesion_id>/paradas/<int:parada_id>/curiosidad/", views.obtener_curiosidad_parada, name="obtener_curiosidad_parada"),
+    path(
+        "sesiones/<int:sesion_id>/paradas/<int:parada_id>/curiosidad/visibilidad/",
+        views.actualizar_visibilidad_curiosidad,
+        name="actualizar_visibilidad_curiosidad",
+    ),
+    path(
+        "sesiones/<int:sesion_id>/curiosidades/estado/",
+        views.estado_curiosidades_sesion,
+        name="estado_curiosidades_sesion",
+    ),
     path("sesiones/<int:sesion_id>/ubicacion_guia/", views.obtener_ubicacion_guia, name="ubicacion_guia"),
     path("sesiones/<int:sesion_id>/ubicaciones_turistas/", views.obtener_ubicaciones_turistas, name="ubicaciones_turistas"),
     path("sesiones/<int:sesion_id>/mensajes/", views.obtener_mensajes, name="obtener_mensajes"),
     path("sesiones/<int:sesion_id>/mensajes/enviar/", views.enviar_mensaje, name="enviar_mensaje"),
+    path("sesiones/<int:sesion_id>/recordatorios/", views.recordatorios_sesion, name="recordatorios_sesion"),
+    path("sesiones/<int:sesion_id>/recordatorios/alertas/", views.alertas_recordatorios, name="alertas_recordatorios"),
     path(
         "sesiones/<int:sesion_id>/mensajes/<int:mensaje_id>/imagen/",
         views.descargar_imagen_mensaje,
         name="descargar_imagen_mensaje",
+    ),
+        # ------------------------------------------------------------------
+    # API REST — chat privado (Guía ↔ Turista individual)
+    # ------------------------------------------------------------------
+    path(
+        "sesiones/<int:sesion_id>/chat-privado/bandeja/",
+        views.bandeja_privada_guia,
+        name="bandeja_privada_guia",
+    ),
+    path(
+        "sesiones/<int:sesion_id>/chat-privado/<int:turista_id>/mensajes/",
+        views.mensajes_privados_hilo,
+        name="mensajes_privados_hilo",
     ),
 ]

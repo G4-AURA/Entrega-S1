@@ -4,8 +4,10 @@ Tests unitarios para tours/views.py
 Valida las vistas HTTP y redirecciones.
 """
 import json
+from datetime import timedelta
+from unittest.mock import patch
 from django.contrib.auth.models import User
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.gis.geos import Point
@@ -41,6 +43,12 @@ class JoinTourByCodeTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.sesion_pendiente = SesionTour.objects.create(
+            codigo_acceso='JOINP01',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
 
     def test_codigo_valido_redirige(self):
         """Verifica que código válido redirige a join_tour"""
@@ -50,6 +58,15 @@ class JoinTourByCodeTests(TestCase):
         
         self.assertEqual(response.status_code, 302)
         self.assertIn(str(self.sesion.token), response.url)
+
+    def test_codigo_pendiente_tambien_redirige_a_join_tour(self):
+        """Verifica que una sesión pendiente también permite entrar al flujo de unión"""
+        response = self.client.get(
+            reverse('tours:join_tour_by_code', args=['JOINP01'])
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(self.sesion_pendiente.token), response.url)
 
     def test_codigo_insensible_mayusculas(self):
         """Verifica que código es insensible a mayúsculas"""
@@ -103,6 +120,12 @@ class JoinTourTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.sesion_pendiente = SesionTour.objects.create(
+            codigo_acceso='JOIN003',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
 
     def test_get_muestra_formulario(self):
         """Verifica que GET muestra el formulario de alias"""
@@ -112,6 +135,16 @@ class JoinTourTests(TestCase):
         
         self.assertEqual(response.status_code, 200)
         # Verificar templates usadas en la respuesta
+        template_names = [t.name for t in response.templates]
+        self.assertIn('tours/join_tour.html', template_names)
+
+    def test_get_muestra_formulario_en_sesion_pendiente(self):
+        """Verifica que GET también muestra el formulario en una sesión pendiente"""
+        response = self.client.get(
+            reverse('tours:join_tour', args=[self.sesion_pendiente.token])
+        )
+
+        self.assertEqual(response.status_code, 200)
         template_names = [t.name for t in response.templates]
         self.assertIn('tours/join_tour.html', template_names)
 
@@ -125,6 +158,17 @@ class JoinTourTests(TestCase):
         self.assertEqual(response.status_code, 302)
         # Verificar que turista fue creado
         self.assertTrue(Turista.objects.filter(alias='Juan').exists())
+
+    def test_post_valido_en_sesion_pendiente_crea_turista_y_redirige(self):
+        """Verifica que una sesión pendiente permite unirse y pasar a la sala de espera"""
+        response = self.client.post(
+            reverse('tours:join_tour', args=[self.sesion_pendiente.token]),
+            {'alias': 'Maria'},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(self.sesion_pendiente.token), response.url)
+        self.assertTrue(Turista.objects.filter(alias='Maria').exists())
 
     def test_post_alias_corto_error(self):
         """Verifica error si alias es muy corto"""
@@ -251,6 +295,26 @@ class CrearSesionTests(TestCase):
         # Verificar que sesión fue creada
         self.assertTrue(SesionTour.objects.filter(ruta=self.ruta).exists())
 
+    def test_crear_sesion_idempotencia_redirige_si_existente(self):
+        """Verifica que redirige a sesión activa si ya existe y no crea duplicados"""
+        sesion_existente = SesionTour.objects.create(
+            codigo_acceso='EXIST1',
+            estado=SesionTour.PENDIENTE,
+            fecha_inicio=timezone.now(),
+            ruta=self.ruta,
+        )
+        self.client.force_login(self.guia_user)
+        
+        response = self.client.get(
+            reverse('tours:crear_sesion'),
+            {'ruta_id': self.ruta.id},
+        )
+        
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('tours:guia_sesion', args=[sesion_existente.id]), response.url)
+        # Verificar que NO se crearon nuevas sesiones (sólo debería existir la original)
+        self.assertEqual(SesionTour.objects.filter(ruta=self.ruta).count(), 1)
+
 
 class IniciarTourTests(TestCase):
     """Tests para vista iniciar_tour"""
@@ -300,6 +364,9 @@ class IniciarTourTests(TestCase):
         
         self.sesion.refresh_from_db()
         self.assertEqual(self.sesion.estado, SesionTour.EN_CURSO)
+        self.assertFalse(self.sesion.cronometro_pausado)
+        self.assertIsNone(self.sesion.cronometro_pausado_desde)
+        self.assertEqual(self.sesion.cronometro_segundos_pausa_acumulados, 0)
         self.assertEqual(data['estado'], 'en_curso')
 
     def test_iniciar_sesion_finalizada_error(self):
@@ -373,6 +440,101 @@ class EstadoCronometroTests(TestCase):
             self.assertEqual(response.status_code, 200)
             data = json.loads(response.content)
             self.assertEqual(data['estado'], 'en_curso')
+            self.assertIn('minutos_restantes', data)
+            self.assertIsInstance(data['minutos_restantes'], int)
+            self.assertGreaterEqual(data['minutos_restantes'], 0)
+
+
+class ControlCronometroTests(TestCase):
+    """Tests para pausar y reanudar el cronómetro durante la sesión."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.guia_user = User.objects.create_user(
+            username='guia_control_crono', password='pass123'
+        )
+        auth_guia = AuthUser.objects.create(user=self.guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+        ruta = Ruta.objects.create(
+            titulo='Ruta Control Cronómetro',
+            descripcion='Desc',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='CRNCTL1',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
+
+    def test_guia_puede_pausar_cronometro(self):
+        self.client.force_login(self.guia_user)
+
+        response = self.client.post(
+            reverse('tours:pausar_cronometro', args=[self.sesion.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.sesion.refresh_from_db()
+        self.assertTrue(self.sesion.cronometro_pausado)
+        data = response.json()
+        self.assertTrue(data['cronometro_pausado'])
+
+    def test_guia_puede_reanudar_cronometro(self):
+        self.client.force_login(self.guia_user)
+        self.sesion.cronometro_pausado = True
+        self.sesion.cronometro_pausado_desde = timezone.now() - timedelta(minutes=3)
+        self.sesion.save(
+            update_fields=['cronometro_pausado', 'cronometro_pausado_desde']
+        )
+
+        response = self.client.post(
+            reverse('tours:reanudar_cronometro', args=[self.sesion.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.sesion.refresh_from_db()
+        self.assertFalse(self.sesion.cronometro_pausado)
+        self.assertIsNone(self.sesion.cronometro_pausado_desde)
+        self.assertGreaterEqual(self.sesion.cronometro_segundos_pausa_acumulados, 180)
+        data = response.json()
+        self.assertFalse(data['cronometro_pausado'])
+
+    def test_pausar_cronometro_requiere_guia_propietario(self):
+        otro_user = User.objects.create_user(username='otro_control', password='pass123')
+        self.client.force_login(otro_user)
+
+        response = self.client.post(
+            reverse('tours:pausar_cronometro', args=[self.sesion.id])
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_estado_cronometro_informa_pausado(self):
+        turista = Turista.objects.create(alias='turista_control_crono')
+        TuristaSesion.objects.create(
+            turista=turista,
+            sesion_tour=self.sesion,
+            activo=True,
+        )
+        self.sesion.cronometro_pausado = True
+        self.sesion.cronometro_pausado_desde = timezone.now()
+        self.sesion.save(update_fields=['cronometro_pausado', 'cronometro_pausado_desde'])
+
+        session = self.client.session
+        session['turista_id'] = turista.id
+        session.save()
+
+        response = self.client.get(
+            reverse('tours:estado_cronometro', args=[self.sesion.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['cronometro_pausado'])
 
 
 class SeleccionarParadaActualTests(TestCase):
@@ -699,6 +861,109 @@ class RegistrarUbicacionTests(TestCase):
         self.assertEqual(data['latitud'], 37.3891)
         self.assertTrue(UbicacionVivo.objects.filter(id=data['ubicacion_id']).exists())
 
+    @override_settings(
+        TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS=30,
+        TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS=1000,
+    )
+    def test_registrar_ubicacion_deduplicada_si_llega_muy_pronto_y_sin_movimiento(self):
+        self.client.force_login(self.guia_user)
+        payload = json.dumps(
+            {
+                'sesion_id': self.sesion.id,
+                'latitud': 37.3891,
+                'longitud': -5.9845,
+            }
+        )
+
+        first = self.client.post(
+            reverse('tours:registrar_ubicacion'),
+            payload,
+            content_type='application/json',
+        )
+        second = self.client.post(
+            reverse('tours:registrar_ubicacion'),
+            payload,
+            content_type='application/json',
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json().get('status'), 'ignored')
+        self.assertEqual(
+            UbicacionVivo.objects.filter(
+                sesion_tour=self.sesion,
+                usuario=self.guia_user,
+            ).count(),
+            1,
+        )
+
+
+class RegistrarUbicacionTuristaTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+        guia_user = User.objects.create_user(username='guia_ubi_tur', password='pass123')
+        auth_guia = AuthUser.objects.create(user=guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+        ruta = Ruta.objects.create(
+            titulo='Ruta Ubicación Turista',
+            descripcion='Desc',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='UBITUR1',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
+        self.turista = Turista.objects.create(alias='turista_ubicacion')
+        TuristaSesion.objects.create(
+            turista=self.turista,
+            sesion_tour=self.sesion,
+            activo=True,
+        )
+
+        session = self.client.session
+        session['turista_id'] = self.turista.id
+        session.save()
+
+    @override_settings(
+        TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS=30,
+        TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS=1000,
+    )
+    def test_registrar_ubicacion_turista_deduplicada_si_llega_muy_pronto_y_sin_movimiento(self):
+        payload = json.dumps(
+            {
+                'latitud': 37.3891,
+                'longitud': -5.9845,
+            }
+        )
+
+        first = self.client.post(
+            reverse('tours:registrar_ubicacion_turista', args=[self.sesion.id]),
+            payload,
+            content_type='application/json',
+        )
+        second = self.client.post(
+            reverse('tours:registrar_ubicacion_turista', args=[self.sesion.id]),
+            payload,
+            content_type='application/json',
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json().get('status'), 'ignored')
+        self.assertEqual(
+            UbicacionVivo.objects.filter(
+                sesion_tour=self.sesion,
+                turista=self.turista,
+            ).count(),
+            1,
+        )
+
 
 class ObtenerUbicacionGuiaTests(TestCase):
     """Tests para obtener_ubicacion_guia"""
@@ -726,6 +991,7 @@ class ObtenerUbicacionGuiaTests(TestCase):
             fecha_inicio=timezone.now(),
             ruta=ruta,
         )
+        self.client.force_login(self.guia_user)
 
     def test_obtener_ubicacion_sin_ubicacion_404(self):
         """Verifica error si no hay ubicación"""
@@ -753,3 +1019,50 @@ class ObtenerUbicacionGuiaTests(TestCase):
         
         self.assertEqual(data['lat'], 37.3891)
         self.assertEqual(data['lng'], -5.9845)
+
+
+class MensajesPrivadosHiloPermisosTests(TestCase):
+    """Regresiones de permisos del endpoint de hilo privado."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.guia_user = User.objects.create_user(username='guia_priv', password='pass123')
+        auth_guia = AuthUser.objects.create(user=self.guia_user)
+        guia = Guia.objects.create(user=auth_guia)
+
+        ruta = Ruta.objects.create(
+            titulo='Ruta Chat Privado',
+            descripcion='Desc',
+            duracion_horas=2.0,
+            num_personas=20,
+            mood=['Historia'],
+            guia=guia,
+        )
+        self.sesion = SesionTour.objects.create(
+            codigo_acceso='PRIV001',
+            estado=SesionTour.EN_CURSO,
+            fecha_inicio=timezone.now(),
+            ruta=ruta,
+        )
+        self.turista = Turista.objects.create(alias='TuristaPriv')
+        self.turista_sesion = TuristaSesion.objects.create(
+            turista=self.turista,
+            sesion_tour=self.sesion,
+            activo=True,
+        )
+
+    @patch('tours.views.ensure_chat_mode_allowed')
+    def test_turista_inactivo_no_puede_leer_hilo_privado(self, _mock_chat_mode):
+        self.turista_sesion.activo = False
+        self.turista_sesion.save(update_fields=['activo'])
+
+        session = self.client.session
+        session['turista_id'] = self.turista.id
+        session.save()
+
+        response = self.client.get(
+            reverse('tours:mensajes_privados_hilo', args=[self.sesion.id, self.turista.id])
+        )
+
+        self.assertEqual(response.status_code, 403)
