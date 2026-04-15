@@ -217,17 +217,11 @@ else:
 
 
 # --- STATIC FILES ---
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# Almacenamiento eficiente para producción (Whitenoise)
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-# --- MEDIA FILES (imágenes subidas por usuarios) ---
-# Si GS_BUCKET_NAME está definido (entorno Cloud Run) se usa Google Cloud Storage.
-# En local, sin esa variable, se usa el filesystem.
+# --- MEDIA FILES ---
 GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', '')
 
 if GS_BUCKET_NAME:
@@ -235,13 +229,13 @@ if GS_BUCKET_NAME:
     GS_DEFAULT_ACL = None
     GS_QUERYSTRING_AUTH = False
     MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
-    MEDIA_ROOT = BASE_DIR / 'media'
 else:
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- LOGIN / LOGOUT ---
 LOGIN_URL = '/accounts/login/'
@@ -343,3 +337,21 @@ else:
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+
+
+
+#GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME")
+
+#DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
+
+#MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/"
+MEDIA_URL = f"https://storage.googleapis.com/{os.getenv('GS_BUCKET_NAME')}/"
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
