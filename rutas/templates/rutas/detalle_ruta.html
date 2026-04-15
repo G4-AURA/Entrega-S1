@@ -227,7 +227,11 @@
                     <input type="text" name="nombre" class="form-control form-control-sm"
                            placeholder="Ej: Plaza Nueva" required>
                 </div>
-                <input type="hidden" name="descripcion" id="add-stop-descripcion" value="">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Descripcion (opcional)</label>
+                    <textarea name="descripcion" id="add-stop-descripcion" class="form-control form-control-sm"
+                              rows="2" maxlength="500" placeholder="Breve descripcion de la parada..."></textarea>
+                </div>
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label small mb-1">Latitud</label>
@@ -312,7 +316,8 @@
                             {% csrf_token %}
                             <input type="hidden" name="form_type" value="stop_delete">
                             <input type="hidden" name="parada_id" value="{{ parada.id }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm btn-eliminar-parada">
+                            <button type="submit" class="btn btn-outline-danger btn-sm btn-eliminar-parada"
+                                    {% if paradas|length <= 2 %}disabled title="La ruta debe tener al menos 2 paradas"{% endif %}>
                                 Eliminar
                             </button>
                         </form>
