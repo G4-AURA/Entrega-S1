@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.core.paginator import Page
 from unittest.mock import patch, Mock
-from rutas.models import AuthUser, Guia, Ruta, Parada
+from rutas.models import AuthUser, Guia, Ruta, Parada, RutaAuditoria
 from rutas.services import (
     obtener_datos_catalogo_paginado,
     actualizar_titulo_ruta,
@@ -18,7 +18,7 @@ from rutas.services import (
     reordenar_paradas,
     eliminar_parada_y_reordenar,
     actualizar_moods,
-    eliminar_ruta
+    eliminar_ruta,
 )
 
 class RutasServicesValidationTest(TestCase):
@@ -154,6 +154,35 @@ class RutasServicesValidationTest(TestCase):
         with self.assertRaisesMessage(ValueError, "El nombre de la parada no puede superar los 255 caracteres"):
             editar_parada(self.parada1, "A" * 256, "0", "0")
 
+    def test_editar_parada_registra_auditoria_en_ruta_ia(self):
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=["es_generada_ia"])
+
+        editar_parada(
+            self.parada1,
+            "Parada editada",
+            "10",
+            "20",
+            descripcion="Descripcion editada",
+            usuario=self.user,
+            motivo="Corrección solicitada por el guía",
+        )
+
+        self.parada1.refresh_from_db()
+        self.assertEqual(self.parada1.descripcion, "Descripcion editada")
+
+        evento = RutaAuditoria.objects.get()
+        self.assertEqual(evento.ruta, self.ruta)
+        self.assertEqual(evento.parada_id_snapshot, self.parada1.id)
+        self.assertEqual(evento.parada_nombre_snapshot, "P1")
+        self.assertEqual(evento.usuario, self.user)
+        self.assertEqual(evento.motivo, "Corrección solicitada por el guía")
+        self.assertEqual(evento.tipo_evento, RutaAuditoria.TipoEvento.PARADA_MODIFICADA)
+        self.assertEqual(evento.detalles["antes"]["nombre"], "P1")
+        self.assertEqual(evento.detalles["antes"]["descripcion"], "")
+        self.assertEqual(evento.detalles["despues"]["nombre"], "Parada editada")
+        self.assertEqual(evento.detalles["despues"]["descripcion"], "Descripcion editada")
+
     def test_editar_parada_actualiza_descripcion(self):
         editar_parada(
             self.parada1,
@@ -211,6 +240,23 @@ class RutasServicesValidationTest(TestCase):
         self.assertEqual(Parada.objects.filter(ruta=self.ruta).count(), 2)
         self.assertEqual(self.parada1.orden, 1)
         self.assertEqual(self.parada2.orden, 2)
+
+    def test_eliminar_parada_registra_auditoria_en_ruta_ia(self):
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=["es_generada_ia"])
+
+        eliminar_parada_y_reordenar(
+            self.ruta,
+            self.parada1,
+            usuario=self.user,
+            motivo="Parada fuera de contexto",
+        )
+
+        evento = RutaAuditoria.objects.get()
+        self.assertEqual(evento.tipo_evento, RutaAuditoria.TipoEvento.PARADA_ELIMINADA)
+        self.assertEqual(evento.parada_nombre_snapshot, "P1")
+        self.assertEqual(evento.usuario, self.user)
+        self.assertEqual(evento.motivo, "Parada fuera de contexto")
 
     # 11. Eliminar Ruta
     def test_eliminar_ruta(self):

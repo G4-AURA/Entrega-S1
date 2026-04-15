@@ -17,10 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import include, path
+from django.urls import include, path, re_path
 from config import views
 from tours import views as tours_views
 from django.views.generic import TemplateView
+from django.views.static import serve
 from .views import registro
 
 urlpatterns = [
@@ -40,10 +41,25 @@ urlpatterns = [
     path('accounts/login/', views.SuperuserAwareLoginView.as_view(), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('registro/', registro, name='registro'),
+    path('terminos-de-uso/', TemplateView.as_view(template_name='terminos_y_condiciones.html'), name='terminos_uso'),
 
 # Home router - debe ir al final para que no intercepte otras rutas
     path('', views.home_router, name='home'),
 ]
 
-if settings.DEBUG:
+# Serve media files whenever local filesystem storage is active.
+# `static()` only works with DEBUG=True, so in production-like environments
+# we explicitly add a media route when GCS is not configured.
+if getattr(settings, "USE_GCS_MEDIA", False):
+    pass
+elif settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    media_prefix = str(settings.MEDIA_URL).lstrip("/")
+    urlpatterns += [
+        re_path(
+            rf"^{media_prefix}(?P<path>.*)$",
+            serve,
+            {"document_root": settings.MEDIA_ROOT},
+        )
+    ]

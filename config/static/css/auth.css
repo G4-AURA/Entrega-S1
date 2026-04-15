@@ -234,7 +234,7 @@
     margin-bottom: 0.5rem;
 }
 
-.django-form input:not([type="hidden"]),
+.django-form input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
 .django-form select {
     width: 100%;
     border: 1px solid var(--border-color);
@@ -245,11 +245,54 @@
     color: var(--text-primary);
 }
 
-.django-form input:not([type="hidden"]):focus,
+.django-form input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):focus,
 .django-form select:focus {
     border-color: var(--brand-color);
     box-shadow: 0 0 0 3px var(--brand-light);
     outline: none;
+}
+
+.terms-check-wrapper {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.terms-check-wrapper input[type="checkbox"] {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: inline-block !important;
+    border-radius: 4px;
+    appearance: auto !important;
+    -webkit-appearance: checkbox !important;
+    cursor: pointer;
+    flex: 0 0 auto;
+    order: 1;
+}
+
+.terms-check-text {
+    margin: 0;
+    font-weight: 600;
+    cursor: default;
+    user-select: none;
+    white-space: nowrap;
+    line-height: 1.2;
+    order: 2;
+}
+
+.terms-link {
+    color: var(--brand-color);
+    text-decoration: underline;
+}
+
+.terms-link:hover {
+    color: var(--brand-hover);
 }
 
 /* ── Errores de formulario ──────────────────────────────────────– */

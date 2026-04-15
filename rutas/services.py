@@ -13,15 +13,16 @@ S2.1-28/29/30/32: Se añaden las funciones de orquestación GraphHopper.
 import logging
 import json
 import math
+import time
 
-from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import DatabaseError, IntegrityError
 from django.db.models import Prefetch
 import requests
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
-from .models import Curiosidad, Parada, Ruta
+from .models import Curiosidad, Parada, Ruta, RutaAuditoria
 from tours.models import SESION_TOUR
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,8 @@ MIN_DURACION_HORAS = 0.5
 MAX_DURACION_HORAS = 24.0
 MIN_NUM_PERSONAS = 1
 MAX_NUM_PERSONAS = 50
+MAX_REINTENTOS_CURIOSIDAD_IA = 3
+BACKOFF_BASE_CURIOSIDAD_IA_S = 1.0
 
 
 def _es_incremento_media_hora(valor):
@@ -41,6 +44,42 @@ def _es_misma_duracion(ruta, duracion_horas):
     except (TypeError, ValueError):
         return False
     return math.isclose(actual, duracion_horas, rel_tol=0.0, abs_tol=1e-9)
+
+
+def registrar_evento_auditoria_ruta(
+    ruta,
+    tipo_evento,
+    *,
+    parada=None,
+    usuario=None,
+    motivo='',
+    detalles=None,
+    parada_id_snapshot=None,
+    parada_nombre_snapshot=None,
+    parada_orden_snapshot=None,
+):
+    if not ruta.es_generada_ia:
+        return None
+
+    detalles_normalizados = detalles if isinstance(detalles, dict) else {}
+    if parada_id_snapshot is None:
+        parada_id_snapshot = getattr(parada, 'id', None)
+    if parada_nombre_snapshot is None:
+        parada_nombre_snapshot = getattr(parada, 'nombre', '') or ''
+    if parada_orden_snapshot is None:
+        parada_orden_snapshot = getattr(parada, 'orden', None)
+
+    return RutaAuditoria.objects.create(
+        ruta=ruta,
+        parada=parada,
+        parada_id_snapshot=parada_id_snapshot,
+        parada_nombre_snapshot=parada_nombre_snapshot,
+        parada_orden_snapshot=parada_orden_snapshot,
+        tipo_evento=tipo_evento,
+        usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
+        motivo=(motivo or '').strip(),
+        detalles=detalles_normalizados,
+    )
 
 
 # ================================================
@@ -211,11 +250,32 @@ def actualizar_exigencia_ruta(ruta, raw_exigencia):
     ruta.save(update_fields=["nivel_exigencia"])
 
 
-def eliminar_parada_y_reordenar(ruta, parada):
+def eliminar_parada_y_reordenar(ruta, parada, *, usuario=None, motivo=''):
     total_paradas = ruta.paradas.count()
     if total_paradas <= 2:
         raise ValueError("Una ruta debe tener al menos 2 paradas")
 
+    registrar_evento_auditoria_ruta(
+        ruta,
+        RutaAuditoria.TipoEvento.PARADA_ELIMINADA,
+        parada=parada,
+        usuario=usuario,
+        motivo=motivo,
+        detalles={
+            'parada': {
+                'id': parada.id,
+                'nombre': parada.nombre,
+                'orden': parada.orden,
+            }
+        },
+    )
+
+    parada.delete()
+
+    for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
+        if parada_restante.orden != index:
+            parada_restante.orden = index
+            parada_restante.save(update_fields=["orden"])
     parada.delete()
     for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
         if parada_restante.orden != index:
@@ -240,7 +300,13 @@ def _validar_coordenadas(raw_lat, raw_lon):
         raise ValueError("Coordenadas inválidas")
 
 
-def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
+def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion='', *, usuario=None, motivo=''):
+    nombre_anterior = parada.nombre
+    descripcion_anterior = parada.descripcion
+    coordenadas_anteriores = None
+    if parada.coordenadas:
+        coordenadas_anteriores = [parada.coordenadas.y, parada.coordenadas.x]
+
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -254,9 +320,31 @@ def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
     parada.descripcion = descripcion_limpia
     parada.coordenadas = Point(lon, lat, srid=4326)
     parada.save(update_fields=["nombre", "descripcion", "coordenadas"])
+    registrar_evento_auditoria_ruta(
+        parada.ruta,
+        RutaAuditoria.TipoEvento.PARADA_MODIFICADA,
+        parada=parada,
+        usuario=usuario,
+        motivo=motivo,
+        parada_nombre_snapshot=nombre_anterior,
+        parada_orden_snapshot=parada.orden,
+        parada_id_snapshot=parada.id,
+        detalles={
+            'antes': {
+                'nombre': nombre_anterior,
+                'descripcion': descripcion_anterior,
+                'coordenadas': coordenadas_anteriores,
+            },
+            'despues': {
+                'nombre': parada.nombre,
+                'descripcion': parada.descripcion,
+                'coordenadas': [parada.coordenadas.y, parada.coordenadas.x],
+            },
+        },
+    )
 
 
-def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
+def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion='', *, usuario=None, motivo=''):
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -266,16 +354,31 @@ def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
     lat, lon = _validar_coordenadas(raw_lat, raw_lon)
 
     ultimo_orden = ruta.paradas.order_by("-orden").values_list("orden", flat=True).first() or 0
-    Parada.objects.create(
+    parada = Parada.objects.create(
         ruta=ruta,
         orden=ultimo_orden + 1,
         nombre=nombre,
         descripcion=(descripcion or "").strip()[:500],
         coordenadas=Point(lon, lat, srid=4326),
     )
+    registrar_evento_auditoria_ruta(
+        ruta,
+        RutaAuditoria.TipoEvento.PARADA_ANADIDA,
+        parada=parada,
+        usuario=usuario,
+        motivo=motivo,
+        detalles={
+            'parada': {
+                'id': parada.id,
+                'nombre': parada.nombre,
+                'orden': parada.orden,
+                'coordenadas': [parada.coordenadas.y, parada.coordenadas.x],
+            }
+        },
+    )
 
 
-def reordenar_paradas(ruta, ordered_ids):
+def reordenar_paradas(ruta, ordered_ids, *, usuario=None, motivo=''):
     """
     Actualiza el campo `orden` de cada parada según la nueva secuencia.
 
@@ -283,11 +386,28 @@ def reordenar_paradas(ruta, ordered_ids):
         ordered_ids: Lista de IDs enteros ya parseada por la vista.
     """
     paradas_by_id = {parada.id: parada for parada in ruta.paradas.all()}
+    orden_anterior = [
+        {'id': parada.id, 'nombre': parada.nombre, 'orden': parada.orden}
+        for parada in ruta.paradas.order_by('orden', 'id')
+    ]
     for index, parada_id in enumerate(ordered_ids, start=1):
         parada = paradas_by_id.get(parada_id)
         if parada and parada.orden != index:
             parada.orden = index
             parada.save(update_fields=["orden"])
+    registrar_evento_auditoria_ruta(
+        ruta,
+        RutaAuditoria.TipoEvento.PARADAS_REORDENADAS,
+        usuario=usuario,
+        motivo=motivo,
+        detalles={
+            'antes': orden_anterior,
+            'despues': [
+                {'id': parada.id, 'nombre': parada.nombre, 'orden': parada.orden}
+                for parada in ruta.paradas.order_by('orden', 'id')
+            ],
+        },
+    )
 
 
 def actualizar_moods(ruta, raw_moods):
@@ -453,7 +573,7 @@ class ServicioCuriosidadesIA:
 
     def __init__(self):
         from google import genai
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self._genai = genai
 
     def generar_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> dict:
         """
@@ -478,6 +598,23 @@ class ServicioCuriosidadesIA:
     def _obtener_curiosidad_cache(self, parada: Parada) -> Curiosidad | None:
         return Curiosidad.objects.filter(parada=parada).first()
 
+    def obtener_o_crear_curiosidad(self, parada: Parada, ciudad: str = "Sevilla") -> tuple[Curiosidad, bool]:
+        """
+        Devuelve (Curiosidad, fue_generada). Reutiliza caché si existe.
+        A diferencia de generar_curiosidad(), devuelve el objeto del modelo, no un dict.
+        """
+        curiosidad_cacheada = self._obtener_curiosidad_cache(parada)
+        if curiosidad_cacheada:
+            return curiosidad_cacheada, False
+
+        datos_curiosidad = self._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
+        curiosidad_guardada = self._guardar_curiosidad_en_cache(
+            parada=parada,
+            ciudad=ciudad,
+            datos_curiosidad=datos_curiosidad,
+        )
+        return curiosidad_guardada, True
+
     def _serializar_curiosidad(self, curiosidad: Curiosidad) -> dict:
         return {
             "parada_id": curiosidad.parada_id,
@@ -486,7 +623,6 @@ class ServicioCuriosidadesIA:
             "texto": curiosidad.texto,
             "tipo": curiosidad.tipo,
             "imagen_url": curiosidad.imagen_url,
-            "busqueda_imagen": curiosidad.imagen_url,
         }
 
     def _normalizar_payload_curiosidad(self, parada: Parada, datos_curiosidad: dict) -> dict:
@@ -586,34 +722,56 @@ class ServicioCuriosidadesIA:
         }}
         """
 
-        try:
-            respuesta = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            
-            texto_ia = respuesta.text.strip()
+        claves = list(iter_gemini_api_keys())
+        if not claves:
+            raise RuntimeError('No hay API key de Gemini configurada.')
 
-            if texto_ia.startswith("```json"):
-                texto_ia = texto_ia[7:-3].strip()
-            elif texto_ia.startswith("```"):
-                texto_ia = texto_ia[3:-3].strip()
+        ultimo_error_cuota: Exception | None = None
+        for indice, clave in enumerate(claves, start=1):
+            client = self._genai.Client(api_key=clave)
+            try:
+                respuesta = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
 
-            datos_curiosidad = json.loads(texto_ia)
-            busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
-            datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
-                busqueda_imagen=busqueda_imagen,
-                parada=parada,
-                ciudad=ciudad,
-            )
-            return datos_curiosidad
+                texto_ia = str(getattr(respuesta, 'text', '') or '').strip()
 
-        except json.JSONDecodeError:
-            raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
-        except (requests.RequestException, TimeoutError, ConnectionError) as e:
-            raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
-        except (AttributeError, KeyError, IndexError) as e:
-            raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+                if texto_ia.startswith("```json"):
+                    texto_ia = texto_ia[7:-3].strip()
+                elif texto_ia.startswith("```"):
+                    texto_ia = texto_ia[3:-3].strip()
+
+                datos_curiosidad = json.loads(texto_ia)
+                busqueda_imagen = (datos_curiosidad.get("busqueda_imagen") or "").strip()
+                datos_curiosidad["imagen_url"] = self._buscar_imagen_curiosidad(
+                    busqueda_imagen=busqueda_imagen,
+                    parada=parada,
+                    ciudad=ciudad,
+                )
+                return datos_curiosidad
+
+            except json.JSONDecodeError:
+                raise ValueError("Error de formato: La IA no devolvió un JSON válido.")
+            except (requests.RequestException, TimeoutError, ConnectionError) as e:
+                raise RuntimeError(f"Error de red al comunicarse con la API de IA: {e}") from e
+            except (AttributeError, KeyError, IndexError) as e:
+                raise ValueError(f"Respuesta inesperada de la API de IA: {e}") from e
+            except Exception as exc:
+                if is_quota_or_rate_limit_error(exception=exc):
+                    ultimo_error_cuota = exc
+                    logger.warning(
+                        'Gemini devolvió cuota/429 al generar curiosidad (clave %s/%s).',
+                        indice,
+                        len(claves),
+                    )
+                    continue
+                raise
+
+        if ultimo_error_cuota is not None:
+            raise RuntimeError('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+        raise RuntimeError('No se pudo generar curiosidad con Gemini.')
 
     def _buscar_imagen_curiosidad(self, busqueda_imagen: str, parada: Parada, ciudad: str) -> str | None:
         """
@@ -712,19 +870,7 @@ def obtener_o_generar_curiosidad_parada(parada: Parada, ciudad: str = "Sevilla")
     Returns:
         (curiosidad, fue_generada)
     """
-    curiosidad_existente = Curiosidad.objects.filter(parada=parada).first()
-    if curiosidad_existente:
-        return curiosidad_existente, False
-
-    servicio_ia = ServicioCuriosidadesIA()
-    datos_ia = servicio_ia._generar_curiosidad_ia(parada=parada, ciudad=ciudad)
-    curiosidad = servicio_ia._guardar_curiosidad_en_cache(
-        parada=parada,
-        ciudad=ciudad,
-        datos_curiosidad=datos_ia,
-    )
-
-    return curiosidad, True
+    return ServicioCuriosidadesIA().obtener_o_crear_curiosidad(parada=parada, ciudad=ciudad)
 
 
 def generar_curiosidad_parada_preview(parada: Parada, ciudad: str = "Sevilla") -> dict:

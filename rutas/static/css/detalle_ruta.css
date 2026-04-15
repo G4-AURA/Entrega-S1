@@ -74,6 +74,7 @@
 
 .parada-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: 0.5rem;
 }
@@ -99,6 +100,21 @@
 .parada-item {
     border-radius: 8px;
     transition: background 0.15s;
+    overflow-x: hidden;
+    flex-shrink: 0;
+}
+
+.parada-item .fw-bold > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.parada-descripcion {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
 }
 
 .parada-item.drag-over {
@@ -259,6 +275,76 @@
     color: var(--text-muted);
 }
 
+.auditoria-card .card-body {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+.auditoria-card {
+    overflow: hidden;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 14px;
+    background: var(--bg-white);
+}
+
+.auditoria-card summary {
+    list-style: none;
+}
+
+.auditoria-card summary::-webkit-details-marker {
+    display: none;
+}
+
+.auditoria-summary {
+    cursor: pointer;
+    padding: 0.95rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.auditoria-summary-left {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brand-color);
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform 0.18s ease;
+}
+
+.auditoria-card[open] .auditoria-summary-arrow {
+    transform: rotate(45deg);
+}
+
+.auditoria-summary-arrow {
+    transition: transform 0.18s ease;
+}
+
+.auditoria-summary-count {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--brand-hover);
+    background: var(--brand-light);
+    border: 1px solid #c7d2fe;
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    white-space: nowrap;
+}
+
+.auditoria-list {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.auditoria-list .list-group-item:last-child {
+    flex-shrink: 0;
+    padding-bottom: 0;
+}
+
 .ia-suggestions-inline {
     margin-top: 0.75rem;
 }
@@ -293,6 +379,32 @@
     animation: fadeIn 0.3s ease-in;
 }
 
+.curiosidad-estado {
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid transparent;
+    font-weight: 600;
+}
+
+.curiosidad-estado--info {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.curiosidad-estado--success {
+    color: #166534;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.curiosidad-estado--error {
+    color: #991b1b;
+    background: #fef2f2;
+    border-color: #fecaca;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.08);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -301,5 +413,19 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@media (min-width: 992px) {
+    .col-itinerario-fijo {
+        height: 502px; 
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .list-paradas-container {
+        max-height: none; 
+        flex: 1; 
+        min-height: 0; 
     }
 }

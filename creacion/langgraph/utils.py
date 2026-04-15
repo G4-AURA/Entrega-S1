@@ -16,6 +16,7 @@ import math
 import os
 
 import requests
+from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,7 @@ logger = logging.getLogger(__name__)
 # services.py es la fuente canónica; esta es un alias de importación segura.
 # ─────────────────────────────────────────────────────────────────────────────
 
-class ErrorIntegracionIA(Exception):
-    """Errores al comunicarse o normalizar respuestas del proveedor de IA."""
+from creacion.exceptions import ErrorIntegracionIA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +53,9 @@ _KEYWORDS_MOOD = {
 # Gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
+class _GeminiQuotaError(Exception):
+    """Internal marker for quota/rate-limit responses on a concrete API key."""
+
 def _leer_int_env(nombre: str, default: int) -> int:
     try:
         return int(os.getenv(nombre, str(default)))
@@ -60,32 +63,33 @@ def _leer_int_env(nombre: str, default: int) -> int:
         return default
 
 
-def llamar_gemini(prompt: str) -> list | dict:
-    """
-    Llama a Gemini y devuelve la respuesta parseada como JSON.
-    Lanza ErrorIntegracionIA ante cualquier fallo.
-    """
-    api_key = os.getenv('GEMINI_API_KEY')
+def _llamar_gemini_con_clave(prompt: str, api_key: str) -> list | dict:
     if not api_key:
         raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
 
-    url = (
-        f'https://generativelanguage.googleapis.com/v1beta/models/'
-        f'gemini-2.5-flash:generateContent?key={api_key}'
-    )
+    # USAMOS 2.5-FLASH ESTABLE PARA EVITAR 404/503
+    model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}'
     headers = {'Content-Type': 'application/json'}
     data = {
         'contents': [{'parts': [{'text': prompt}]}],
-        'generationConfig': {'response_mime_type': 'application/json'},
+        'generation_config': {'response_mime_type': 'application/json'},
     }
     timeout_s = max(10, _leer_int_env('GEMINI_TIMEOUT_SECONDS', 30))
     max_reintentos = max(0, _leer_int_env('GEMINI_MAX_RETRIES', 2))
-    http_reintentable = {408, 409, 425, 429, 500, 502, 503, 504}
+    # 429 is handled as quota fallback to the next key, not retried in-place.
+    http_reintentable = {408, 409, 425, 500, 502, 503, 504}
 
     ultimo_error: Exception | None = None
     for intento in range(max_reintentos + 1):
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
+            if is_quota_or_rate_limit_error(
+                status_code=response.status_code,
+                detail=getattr(response, 'text', ''),
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={response.status_code}.')
+
             if response.status_code in http_reintentable and intento < max_reintentos:
                 logger.warning('Gemini status=%s (reintento %s/%s).', response.status_code, intento + 1, max_reintentos)
                 continue
@@ -93,6 +97,8 @@ def llamar_gemini(prompt: str) -> list | dict:
             resultado = response.json()
             texto_json = resultado['candidates'][0]['content']['parts'][0]['text']
             return json.loads(texto_json)
+        except _GeminiQuotaError:
+            raise
         except requests.Timeout as exc:
             ultimo_error = exc
             if intento < max_reintentos:
@@ -101,6 +107,14 @@ def llamar_gemini(prompt: str) -> list | dict:
         except requests.HTTPError as exc:
             ultimo_error = exc
             status = exc.response.status_code if exc.response is not None else 'desconocido'
+            detalle = getattr(exc.response, 'text', '') if exc.response is not None else ''
+            if is_quota_or_rate_limit_error(
+                status_code=status if isinstance(status, int) else None,
+                detail=detalle,
+                exception=exc,
+            ):
+                raise _GeminiQuotaError(f'Gemini devolvió status={status}.') from exc
+
             if status in http_reintentable and intento < max_reintentos:
                 continue
             raise ErrorIntegracionIA(f'Error HTTP de Gemini (status={status}).') from exc
@@ -115,6 +129,33 @@ def llamar_gemini(prompt: str) -> list | dict:
             raise ErrorIntegracionIA('Error inesperado al invocar Gemini.') from exc
 
     raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.') from ultimo_error
+
+
+def llamar_gemini(prompt: str) -> list | dict:
+    """
+    Llama a Gemini y devuelve la respuesta parseada como JSON.
+    Lanza ErrorIntegracionIA ante cualquier fallo.
+    """
+    claves = list(iter_gemini_api_keys())
+    if not claves:
+        raise ErrorIntegracionIA('No hay API key de Gemini configurada.')
+    ultimo_error_cuota: Exception | None = None
+    for indice, clave in enumerate(claves, start=1):
+        try:
+            return _llamar_gemini_con_clave(prompt, clave)
+        except _GeminiQuotaError as exc:
+            ultimo_error_cuota = exc
+            logger.warning(
+                'Gemini devolvió cuota/429 en clave %s/%s; se intenta fallback.',
+                indice,
+                len(claves),
+            )
+            continue
+
+    if ultimo_error_cuota is not None:
+        raise ErrorIntegracionIA('Todas las API keys de Gemini agotaron cuota o devolvieron 429.') from ultimo_error_cuota
+
+    raise ErrorIntegracionIA('No se pudo obtener respuesta válida de Gemini.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,10 +227,6 @@ def calcular_objetivo_paradas_ia(datos: dict) -> int:
 # OR-Tools: matriz de distancias
 # ─────────────────────────────────────────────────────────────────────────────
 
-def calcular_distancia_euclidiana(coord1, coord2) -> float:
-    return math.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2)
-
-
 def crear_matriz_datos(pois: list) -> dict:
     cant_nodos = len(pois)
     dist_matrix = {}
@@ -199,8 +236,8 @@ def crear_matriz_datos(pois: list) -> dict:
             if from_node == to_node:
                 dist_matrix[from_node][to_node] = 0
             else:
-                d = calcular_distancia_euclidiana(pois[from_node]['coords'], pois[to_node]['coords'])
-                dist_matrix[from_node][to_node] = int(d * 10000)
+                d_km = distancia_haversine_km(pois[from_node]['coords'], pois[to_node]['coords'])
+                dist_matrix[from_node][to_node] = int(d_km * 1000)
     return {'distance_matrix': dist_matrix, 'num_vehicles': 1, 'depot': 0}
 
 

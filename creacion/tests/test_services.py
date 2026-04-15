@@ -17,6 +17,16 @@ from tours.models import TURISTA
 
 
 class GeminiBypassResilienceTests(TestCase):
+    @staticmethod
+    def _response_http_error(status_code: int, detail: str = 'quota exhausted'):
+        response = Mock()
+        response.status_code = status_code
+        response.text = detail
+        http_error = requests.HTTPError(f'status={status_code}')
+        http_error.response = response
+        response.raise_for_status.side_effect = http_error
+        return response
+
     def test_reintenta_timeout_y_recupera_respuesta(self):
         ok_response = Mock()
         ok_response.status_code = 200
@@ -40,6 +50,41 @@ class GeminiBypassResilienceTests(TestCase):
                     'Gemini agotó el tiempo de espera tras 2 intentos.',
                 ):
                     services.llamar_gemini_bypass('prompt', 'api-key')
+
+        self.assertEqual(mock_post.call_count, 2)
+
+    def test_fallback_a_siguiente_key_si_recibe_429(self):
+        quota_response = self._response_http_error(429, 'RESOURCE_EXHAUSTED')
+        ok_response = Mock()
+        ok_response.status_code = 200
+        ok_response.raise_for_status.return_value = None
+        ok_response.json.return_value = {
+            'candidates': [{'content': {'parts': [{'text': '[{"nombre":"B"}]'}]}}]
+        }
+
+        with self.settings(GEMINI_API_KEYS=('key-1', 'key-2'), GEMINI_API_KEY='key-1'):
+            with patch.dict('os.environ', {'GEMINI_MAX_RETRIES': '0', 'GEMINI_TIMEOUT_SECONDS': '10'}, clear=False):
+                with patch('creacion.services.requests.post', side_effect=[quota_response, ok_response]) as mock_post:
+                    resultado = services.llamar_gemini_bypass('prompt')
+
+        self.assertEqual(resultado, [{'nombre': 'B'}])
+        self.assertEqual(mock_post.call_count, 2)
+        urls = [call.args[0] for call in mock_post.call_args_list]
+        self.assertIn('key=key-1', urls[0])
+        self.assertIn('key=key-2', urls[1])
+
+    def test_lanza_error_si_todas_las_keys_agotan_cuota(self):
+        quota_1 = self._response_http_error(429, 'quota exceeded')
+        quota_2 = self._response_http_error(429, 'RESOURCE_EXHAUSTED')
+
+        with self.settings(GEMINI_API_KEYS=('key-1', 'key-2'), GEMINI_API_KEY='key-1'):
+            with patch.dict('os.environ', {'GEMINI_MAX_RETRIES': '0', 'GEMINI_TIMEOUT_SECONDS': '10'}, clear=False):
+                with patch('creacion.services.requests.post', side_effect=[quota_1, quota_2]) as mock_post:
+                    with self.assertRaisesMessage(
+                        services.ErrorIntegracionIA,
+                        'Todas las API keys de Gemini agotaron cuota o devolvieron 429.',
+                    ):
+                        services.llamar_gemini_bypass('prompt')
 
         self.assertEqual(mock_post.call_count, 2)
 

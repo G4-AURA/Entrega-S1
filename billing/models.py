@@ -136,3 +136,23 @@ class TierUsageEvent(models.Model):
 
     def __str__(self) -> str:
         return f'{self.guia_id} | {self.action} | {self.created_at.isoformat()}'
+
+
+class FeatureAccessSetting(models.Model):
+    key = models.CharField(max_length=100, unique=True)
+    enabled_freemium = models.BooleanField(default=True)
+    enabled_premium = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'billing_feature_access_setting'
+        verbose_name = 'Feature Access Setting'
+        verbose_name_plural = 'Feature Access Settings'
+
+    def __str__(self) -> str:
+        return (
+            f'{self.key} -> '
+            f'freemium={"on" if self.enabled_freemium else "off"}, '
+            f'premium={"on" if self.enabled_premium else "off"}'
+        )

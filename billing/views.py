@@ -1,12 +1,19 @@
 import json
 import logging
 from datetime import timezone as dt_timezone
+from functools import wraps
+from urllib.parse import quote_plus
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import HttpResponseForbidden
 from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 
 from rutas.models import Guia
@@ -16,12 +23,60 @@ from .services import (
     StripeAPIError,
     StripeSignatureVerificationError,
     create_checkout_session,
+    fetch_checkout_session,
     fetch_subscription_snapshot,
     schedule_subscription_cancel_at_period_end,
     verify_stripe_signature,
 )
+from .tier_guard import get_feature_access_rows, update_feature_access
 
 logger = logging.getLogger(__name__)
+
+
+def superuser_required_html(view_func):
+    @wraps(view_func)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return HttpResponseForbidden(
+                'Acceso denegado: area exclusiva para administradores.'
+            )
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
+
+
+@superuser_required_html
+@require_GET
+def feature_access_panel_view(request):
+    return render(
+        request,
+        'billing/feature_access_panel.html',
+        {
+            'feature_rows': get_feature_access_rows(),
+            'updated_key': str(request.GET.get('updated') or '').strip(),
+            'error_message': str(request.GET.get('error') or '').strip(),
+        },
+    )
+
+
+@superuser_required_html
+@require_POST
+def update_feature_access_view(request):
+    key = str(request.POST.get('key') or '').strip()
+    tier = str(request.POST.get('tier') or '').strip()
+    enabled_raw = request.POST.get('enabled')
+
+    try:
+        update_feature_access(key=key, tier=tier, enabled=enabled_raw)
+    except ValueError as exc:
+        return redirect(
+            f"{reverse('billing:feature_access_panel')}?error={quote_plus(str(exc))}"
+        )
+
+    return redirect(
+        f"{reverse('billing:feature_access_panel')}?updated={key}&tier={tier}"
+    )
 
 
 def _obtener_guia_para_usuario(user):
@@ -44,12 +99,23 @@ def _resolver_urls_checkout(request, body: dict) -> tuple[str, str]:
     cancel_url_settings = str(getattr(settings, 'STRIPE_CHECKOUT_CANCEL_URL', '') or '').strip()
 
     base_url = request.build_absolute_uri('/').rstrip('/')
-    success_url_default = f'{base_url}/perfil/plan/?billing=success'
+    success_url_default = (
+        f'{base_url}/perfil/plan/?billing=success&session_id={{CHECKOUT_SESSION_ID}}'
+    )
     cancel_url_default = f'{base_url}/perfil/plan/?billing=cancel'
 
     success_url = success_url_body or success_url_settings or success_url_default
+    success_url = _append_checkout_session_param(success_url)
     cancel_url = cancel_url_body or cancel_url_settings or cancel_url_default
     return success_url, cancel_url
+
+
+def _append_checkout_session_param(url: str) -> str:
+    placeholder = '{CHECKOUT_SESSION_ID}'
+    if placeholder in str(url):
+        return str(url)
+    separator = '&' if '?' in str(url) else '?'
+    return f'{url}{separator}session_id={placeholder}'
 
 
 @csrf_exempt
@@ -147,6 +213,137 @@ def create_checkout_session_view(request):
     )
 
 
+def _find_pending_checkout_subscription(guia, checkout_session_id: str | None = None):
+    queryset = Subscription.objects.filter(
+        guia=guia,
+        tier=Guia.Suscripcion.PREMIUM,
+        status=Subscription.Status.INCOMPLETE,
+    ).order_by('-created_at')
+    if checkout_session_id:
+        queryset = queryset.filter(metadata__checkout_session_id=checkout_session_id)
+    return queryset.first()
+
+
+@csrf_exempt
+@require_POST
+def sync_checkout_session_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Debes iniciar sesión para sincronizar el checkout.'},
+            status=401,
+        )
+
+    if not getattr(settings, 'STRIPE_ENABLED', False):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Stripe no está habilitado en este entorno.'},
+            status=503,
+        )
+
+    if hasattr(request.user, 'turista'):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Solo los guías pueden sincronizar su suscripción.'},
+            status=403,
+        )
+
+    guia = _obtener_guia_para_usuario(request.user)
+    if guia is None:
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Solo los guías pueden sincronizar su suscripción.'},
+            status=403,
+        )
+
+    try:
+        body = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        body = {}
+
+    checkout_session_id = str((body or {}).get('session_id') or '').strip()
+    local_subscription = _find_pending_checkout_subscription(guia, checkout_session_id or None)
+    if not checkout_session_id and local_subscription is not None:
+        metadata = local_subscription.metadata if isinstance(local_subscription.metadata, dict) else {}
+        checkout_session_id = str(metadata.get('checkout_session_id') or '').strip()
+
+    if not checkout_session_id:
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'No hay checkout pendiente para sincronizar.',
+                'code': 'BILLING_NOTHING_TO_SYNC',
+            },
+            status=409,
+        )
+
+    try:
+        checkout_session = fetch_checkout_session(
+            secret_key=getattr(settings, 'STRIPE_SECRET_KEY', ''),
+            checkout_session_id=checkout_session_id,
+        )
+    except StripeAPIError as exc:
+        logger.warning('Error Stripe sincronizando checkout %s: %s', checkout_session_id, exc)
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': str(exc), 'code': 'BILLING_STRIPE_ERROR'},
+            status=502,
+        )
+    except Exception:
+        logger.exception('Error inesperado sincronizando checkout %s', checkout_session_id)
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'No se pudo sincronizar el checkout.'},
+            status=500,
+        )
+
+    metadata = checkout_session.get('metadata') if isinstance(checkout_session, dict) else {}
+    metadata = metadata if isinstance(metadata, dict) else {}
+    metadata_guia_id = str(metadata.get('guia_id') or '').strip()
+    if metadata_guia_id and metadata_guia_id.isdigit() and int(metadata_guia_id) != int(guia.id):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'El checkout no pertenece al guía autenticado.'},
+            status=403,
+        )
+
+    if not metadata_guia_id:
+        checkout_session = dict(checkout_session)
+        checkout_session['metadata'] = {
+            **metadata,
+            'guia_id': str(guia.id),
+        }
+
+    try:
+        subscription = _procesar_checkout_completed(checkout_session)
+    except Exception:
+        logger.exception('Error procesando sincronización del checkout %s', checkout_session_id)
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'No se pudo aplicar la sincronización.'},
+            status=500,
+        )
+
+    if subscription is None:
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'No se encontró una suscripción vinculable al checkout.',
+                'code': 'BILLING_SUBSCRIPTION_NOT_FOUND',
+            },
+            status=409,
+        )
+
+    return JsonResponse(
+        {
+            'status': 'OK',
+            'mensaje': 'Checkout sincronizado correctamente.',
+            'checkout_status': checkout_session.get('status'),
+            'payment_status': checkout_session.get('payment_status'),
+            'subscription_status': subscription.status,
+            'stripe_subscription_id': subscription.stripe_subscription_id or '',
+            'current_period_end': (
+                subscription.current_period_end.isoformat()
+                if subscription.current_period_end
+                else None
+            ),
+        },
+        status=200,
+    )
+
+
 def _obtener_suscripcion_premium_cancelable(guia):
     return (
         Subscription.objects.filter(
@@ -163,6 +360,42 @@ def _obtener_suscripcion_premium_cancelable(guia):
         .order_by('-updated_at', '-id')
         .first()
     )
+
+
+def _subscription_metadata_dict(subscription) -> dict:
+    metadata = getattr(subscription, 'metadata', None)
+    if isinstance(metadata, dict):
+        return metadata
+    return {}
+
+
+def _is_seed_demo_mock_subscription(subscription) -> bool:
+    metadata = _subscription_metadata_dict(subscription)
+    stripe_mode = str(metadata.get('stripe_mode') or '').strip().lower()
+    if stripe_mode == 'mock':
+        return True
+
+    seed_source = str(metadata.get('seed_source') or '').strip()
+    stripe_subscription_id = str(
+        getattr(subscription, 'stripe_subscription_id', '') or ''
+    ).strip()
+    return (
+        seed_source == 'seed_demo_data_despliegue3'
+        and stripe_subscription_id.startswith('sub_seed_demo_data_despliegue3_')
+    )
+
+
+def _schedule_downgrade_for_seed_mock_subscription(subscription):
+    updated_fields = ['cancel_at_period_end', 'metadata', 'updated_at']
+    subscription.cancel_at_period_end = True
+
+    existing_metadata = _subscription_metadata_dict(subscription)
+    subscription.metadata = {
+        **existing_metadata,
+        'downgrade_requested_at': timezone.now().isoformat(),
+        'downgrade_via': 'seed_mock',
+    }
+    subscription.save(update_fields=updated_fields)
 
 
 @csrf_exempt
@@ -240,6 +473,21 @@ def schedule_downgrade_view(request):
             {
                 'status': 'OK',
                 'mensaje': 'La baja ya estaba programada para el final del periodo actual.',
+                'current_period_end': (
+                    subscription.current_period_end.isoformat()
+                    if subscription.current_period_end
+                    else None
+                ),
+            },
+            status=200,
+        )
+
+    if _is_seed_demo_mock_subscription(subscription):
+        _schedule_downgrade_for_seed_mock_subscription(subscription)
+        return JsonResponse(
+            {
+                'status': 'OK',
+                'mensaje': 'Baja programada. Mantendrás Premium hasta el fin de tu periodo actual.',
                 'current_period_end': (
                     subscription.current_period_end.isoformat()
                     if subscription.current_period_end

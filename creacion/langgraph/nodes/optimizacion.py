@@ -20,6 +20,14 @@ from creacion.langgraph.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _formatear_titulo_mood(mood) -> str:
+    """Convierte la lista de moods a un string legible para el título."""
+    if isinstance(mood, (list, tuple)):
+        partes = [str(m).strip().capitalize() for m in mood if m]
+        return ", ".join(partes) if partes else "Turística"
+    return str(mood).strip().capitalize() if mood else "Turística"
+
+
 def nodo_optimizacion(state: State) -> dict:
     """
     Ordena los POIs validados con el algoritmo TSP de OR-Tools.
@@ -38,7 +46,7 @@ def nodo_optimizacion(state: State) -> dict:
         ]
         return {
             "ruta_final": {
-                "titulo": f"Ruta {datos.get('mood')}",
+                "titulo": f"Ruta {_formatear_titulo_mood(datos.get('mood'))}",
                 "descripcion": "Ruta generada sin optimización necesaria.",
                 "duracion_estimada": datos.get("duracion"),
                 "nivel_exigencia": datos.get("exigencia"),
@@ -85,7 +93,7 @@ def nodo_optimizacion(state: State) -> dict:
 
     return {
         "ruta_final": {
-            "titulo": f"Ruta {datos.get('mood')} Inteligente",
+            "titulo": f"Ruta {_formatear_titulo_mood(datos.get('mood'))} Inteligente",
             "descripcion": "Ruta optimizada con algoritmo TSP (Traveling Salesperson Problem).",
             "duracion_estimada": datos.get("duracion"),
             "nivel_exigencia": datos.get("exigencia"),

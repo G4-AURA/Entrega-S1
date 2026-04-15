@@ -1,11 +1,14 @@
 import json
+import shutil
+import tempfile
 from datetime import timedelta
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
-from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad
+from rutas.models import AuthUser, Guia, Ruta, Parada, Curiosidad, RutaAuditoria
 from billing.models import Subscription, TierUsageEvent
 from unittest.mock import patch, Mock
 from django.utils import timezone
@@ -13,6 +16,10 @@ from tours.models import SesionTour, Turista, TuristaSesion
 
 class RutasViewsTest(TestCase):
     def setUp(self):
+        self._tmp_media_root = tempfile.mkdtemp(prefix='test-media-')
+        self._media_override = override_settings(MEDIA_ROOT=self._tmp_media_root)
+        self._media_override.enable()
+
         self.client = Client()
         self.user = User.objects.create_user(username='guia_test', password='password')
         self.auth_user = AuthUser.objects.create(user=self.user)
@@ -28,6 +35,10 @@ class RutasViewsTest(TestCase):
         self.parada = Parada.objects.create(
             orden=1, nombre="Parada 1", coordenadas=Point(0, 0), ruta=self.ruta
         )
+
+    def tearDown(self):
+        self._media_override.disable()
+        shutil.rmtree(self._tmp_media_root, ignore_errors=True)
 
     # 1. Seguridad y Decoradores
     def test_es_guia_denegado_for_normal_user(self):
@@ -397,6 +408,15 @@ class RutasViewsTest(TestCase):
         })
         self.assertRedirects(response, f"{url}?stop_reordered=1")
 
+    def test_ruta_detalle_post_stop_reorder_sin_cambios_success(self):
+        parada2 = Parada.objects.create(orden=2, nombre="P2", coordenadas=Point(1, 1), ruta=self.ruta)
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'stop_reorder',
+            'stop_order': ''
+        })
+        self.assertRedirects(response, f"{url}?stop_reordered=1")
+
     def test_ruta_detalle_post_mood_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
         response = self.client.post(url, {
@@ -446,6 +466,28 @@ class RutasViewsTest(TestCase):
             'lon': '5.0'
         })
         self.assertRedirects(response, f"{url}?stop_error=1")
+
+    def test_ruta_detalle_view_muestra_auditoria_de_cambios(self):
+        self.ruta.es_generada_ia = True
+        self.ruta.save(update_fields=["es_generada_ia"])
+        RutaAuditoria.objects.create(
+            ruta=self.ruta,
+            parada=self.parada,
+            parada_id_snapshot=self.parada.id,
+            parada_nombre_snapshot=self.parada.nombre,
+            parada_orden_snapshot=self.parada.orden,
+            tipo_evento=RutaAuditoria.TipoEvento.PARADA_MODIFICADA,
+            usuario=self.user,
+            motivo='Corrección manual',
+            detalles={'antes': {'nombre': self.parada.nombre}},
+        )
+
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Auditoría de cambios')
+        self.assertContains(response, 'Parada modificada')
+        self.assertContains(response, 'Corrección manual')
 
     def test_ruta_detalle_post_stop_add_error(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
@@ -586,6 +628,90 @@ class RutasViewsTest(TestCase):
         curiosidad.refresh_from_db()
         self.assertEqual(curiosidad.texto, payload['texto'])
         self.assertEqual(curiosidad.tipo, payload['tipo'])
+
+    def test_guardar_curiosidad_parada_api_post_multipart_guarda_imagen_local(self):
+        url = reverse('parada-curiosidad-guardar', args=[self.parada.id])
+        image_file = SimpleUploadedFile(
+            'curiosidad.png',
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+            content_type='image/png',
+        )
+
+        response = self.client.post(
+            url,
+            data={
+                'texto': 'Curiosidad con imagen local',
+                'tipo': 'Historia',
+                'titulo': 'Titulo con imagen',
+                'imagen_manual': image_file,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
+
+        curiosidad = Curiosidad.objects.get(parada=self.parada)
+        self.assertTrue(bool(curiosidad.imagen_manual))
+
+    def test_obtener_curiosidad_parada_api_prioriza_imagen_manual(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosa',
+            texto='Texto',
+            tipo='Historia',
+            imagen_url='https://externa.example/curiosa.jpg',
+        )
+        curiosidad.imagen_manual.save(
+            'manual.png',
+            SimpleUploadedFile(
+                'manual.png',
+                b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+                content_type='image/png',
+            ),
+        )
+
+        with patch('rutas.services.obtener_o_generar_curiosidad_parada') as mock_obtener:
+            mock_obtener.return_value = (curiosidad, False)
+            url = reverse('parada-curiosidad', args=[self.parada.id])
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
+
+    def test_obtener_curiosidad_parada_api_preview_existente_prioriza_imagen_manual(self):
+        curiosidad = Curiosidad.objects.create(
+            parada=self.parada,
+            ciudad='Sevilla',
+            titulo='Curiosa preview',
+            texto='Texto preview',
+            tipo='Historia',
+            imagen_url='https://externa.example/preview.jpg',
+        )
+        curiosidad.imagen_manual.save(
+            'manual_preview.png',
+            SimpleUploadedFile(
+                'manual_preview.png',
+                b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR',
+                content_type='image/png',
+            ),
+        )
+
+        url = reverse('parada-curiosidad', args=[self.parada.id])
+        response = self.client.get(f'{url}?preview=1')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertTrue(data['persistida'])
+        self.assertFalse(data['generada'])
+        self.assertTrue(data['curiosidad']['imagen_url'].startswith('/media/'))
+        self.assertTrue(data['curiosidad']['manual_url'].startswith('/media/'))
 
     def test_guardar_curiosidad_parada_api_freemium_bloquea_cuarta_ruta(self):
         for index in range(2, 5):

@@ -35,6 +35,7 @@ from billing.tier_guard import (
     ensure_route_stop_add_allowed,
     get_allowed_moods_for_guia,
     get_session_capacity_limit,
+    is_feature_enabled_for_guia,
     get_usage_cycle_window,
     normalize_mood_values,
     tier_error_response,
@@ -46,6 +47,9 @@ from . import services
 from .models import Curiosidad, Guia, Parada, Ruta
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_CURIOUS_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_CURIOUS_IMAGE_SIZE = 5 * 1024 * 1024
 
 MAX_RUTAS_PAGE_SIZE = 9
 
@@ -102,6 +106,20 @@ def _render_ruta_no_autorizada(request):
         },
         status=403,
     )
+
+
+def _serializar_curiosidad(curiosidad: Curiosidad) -> dict:
+    return {
+        "id": curiosidad.id,
+        "parada_id": curiosidad.parada_id,
+        "ciudad": curiosidad.ciudad,
+        "titulo": curiosidad.titulo,
+        "texto": curiosidad.texto,
+        "tipo": curiosidad.tipo,
+        "imagen_url": curiosidad.imagen_public_url,
+        "manual_url": curiosidad.manual_url,
+        "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
+    }
 
 
 def _redirect_con_error_tier(path: str, exc: TierRuleViolation):
@@ -671,6 +689,7 @@ def ruta_detalle_view(request, ruta_id):
 
     if request.method == "POST":
         form_type = request.POST.get("form_type")
+        motivo_auditoria = request.POST.get("motivo", "")
 
         # ── Título / descripción (sin efecto en la geometría) ─────────────────
         if form_type == "title":
@@ -701,10 +720,17 @@ def ruta_detalle_view(request, ruta_id):
         if form_type == "stop_delete":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
+
             try:
-                services.eliminar_parada_y_reordenar(ruta, parada)
+                services.eliminar_parada_y_reordenar(
+                    ruta,
+                    parada,
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
+                )
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
+
             return redirect(f"{request.path}?stop_deleted=1")
 
         # ── Editar parada ─────────────────────────────────────────────────────
@@ -717,6 +743,8 @@ def ruta_detalle_view(request, ruta_id):
                     request.POST.get("nombre"),
                     request.POST.get("lat"),
                     request.POST.get("lon"),
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
                     descripcion=request.POST.get("descripcion", ""),
                 )
             except ValueError:
@@ -738,6 +766,8 @@ def ruta_detalle_view(request, ruta_id):
                     request.POST.get("lat"),
                     request.POST.get("lon"),
                     descripcion=request.POST.get("descripcion", ""),
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
                 )
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
@@ -753,12 +783,20 @@ def ruta_detalle_view(request, ruta_id):
                 return redirect(f"{request.path}?stop_error=1")
 
             # Validar que los IDs coinciden con las paradas de esta ruta
-            current_ids = set(ruta.paradas.values_list("id", flat=True))
-            if not ordered_ids or set(ordered_ids) != current_ids:
+            current_paradas = list(ruta.paradas.order_by("orden", "id"))
+            current_ids = {parada.id for parada in current_paradas}
+            if not ordered_ids:
+                ordered_ids = [parada.id for parada in current_paradas]
+            if set(ordered_ids) != current_ids:
                 return redirect(f"{request.path}?stop_error=1")
 
             try:
-                services.reordenar_paradas(ruta, ordered_ids)
+                services.reordenar_paradas(
+                    ruta,
+                    ordered_ids,
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
+                )
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
@@ -781,6 +819,9 @@ def ruta_detalle_view(request, ruta_id):
     ruta.refresh_from_db()
     paradas = sorted(ruta.paradas.all(), key=lambda p: p.orden)
     paradas_json = services.obtener_paradas_json(paradas)
+    auditoria_ruta = list(
+        ruta.auditoria.select_related("usuario", "parada").all()[:20]
+    )
 
     mood_choices_disponibles = get_allowed_moods_for_guia(ruta.guia)
     mood_choices_disponibles_set = set(mood_choices_disponibles)
@@ -798,6 +839,10 @@ def ruta_detalle_view(request, ruta_id):
         "ruta": ruta,
         "paradas": paradas,
         "paradas_json": paradas_json,
+        "auditoria_ruta": auditoria_ruta,
+        "ai_stop_replacement_enabled": is_feature_enabled_for_guia(
+            ruta.guia, 'ai_stop_replacement'
+        ),
         "paradas_con_curiosidad": paradas_con_curiosidad,
         # Geometría en formato Leaflet [[lat, lon], ...] (S2.1-31)
         "geometria_ruta_json": ruta.geometria_ruta_coords,
@@ -904,16 +949,7 @@ def obtener_curiosidad_parada_api(request, parada_id):
                     "status": "ok",
                     "generada": False,
                     "persistida": True,
-                    "curiosidad": {
-                        "id": curiosidad_existente.id,
-                        "parada_id": curiosidad_existente.parada_id,
-                        "ciudad": curiosidad_existente.ciudad,
-                        "titulo": curiosidad_existente.titulo,
-                        "texto": curiosidad_existente.texto,
-                        "tipo": curiosidad_existente.tipo,
-                        "imagen_url": curiosidad_existente.imagen_url,
-                        "fecha_generacion": curiosidad_existente.fecha_generacion.isoformat(),
-                    },
+                    "curiosidad": _serializar_curiosidad(curiosidad_existente),
                 },
                 json_dumps_params={"ensure_ascii": False},
             )
@@ -958,16 +994,7 @@ def obtener_curiosidad_parada_api(request, parada_id):
             "status": "ok",
             "generada": generada,
             "persistida": True,
-            "curiosidad": {
-                "id": curiosidad.id,
-                "parada_id": curiosidad.parada_id,
-                "ciudad": curiosidad.ciudad,
-                "titulo": curiosidad.titulo,
-                "texto": curiosidad.texto,
-                "tipo": curiosidad.tipo,
-                "imagen_url": curiosidad.imagen_url,
-                "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
-            },
+            "curiosidad": _serializar_curiosidad(curiosidad),
         },
         json_dumps_params={"ensure_ascii": False},
     )
@@ -978,13 +1005,21 @@ def obtener_curiosidad_parada_api(request, parada_id):
 @user_passes_test(es_guia)
 def guardar_curiosidad_parada_api(request, parada_id):
     """Guarda/actualiza una curiosidad manual por parada."""
-    try:
-        body = json.loads(request.body or "{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse(
-            {"status": "error", "mensaje": "JSON inválido."},
-            status=400,
-        )
+    is_multipart = bool(
+        request.content_type
+        and request.content_type.startswith("multipart/form-data")
+    )
+
+    if is_multipart:
+        body = request.POST
+    else:
+        try:
+            body = json.loads(request.body or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse(
+                {"status": "error", "mensaje": "JSON inválido."},
+                status=400,
+            )
 
     texto = (body.get("texto") or "").strip()
     tipo = (body.get("tipo") or "").strip()
@@ -1034,6 +1069,30 @@ def guardar_curiosidad_parada_api(request, parada_id):
 
     titulo = (body.get("titulo") or "").strip() or f"Curiosidad: {parada.nombre}"
     imagen_url = (body.get("imagen_url") or "").strip() or None
+    imagen_manual = request.FILES.get("imagen_manual") if is_multipart else None
+    eliminar_imagen_manual = str(body.get("eliminar_imagen_manual") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+    if imagen_manual:
+        if imagen_manual.content_type not in ALLOWED_CURIOUS_IMAGE_TYPES:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "mensaje": "Formato de imagen no permitido. Usa JPEG, PNG o WebP.",
+                },
+                status=400,
+            )
+        if imagen_manual.size > MAX_CURIOUS_IMAGE_SIZE:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "mensaje": "La imagen supera el tamaño máximo de 5MB.",
+                },
+                status=400,
+            )
 
     ciudad = (
         Curiosidad.objects.filter(parada=parada).values_list("ciudad", flat=True).first()
@@ -1048,30 +1107,34 @@ def guardar_curiosidad_parada_api(request, parada_id):
             "texto": texto,
             "tipo": tipo,
             "imagen_url": imagen_url,
+            "imagen_manual": imagen_manual,
         },
     )
 
     if not creada:
+        update_fields = ["titulo", "texto", "tipo", "imagen_url"]
         curiosidad.titulo = titulo
         curiosidad.texto = texto
         curiosidad.tipo = tipo
         curiosidad.imagen_url = imagen_url
-        curiosidad.save(update_fields=["titulo", "texto", "tipo", "imagen_url"])
+
+        if imagen_manual:
+            if curiosidad.imagen_manual:
+                curiosidad.imagen_manual.delete(save=False)
+            curiosidad.imagen_manual = imagen_manual
+            update_fields.append("imagen_manual")
+        elif eliminar_imagen_manual and curiosidad.imagen_manual:
+            curiosidad.imagen_manual.delete(save=False)
+            curiosidad.imagen_manual = None
+            update_fields.append("imagen_manual")
+
+        curiosidad.save(update_fields=update_fields)
 
     return JsonResponse(
         {
             "status": "ok",
             "creada": creada,
-            "curiosidad": {
-                "id": curiosidad.id,
-                "parada_id": curiosidad.parada_id,
-                "titulo": curiosidad.titulo,
-                "texto": curiosidad.texto,
-                "tipo": curiosidad.tipo,
-                "ciudad": curiosidad.ciudad,
-                "imagen_url": curiosidad.imagen_url,
-                "fecha_generacion": curiosidad.fecha_generacion.isoformat(),
-            },
+            "curiosidad": _serializar_curiosidad(curiosidad),
         },
         json_dumps_params={"ensure_ascii": False},
     )

@@ -11,8 +11,9 @@ import json
 import logging
 import math
 import os
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
 from django.db.models import Q
@@ -26,6 +27,8 @@ from billing.tier_guard import (
     TierRuleViolation,
     ensure_chat_mode_allowed,
     ensure_curiosity_route_allowed,
+    ensure_premium_for_quedada,
+    is_feature_enabled_for_guia,
     ensure_session_capacity_available,
     ensure_session_creation_allowed,
     tier_error_response,
@@ -34,10 +37,105 @@ from rutas import services as rutas_services
 from rutas.models import Curiosidad, Ruta
 
 from . import services
-from .models import MensajeChat, SesionTour, Turista, TuristaSesion, UbicacionVivo
+from .models import (
+    EntregaRecordatorioTurista,
+    MensajeChat,
+    RecordatorioSesion,
+    SesionTour,
+    Turista,
+    TuristaSesion,
+    UbicacionVivo,
+)
 
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_non_negative_float(value, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if not math.isfinite(number) or number < 0:
+        return float(default)
+    return float(number)
+
+
+def _location_thresholds(is_tourist: bool) -> tuple[float, float]:
+    if is_tourist:
+        return (
+            _coerce_non_negative_float(
+                getattr(settings, "TOURS_TOURIST_LOCATION_MIN_INTERVAL_SECONDS", 10.0),
+                10.0,
+            ),
+            _coerce_non_negative_float(
+                getattr(settings, "TOURS_TOURIST_LOCATION_MIN_DISTANCE_METERS", 8.0),
+                8.0,
+            ),
+        )
+    return (
+        _coerce_non_negative_float(
+            getattr(settings, "TOURS_GUIDE_LOCATION_MIN_INTERVAL_SECONDS", 3.0),
+            3.0,
+        ),
+        _coerce_non_negative_float(
+            getattr(settings, "TOURS_GUIDE_LOCATION_MIN_DISTANCE_METERS", 4.0),
+            4.0,
+        ),
+    )
+
+
+def _should_persist_location_update(
+    *,
+    sesion: SesionTour,
+    latitud: float,
+    longitud: float,
+    timestamp,
+    min_interval_seconds: float,
+    min_distance_meters: float,
+    usuario=None,
+    turista=None,
+) -> tuple[bool, UbicacionVivo | None, float | None, float | None]:
+    qs = UbicacionVivo.objects.filter(
+        sesion_tour=sesion,
+        coordenadas__isnull=False,
+    )
+    if usuario is not None:
+        qs = qs.filter(usuario=usuario)
+    elif turista is not None:
+        qs = qs.filter(turista=turista)
+    else:
+        return True, None, None, None
+
+    ultima = qs.order_by("-timestamp").first()
+    if not ultima or not ultima.coordenadas:
+        return True, None, None, None
+
+    elapsed_seconds = max(
+        0.0,
+        float((timestamp - ultima.timestamp).total_seconds()),
+    )
+    distance_meters = _distancia_haversine_m(
+        latitud,
+        longitud,
+        ultima.coordenadas.y,
+        ultima.coordenadas.x,
+    )
+    if elapsed_seconds < min_interval_seconds and distance_meters < min_distance_meters:
+        return False, ultima, elapsed_seconds, distance_meters
+    return True, ultima, elapsed_seconds, distance_meters
+def _is_private_chat_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'chat_mode_separate')
+    except Exception:
+        return False
+
+
+def _is_scheduled_meetup_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'scheduled_meetup')
+    except Exception:
+        return False
 
 
 def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -94,7 +192,8 @@ def _resolver_curiosidad_cercana(sesion: SesionTour, latitud: float, longitud: f
             "texto": curiosidad.texto,
             "tipo": curiosidad.tipo,
             "ciudad": curiosidad.ciudad,
-            "imagen_url": curiosidad.imagen_url,
+            "imagen_url": curiosidad.imagen_public_url,
+            "manual_url": curiosidad.manual_url,
         },
     }
 
@@ -133,6 +232,28 @@ def _serializar_mensaje(mensaje: MensajeChat, guia_user_id: int | None = None) -
     }
 
 
+def _serializar_recordatorio(recordatorio: RecordatorioSesion) -> dict:
+    alerta_en = recordatorio.hora_objetivo - timedelta(minutes=recordatorio.avisar_minutos_antes)
+    payload = {
+        "id": recordatorio.id,
+        "mensaje": recordatorio.mensaje,
+        "hora_objetivo": recordatorio.hora_objetivo.isoformat(),
+        "avisar_minutos_antes": recordatorio.avisar_minutos_antes,
+        "alerta_en": alerta_en.isoformat(),
+        "activo": recordatorio.activo,
+        "creado_en": recordatorio.creado_en.isoformat(),
+    }
+    if recordatorio.ubicacion_quedada:
+        payload["ubicacion_quedada"] = {
+            "lat": recordatorio.ubicacion_quedada.y,
+            "lng": recordatorio.ubicacion_quedada.x,
+            "etiqueta": recordatorio.etiqueta_quedada,
+        }
+    else:
+        payload["ubicacion_quedada"] = None
+    return payload
+
+
 def _render_join_error(request, mensaje: str, status: int = 400):
     return render(
         request,
@@ -168,6 +289,54 @@ def _render_sesion_no_activa_para_union(request):
         "Esta sesión aún no está activa. Espera a que el guía inicie el tour.",
         status=409,
     )
+
+
+def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
+    duracion_horas = float(sesion.ruta.duracion_horas or 0)
+    minutos_restantes = None
+    segundos_restantes = None
+
+    if (
+        sesion.estado == SesionTour.EN_CURSO
+        and sesion.fecha_inicio
+        and math.isfinite(duracion_horas)
+        and duracion_horas > 0
+    ):
+        referencia = now or timezone.now()
+        total_segundos = int(duracion_horas * 60 * 60)
+        pausa_acumulada = int(sesion.cronometro_segundos_pausa_acumulados or 0)
+        pausa_en_curso = 0
+        if sesion.cronometro_pausado and sesion.cronometro_pausado_desde:
+            pausa_en_curso = max(
+                0,
+                int((referencia - sesion.cronometro_pausado_desde).total_seconds()),
+            )
+
+        segundos_transcurridos = max(
+            0,
+            int((referencia - sesion.fecha_inicio).total_seconds()) - pausa_acumulada - pausa_en_curso,
+        )
+        segundos_restantes = max(0, total_segundos - segundos_transcurridos)
+        minutos_restantes = math.ceil(segundos_restantes / 60) if total_segundos > 0 else 0
+
+    curiosity_state = services.get_curiosity_state(sesion.id)
+
+    return {
+        "estado": sesion.estado,
+        "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
+        "duracion_horas": duracion_horas,
+        "minutos_restantes": minutos_restantes,
+        "segundos_restantes": segundos_restantes,
+        "cronometro_pausado": bool(sesion.cronometro_pausado),
+        "cronometro_pausado_desde": (
+            sesion.cronometro_pausado_desde.isoformat()
+            if sesion.cronometro_pausado_desde
+            else None
+        ),
+        "parada_actual_id": sesion.parada_actual_id,
+        "curiosidad_visible_parada_id": curiosity_state.get("visible_parada_id"),
+        "curiosidades_historial_paradas_ids": curiosity_state.get("history_parada_ids", []),
+    }
 
 
 # ===========================================================================
@@ -337,6 +506,8 @@ def mapa_turista_anonimo(request, token):
             "paradas_json":        json.dumps(snapshot["paradas"]),
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "current_user_name":   turista.alias,
+            "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
+            "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
         },
     )
 
@@ -434,13 +605,13 @@ def iniciar_tour(request, sesion_id):
         logger.exception("Error iniciando sesión %s", sesion.id)
         return _json_internal_error()
 
+    cronometro_payload = _build_cronometro_payload(sesion)
     return JsonResponse(
         {
             "message": "Tour iniciado correctamente.",
             "sesion_id": sesion.id,
-            "estado": sesion.estado,
             "codigo_acceso": sesion.codigo_acceso,
-            "fecha_inicio": sesion.fecha_inicio.isoformat(),
+            **cronometro_payload,
         }
     )
 
@@ -455,12 +626,89 @@ def estado_cronometro(request, sesion_id):
     if not services.tiene_acceso_a_sesion(request, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
 
+    return JsonResponse(_build_cronometro_payload(sesion))
+
+
+@login_required
+@require_POST
+def pausar_cronometro(request, sesion_id):
+    """Pausa el cronómetro de una sesión en curso sin finalizar la sesión."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "No se puede pausar una sesión finalizada."}, status=400)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse(
+            {"error": "Solo se puede pausar el cronómetro en sesiones en curso."},
+            status=409,
+        )
+
+    if sesion.cronometro_pausado:
+        return JsonResponse({"error": "El cronómetro ya está pausado."}, status=409)
+
+    sesion.cronometro_pausado = True
+    sesion.cronometro_pausado_desde = timezone.now()
+    sesion.save(update_fields=["cronometro_pausado", "cronometro_pausado_desde"])
+
     return JsonResponse(
         {
-            "estado": sesion.estado,
-            "fecha_inicio": sesion.fecha_inicio.isoformat() if sesion.fecha_inicio else None,
-            "duracion_horas": sesion.ruta.duracion_horas,
-            "parada_actual_id": sesion.parada_actual_id,
+            "message": "Cronómetro pausado correctamente.",
+            "sesion_id": sesion.id,
+            **_build_cronometro_payload(sesion),
+        }
+    )
+
+
+@login_required
+@require_POST
+def reanudar_cronometro(request, sesion_id):
+    """Reanuda el cronómetro y acumula la pausa transcurrida."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "No se puede reanudar una sesión finalizada."}, status=400)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse(
+            {"error": "Solo se puede reanudar el cronómetro en sesiones en curso."},
+            status=409,
+        )
+
+    if not sesion.cronometro_pausado:
+        return JsonResponse({"error": "El cronómetro no está pausado."}, status=409)
+
+    referencia = timezone.now()
+    pausa_desde = sesion.cronometro_pausado_desde or referencia
+    pausa_segundos = max(0, int((referencia - pausa_desde).total_seconds()))
+    sesion.cronometro_segundos_pausa_acumulados = int(
+        sesion.cronometro_segundos_pausa_acumulados or 0
+    ) + pausa_segundos
+    sesion.cronometro_pausado = False
+    sesion.cronometro_pausado_desde = None
+    sesion.save(
+        update_fields=[
+            "cronometro_segundos_pausa_acumulados",
+            "cronometro_pausado",
+            "cronometro_pausado_desde",
+        ]
+    )
+
+    return JsonResponse(
+        {
+            "message": "Cronómetro reanudado correctamente.",
+            "sesion_id": sesion.id,
+            **_build_cronometro_payload(sesion),
         }
     )
 
@@ -612,6 +860,8 @@ def mapa_guia(request, sesion_id):
             "geometria_ruta_json": snapshot["geometria_ruta"],
             "es_guia":             True,
             "current_user_name":   request.user.username,
+            "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
+            "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
         },
     )
 
@@ -665,10 +915,39 @@ def registrar_ubicacion(request):
     if not sesion.esta_activa:
         return _json_error("La sesión no está activa.", status=409)
 
+    timestamp = timezone.now()
+    min_interval_seconds, min_distance_meters = _location_thresholds(is_tourist=False)
+    should_persist, ultima, elapsed_seconds, distance_meters = _should_persist_location_update(
+        sesion=sesion,
+        latitud=latitud,
+        longitud=longitud,
+        timestamp=timestamp,
+        min_interval_seconds=min_interval_seconds,
+        min_distance_meters=min_distance_meters,
+        usuario=request.user,
+    )
+
+    if not should_persist:
+        return JsonResponse(
+            {
+                "status": "ignored",
+                "reason": "deduplicated",
+                "persisted": False,
+                "ubicacion_id": ultima.id if ultima else None,
+                "sesion_id": sesion.id,
+                "latitud": latitud,
+                "longitud": longitud,
+                "timestamp": timestamp.isoformat(),
+                "elapsed_seconds_since_last": elapsed_seconds,
+                "distance_meters_since_last": distance_meters,
+            },
+            status=200,
+        )
+
     try:
         ubicacion = UbicacionVivo.objects.create(
             coordenadas=Point(longitud, latitud, srid=4326),
-            timestamp=timezone.now(),
+            timestamp=timestamp,
             sesion_tour=sesion,
             usuario=request.user,
         )
@@ -678,6 +957,8 @@ def registrar_ubicacion(request):
 
     return JsonResponse(
         {
+            "status": "ok",
+            "persisted": True,
             "ubicacion_id": ubicacion.id,
             "sesion_id":    sesion.id,
             "latitud":      latitud,
@@ -774,33 +1055,57 @@ def registrar_ubicacion_turista(request, sesion_id):
     if not (-90 <= latitud <= 90) or not (-180 <= longitud <= 180):
         return JsonResponse({"error": "Coordenadas fuera de rango válido."}, status=400)
 
-    try:
-        ubicacion = UbicacionVivo.objects.create(
-            coordenadas=Point(longitud, latitud, srid=4326),
-            timestamp=timezone.now(),
-            sesion_tour=sesion,
-            usuario=None,
-            turista=turista,
-        )
-    except Exception:
-        logger.exception("Error registrando ubicación de turista en sesión %s", sesion.id)
-        return _json_internal_error()
+    timestamp = timezone.now()
+    min_interval_seconds, min_distance_meters = _location_thresholds(is_tourist=True)
+    should_persist, ultima, elapsed_seconds, distance_meters = _should_persist_location_update(
+        sesion=sesion,
+        latitud=latitud,
+        longitud=longitud,
+        timestamp=timestamp,
+        min_interval_seconds=min_interval_seconds,
+        min_distance_meters=min_distance_meters,
+        turista=turista,
+    )
+
+    ubicacion = None
+    if should_persist:
+        try:
+            ubicacion = UbicacionVivo.objects.create(
+                coordenadas=Point(longitud, latitud, srid=4326),
+                timestamp=timestamp,
+                sesion_tour=sesion,
+                usuario=None,
+                turista=turista,
+            )
+        except Exception:
+            logger.exception("Error registrando ubicación de turista en sesión %s", sesion.id)
+            return _json_internal_error()
+    else:
+        ubicacion = ultima
 
     curiosidad_cercana = None
     if sesion.estado == SesionTour.EN_CURSO:
         curiosidad_cercana = _resolver_curiosidad_cercana(sesion, latitud, longitud)
 
+    payload = {
+        "status": "ok" if should_persist else "ignored",
+        "reason": None if should_persist else "deduplicated",
+        "persisted": bool(should_persist),
+        "ubicacion_id": ubicacion.id if ubicacion else None,
+        "sesion_id": sesion.id,
+        "turista_id": turista.id,
+        "latitud": latitud,
+        "longitud": longitud,
+        "timestamp": timestamp.isoformat(),
+        "curiosidad_cercana": curiosidad_cercana,
+    }
+    if not should_persist:
+        payload["elapsed_seconds_since_last"] = elapsed_seconds
+        payload["distance_meters_since_last"] = distance_meters
+
     return JsonResponse(
-        {
-            "ubicacion_id": ubicacion.id,
-            "sesion_id": sesion.id,
-            "turista_id": turista.id,
-            "latitud": latitud,
-            "longitud": longitud,
-            "timestamp": ubicacion.timestamp.isoformat(),
-            "curiosidad_cercana": curiosidad_cercana,
-        },
-        status=201,
+        payload,
+        status=201 if should_persist else 200,
     )
 
 
@@ -826,13 +1131,35 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
     if not parada:
         return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
 
-    try:
-        curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
-            parada=parada,
-            ciudad="Sevilla",
-        )
-    except Exception:
-        return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
+    solo_existente = str(request.GET.get("solo_existente") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "si",
+    }
+
+    if solo_existente:
+        curiosidad = Curiosidad.objects.filter(parada=parada).first()
+        if not curiosidad:
+            return JsonResponse(
+                {
+                    "status": "ok",
+                    "parada": {
+                        "id": parada.id,
+                        "nombre": parada.nombre,
+                        "orden": parada.orden,
+                    },
+                    "curiosidad": None,
+                }
+            )
+    else:
+        try:
+            curiosidad, _generada = rutas_services.obtener_o_generar_curiosidad_parada(
+                parada=parada,
+                ciudad="Sevilla",
+            )
+        except Exception:
+            return JsonResponse({"error": "No se pudo obtener la curiosidad para esta parada."}, status=502)
 
     return JsonResponse(
         {
@@ -848,8 +1175,72 @@ def obtener_curiosidad_parada(request, sesion_id, parada_id):
                 "texto": curiosidad.texto,
                 "tipo": curiosidad.tipo,
                 "ciudad": curiosidad.ciudad,
-                "imagen_url": curiosidad.imagen_url,
+                "imagen_url": curiosidad.imagen_public_url,
+                "manual_url": curiosidad.manual_url,
             },
+        }
+    )
+
+
+@login_required
+@require_POST
+def actualizar_visibilidad_curiosidad(request, sesion_id, parada_id):
+    """Permite al guía mostrar/ocultar una curiosidad en el mapa de turistas."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "No autorizado."}, status=403)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "La sesión no está en curso."}, status=409)
+
+    parada = sesion.ruta.paradas.filter(id=parada_id).first()
+    if not parada:
+        return JsonResponse({"error": "La parada no pertenece a la ruta de la sesión."}, status=404)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        body = {}
+
+    visible = bool(body.get("visible"))
+    new_state = services.set_curiosity_visible_parada(
+        sesion.id,
+        parada_id if visible else None,
+    )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "parada_id": parada_id,
+            "visible": visible,
+            "curiosidad_visible_parada_id": new_state.get("visible_parada_id"),
+            "curiosidades_historial_paradas_ids": new_state.get("history_parada_ids", []),
+        }
+    )
+
+
+@require_GET
+def estado_curiosidades_sesion(request, sesion_id):
+    """Estado de visibilidad e historial de curiosidades para sincronizar turistas."""
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+
+    if not services.tiene_acceso_a_sesion(request, sesion):
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "La sesión está finalizada."}, status=410)
+
+    state = services.get_curiosity_state(sesion.id)
+    return JsonResponse(
+        {
+            "status": "ok",
+            "curiosidad_visible_parada_id": state.get("visible_parada_id"),
+            "curiosidades_historial_paradas_ids": state.get("history_parada_ids", []),
         }
     )
 
@@ -908,6 +1299,182 @@ def obtener_ubicaciones_turistas(request, sesion_id):
         )
 
     return JsonResponse({"turistas": resultados})
+
+
+# ===========================================================================
+# RECORDATORIOS / ALERTAS DE SESIÓN
+# ===========================================================================
+
+@require_http_methods(["GET", "POST"])
+def recordatorios_sesion(request, sesion_id):
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+    try:
+        ensure_premium_for_quedada(sesion)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
+
+    if request.method == "GET":
+        if not services.tiene_acceso_a_sesion(request, sesion):
+            return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+        recordatorios = list(
+            RecordatorioSesion.objects.filter(sesion_tour=sesion).order_by("hora_objetivo", "id")
+        )
+        return JsonResponse(
+            {
+                "recordatorios": [_serializar_recordatorio(r) for r in recordatorios],
+                "total": len(recordatorios),
+                "estado_sesion": sesion.estado,
+            }
+        )
+
+    if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
+        return JsonResponse({"error": "Solo el guía puede crear recordatorios."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"error": "No se pueden crear recordatorios en una sesión finalizada."}, status=410)
+
+    if sesion.estado != SesionTour.EN_CURSO:
+        return JsonResponse({"error": "Solo puedes crear recordatorios cuando el tour está en curso."}, status=409)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    mensaje = str(body.get("mensaje") or "").strip()
+    if not mensaje:
+        return JsonResponse({"error": "El mensaje del recordatorio es obligatorio."}, status=400)
+    if len(mensaje) > 5000:
+        return JsonResponse({"error": "El mensaje es demasiado largo (máximo 5000 caracteres)."}, status=400)
+
+    hora_objetivo_raw = body.get("hora_objetivo")
+    hora_objetivo = parse_datetime(str(hora_objetivo_raw or ""))
+    if not hora_objetivo:
+        return JsonResponse({"error": "hora_objetivo debe ser una fecha ISO-8601 válida."}, status=400)
+    if timezone.is_naive(hora_objetivo):
+        hora_objetivo = timezone.make_aware(hora_objetivo, timezone.get_current_timezone())
+
+    avisar_minutos_antes_raw = body.get("avisar_minutos_antes", 10)
+    try:
+        avisar_minutos_antes = int(avisar_minutos_antes_raw)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "avisar_minutos_antes debe ser un entero."}, status=400)
+    if avisar_minutos_antes < 0 or avisar_minutos_antes > 240:
+        return JsonResponse({"error": "avisar_minutos_antes debe estar entre 0 y 240."}, status=400)
+
+    ahora = timezone.now()
+    if hora_objetivo <= ahora:
+        return JsonResponse({"error": "La hora objetivo debe ser futura."}, status=400)
+
+    alerta_en = hora_objetivo - timedelta(minutes=avisar_minutos_antes)
+    if alerta_en <= ahora:
+        return JsonResponse(
+            {"error": "Con esa antelación, la alerta ya habría ocurrido. Ajusta hora o minutos."},
+            status=400,
+        )
+
+    meetup_lat = body.get("meetup_lat")
+    meetup_lng = body.get("meetup_lng")
+    etiqueta_quedada = str(body.get("etiqueta_quedada") or "").strip()
+    ubicacion_quedada = None
+
+    if meetup_lat is not None or meetup_lng is not None:
+        if meetup_lat is None or meetup_lng is None:
+            return JsonResponse({"error": "Debes enviar meetup_lat y meetup_lng juntos."}, status=400)
+        try:
+            lat = float(meetup_lat)
+            lng = float(meetup_lng)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "meetup_lat y meetup_lng deben ser numéricos."}, status=400)
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            return JsonResponse({"error": "Coordenadas de quedada fuera de rango válido."}, status=400)
+        ubicacion_quedada = Point(lng, lat, srid=4326)
+
+    recordatorio = RecordatorioSesion.objects.create(
+        sesion_tour=sesion,
+        creado_por=request.user,
+        mensaje=mensaje,
+        hora_objetivo=hora_objetivo,
+        avisar_minutos_antes=avisar_minutos_antes,
+        ubicacion_quedada=ubicacion_quedada,
+        etiqueta_quedada=etiqueta_quedada,
+    )
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "recordatorio": _serializar_recordatorio(recordatorio),
+        },
+        status=201,
+    )
+
+
+@require_GET
+def alertas_recordatorios(request, sesion_id):
+    sesion, error_response = _get_sesion_or_json_404(sesion_id)
+    if error_response:
+        return error_response
+    try:
+        ensure_premium_for_quedada(sesion)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
+
+    turista = services.obtener_turista_request(request)
+    if not turista:
+        return JsonResponse({"error": "Solo los turistas pueden consultar alertas."}, status=403)
+
+    es_participante_activo = TuristaSesion.objects.filter(
+        turista=turista,
+        sesion_tour=sesion,
+        activo=True,
+    ).exists()
+    if not es_participante_activo:
+        return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    if sesion.esta_finalizada:
+        return JsonResponse({"alertas": [], "total": 0, "estado_sesion": sesion.estado})
+
+    ahora = timezone.now()
+    ventana_pasado = ahora - timedelta(minutes=5)
+
+    candidatos = list(
+        RecordatorioSesion.objects.filter(
+            sesion_tour=sesion,
+            activo=True,
+            hora_objetivo__gte=ventana_pasado,
+        ).order_by("hora_objetivo", "id")
+    )
+
+    alertas = []
+    for recordatorio in candidatos:
+        alerta_en = recordatorio.hora_objetivo - timedelta(minutes=recordatorio.avisar_minutos_antes)
+        if alerta_en > ahora:
+            continue
+
+        entrega, created = EntregaRecordatorioTurista.objects.get_or_create(
+            recordatorio=recordatorio,
+            turista=turista,
+        )
+        if not created:
+            continue
+
+        alertas.append(
+            {
+                **_serializar_recordatorio(recordatorio),
+                "entregado_en": entrega.entregado_en.isoformat(),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "alertas": alertas,
+            "total": len(alertas),
+            "estado_sesion": sesion.estado,
+        }
+    )
 
 
 # ===========================================================================
@@ -983,15 +1550,22 @@ def enviar_mensaje(request, sesion_id):
     if error:
         return JsonResponse({"error": error}, status=403)
 
-    # Validación de tier solo para mensajes públicos
-    if not es_privado:
-        try:
-            ensure_chat_mode_allowed(sesion, modo_chat)
-        except TierRuleViolation as exc:
-            return tier_error_response(exc)
+    # Validación de tier para chat:
+    # - Público: usa el modo indicado por cliente.
+    # - Privado: fuerza modo separado para impedir bypass por payload directo.
+    try:
+        chat_mode_to_validate = "separado" if es_privado else modo_chat
+        ensure_chat_mode_allowed(sesion, chat_mode_to_validate)
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
 
     # Resolución del destinatario privado
     destinatario_turista = None
+    if es_privado and remitente_user and not destinatario_turista_id:
+        return JsonResponse(
+            {"error": "Debes indicar destinatario_turista_id para enviar mensajes privados del guía."},
+            status=400,
+        )
     if es_privado and remitente_user and destinatario_turista_id:
         # El guía envía a un turista concreto
         try:
@@ -1107,6 +1681,9 @@ def obtener_mensajes(request, sesion_id):
         parsed = parse_datetime(desde_str)
         if not parsed:
             return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        if timezone.is_naive(parsed):
+            # Compatibilidad: cuando no se indica zona horaria, tratamos el corte como UTC.
+            parsed = timezone.make_aware(parsed, dt_timezone.utc)
         desde_dt = parsed
         primer_id_mismo_momento = qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
         if primer_id_mismo_momento is None:
@@ -1184,6 +1761,11 @@ def bandeja_privada_guia(request, sesion_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
     if not request.user.is_authenticated or not services.es_guia_de_sesion(request.user, sesion):
         return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, 'separado')
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
  
     bandeja = services.obtener_bandeja_privada_guia(sesion)
     return JsonResponse({"bandeja": bandeja})
@@ -1204,17 +1786,30 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
     sesion = get_object_or_404(SesionTour, id=sesion_id)
     turista = get_object_or_404(Turista, id=turista_id)
  
-    # Verificar que el turista pertenece a la sesión
-    if not TuristaSesion.objects.filter(sesion_tour=sesion, turista=turista).exists():
+    pertenece_a_sesion = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        turista=turista,
+    ).exists()
+    if not pertenece_a_sesion:
         return JsonResponse({"error": "El turista no pertenece a esta sesión."}, status=404)
  
     # Control de acceso: guía o el propio turista
     es_guia_req = request.user.is_authenticated and services.es_guia_de_sesion(request.user, sesion)
     turista_cookie = services.obtener_turista_request(request)
-    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id
+    turista_activo = TuristaSesion.objects.filter(
+        sesion_tour=sesion,
+        turista=turista,
+        activo=True,
+    ).exists()
+    es_turista_propio = turista_cookie is not None and turista_cookie.id == turista.id and turista_activo
  
     if not es_guia_req and not es_turista_propio:
         return JsonResponse({"error": "Acceso denegado."}, status=403)
+
+    try:
+        ensure_chat_mode_allowed(sesion, 'separado')
+    except TierRuleViolation as exc:
+        return tier_error_response(exc)
  
     desde_str = request.GET.get("desde")
     limite_str = request.GET.get("limite", "50")
@@ -1231,6 +1826,9 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
         desde_dt = parse_datetime(desde_str)
         if not desde_dt:
             return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        if timezone.is_naive(desde_dt):
+            # Compatibilidad con clientes que envían ISO sin offset.
+            desde_dt = timezone.make_aware(desde_dt, dt_timezone.utc)
  
     mensajes = services.obtener_mensajes_privados_turista(sesion, turista, desde=desde_dt, limite=limite)
  

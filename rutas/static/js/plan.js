@@ -19,7 +19,7 @@
         feedbackBox.textContent = message;
     }
 
-    async function postJson(endpoint) {
+    async function postJson(endpoint, bodyData) {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -27,13 +27,66 @@
                 'X-Requested-With': 'XMLHttpRequest',
             },
             credentials: 'same-origin',
-            body: '{}',
+            body: JSON.stringify(bodyData || {}),
         });
         const payload = await response.json().catch(function () {
             return {};
         });
         return { response: response, payload: payload };
     }
+
+    async function syncCheckoutAfterSuccessRedirect() {
+        const searchParams = new URLSearchParams(window.location.search || '');
+        if (searchParams.get('billing') !== 'success') {
+            return;
+        }
+
+        const sessionId = (searchParams.get('session_id') || '').trim();
+        try {
+            const result = await postJson(
+                '/billing/sync-checkout-session/',
+                sessionId ? { session_id: sessionId } : {}
+            );
+            const response = result.response;
+            const payload = result.payload || {};
+
+            if (!response.ok) {
+                if (payload.code === 'BILLING_NOTHING_TO_SYNC') {
+                    return;
+                }
+                showFeedback(
+                    payload.mensaje || 'No se pudo sincronizar automáticamente el checkout.',
+                    'alert-warning'
+                );
+                return;
+            }
+
+            const premiumStates = ['active', 'trialing', 'past_due'];
+            if (premiumStates.includes(String(payload.subscription_status || '').toLowerCase())) {
+                showFeedback(
+                    'Pago confirmado. Tu plan Premium ya está activo. Actualizando página...',
+                    'alert-success'
+                );
+
+                window.setTimeout(function () {
+                    window.location.assign(window.location.pathname);
+                }, 1500);
+                return;
+            }
+
+            showFeedback(
+                'Checkout recibido. La suscripción sigue en verificación.',
+                'alert-warning'
+            );
+        } catch (_error) {
+            showFeedback(
+                'No se pudo sincronizar automáticamente el checkout. Recarga la página en unos segundos.',
+                'alert-warning'
+            );
+        }
+    }
+
+    syncCheckoutAfterSuccessRedirect();
 
     const upgradeButton = document.getElementById('btn-upgrade-plan');
     if (upgradeButton) {
