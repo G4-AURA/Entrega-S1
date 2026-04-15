@@ -3,6 +3,8 @@ Tests unitarios para tours/services.py
 
 Valida la lógica de negocio de servicios (autorización, turistas, códigos).
 """
+from unittest import mock
+
 from django.contrib.auth.models import User, AnonymousUser
 from django.test import TestCase, RequestFactory
 from django.utils import timezone
@@ -483,6 +485,24 @@ class RutaSnapshotCacheTests(TestCase):
         
         self.assertIsNotNone(snapshot)
         self.assertIn('paradas', snapshot)
+
+    def test_get_route_snapshot_reconstruye_si_payload_cache_invalido(self):
+        """Evita errores cuando la cache devuelve tipos inesperados."""
+        key = services.route_snapshot_cache_key(self.sesion.id)
+        cache.set(key, "payload_corrupto", timeout=180)
+
+        snapshot = services.get_route_snapshot(self.sesion)
+
+        self.assertIsInstance(snapshot, dict)
+        self.assertEqual(snapshot["sesion_id"], self.sesion.id)
+
+    def test_get_route_snapshot_degrada_si_cache_get_falla(self):
+        """Si Redis cae, se reconstruye desde BD sin propagar excepción."""
+        with mock.patch("tours.services.cache.get", side_effect=RuntimeError("redis caído")):
+            snapshot = services.get_route_snapshot(self.sesion)
+
+        self.assertIsInstance(snapshot, dict)
+        self.assertEqual(snapshot["sesion_id"], self.sesion.id)
 
     def test_invalidate_route_snapshot(self):
         """Verifica invalidación de snapshot"""
