@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis', # GeoDjango
+    'storages',
     'tours',
     'creacion',
     'rutas',
@@ -225,8 +226,19 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # --- MEDIA FILES (imágenes subidas por usuarios) ---
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# Si GS_BUCKET_NAME está definido (entorno Cloud Run) se usa Google Cloud Storage.
+# En local, sin esa variable, se usa el filesystem.
+GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', '')
+
+if GS_BUCKET_NAME:
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+    GS_DEFAULT_ACL = None
+    GS_QUERYSTRING_AUTH = False
+    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+else:
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
