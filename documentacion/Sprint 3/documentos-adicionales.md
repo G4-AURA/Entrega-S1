@@ -24,12 +24,12 @@
 
 ---
 ## 1. Contenido
-Este documento, aunque **NO ES NECESARIO EN LA ENTREGA**, contiene una extensa variedad de contenido adicional que se ha usado durante el desarrollo de la aplicación. 
+Este documento, aunque **no es necesario para la entrega**, contiene una extensa variedad de contenido adicional que se ha usado durante el desarrollo de la aplicación. 
 
 ## 2. Carpeta de usuarios piloto
 Carpeta contenedora de los documentos y recursos que han servido para el análisis y desarrollo de apartado de usuarios piloto de la aplicación.
 
-[Enlace carpeta Usuarios piloto]()
+[Enlace carpeta Usuarios piloto](https://github.com/G4-AURA/Entrega-S1/tree/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/usuarios-piloto)
 
 ## 3. Analisis de presupuesto
 Documento que presenta el análisis económico y financiero integral para el desarrollo, lanzamiento y mantenimiento de la plataforma AURA.
