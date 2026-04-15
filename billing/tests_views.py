@@ -7,6 +7,7 @@ from django.test import RequestFactory, SimpleTestCase, override_settings
 from billing.services import StripeAPIError
 from billing.views import create_checkout_session_view
 from billing.views import schedule_downgrade_view
+from billing.views import sync_checkout_session_view
 from rutas.models import Guia
 
 
@@ -106,6 +107,10 @@ class BillingCheckoutSessionViewTest(SimpleTestCase):
         self.assertIn('checkout_url', body)
         self.assertTrue(body['checkout_url'].startswith('https://checkout.stripe.com/'))
         mock_checkout.assert_called_once()
+        self.assertIn(
+            '{CHECKOUT_SESSION_ID}',
+            str(mock_checkout.call_args.kwargs.get('success_url') or ''),
+        )
         mock_subscription_create.assert_called_once()
 
     @override_settings(
@@ -128,6 +133,103 @@ class BillingCheckoutSessionViewTest(SimpleTestCase):
         body = self._json(response)
         self.assertEqual(response.status_code, 502)
         self.assertEqual(body.get('code'), 'BILLING_STRIPE_ERROR')
+
+
+class BillingSyncCheckoutSessionViewTest(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _request(self, body: str = '{}'):
+        return self.factory.post(
+            '/billing/sync-checkout-session/',
+            data=body,
+            content_type='application/json',
+        )
+
+    def _json(self, response):
+        return json.loads(response.content.decode('utf-8'))
+
+    def _auth_user(self):
+        return SimpleNamespace(
+            id=301,
+            email='guia-sync@example.com',
+            is_authenticated=True,
+        )
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_rechaza_anonimo(self):
+        request = self._request()
+        request.user = SimpleNamespace(is_authenticated=False)
+
+        response = sync_checkout_session_view(request)
+
+        self.assertEqual(response.status_code, 401)
+
+    @override_settings(STRIPE_ENABLED=False)
+    def test_rechaza_si_stripe_esta_deshabilitado(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        response = sync_checkout_session_view(request)
+
+        self.assertEqual(response.status_code, 503)
+
+    @override_settings(STRIPE_ENABLED=True)
+    def test_rechaza_si_no_hay_checkout_pendiente(self):
+        request = self._request()
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=9, tipo_suscripcion=Guia.Suscripcion.FREEMIUM)
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._find_pending_checkout_subscription', return_value=None):
+            response = sync_checkout_session_view(request)
+
+        body = self._json(response)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(body.get('code'), 'BILLING_NOTHING_TO_SYNC')
+
+    @override_settings(
+        STRIPE_ENABLED=True,
+        STRIPE_SECRET_KEY='sk_test_123',
+    )
+    def test_sincroniza_checkout_y_devuelve_estado_de_suscripcion(self):
+        request = self._request(body='{"session_id":"cs_test_sync_123"}')
+        request.user = self._auth_user()
+
+        guia_mock = SimpleNamespace(id=9, tipo_suscripcion=Guia.Suscripcion.FREEMIUM)
+        pending_subscription = SimpleNamespace(
+            metadata={'checkout_session_id': 'cs_test_sync_123'},
+        )
+        synced_subscription = SimpleNamespace(
+            status='active',
+            stripe_subscription_id='sub_test_sync_123',
+            current_period_end=None,
+        )
+
+        with patch('billing.views._obtener_guia_para_usuario', return_value=guia_mock), \
+             patch('billing.views._find_pending_checkout_subscription', return_value=pending_subscription), \
+             patch(
+                 'billing.views.fetch_checkout_session',
+                 return_value={
+                     'id': 'cs_test_sync_123',
+                     'mode': 'subscription',
+                     'status': 'complete',
+                     'payment_status': 'paid',
+                     'customer': 'cus_test_sync_123',
+                     'subscription': 'sub_test_sync_123',
+                     'metadata': {},
+                     'client_reference_id': '9',
+                 },
+             ), \
+             patch('billing.views._procesar_checkout_completed', return_value=synced_subscription) as mock_process:
+            response = sync_checkout_session_view(request)
+
+        body = self._json(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body.get('status'), 'OK')
+        self.assertEqual(body.get('subscription_status'), 'active')
+        payload_checkout = mock_process.call_args.args[0]
+        self.assertEqual(payload_checkout.get('metadata', {}).get('guia_id'), '9')
 
 
 class BillingDowngradeViewTest(SimpleTestCase):

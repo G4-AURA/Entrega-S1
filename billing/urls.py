@@ -26,6 +26,11 @@ urlpatterns = [
         name='schedule_downgrade',
     ),
     path(
+        'sync-checkout-session/',
+        views.sync_checkout_session_view,
+        name='sync_checkout_session',
+    ),
+    path(
         'webhook',
         views.stripe_webhook_view,
         name='stripe_webhook',

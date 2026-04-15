@@ -23,6 +23,7 @@ from .services import (
     StripeAPIError,
     StripeSignatureVerificationError,
     create_checkout_session,
+    fetch_checkout_session,
     fetch_subscription_snapshot,
     schedule_subscription_cancel_at_period_end,
     verify_stripe_signature,
@@ -98,12 +99,23 @@ def _resolver_urls_checkout(request, body: dict) -> tuple[str, str]:
     cancel_url_settings = str(getattr(settings, 'STRIPE_CHECKOUT_CANCEL_URL', '') or '').strip()
 
     base_url = request.build_absolute_uri('/').rstrip('/')
-    success_url_default = f'{base_url}/perfil/plan/?billing=success'
+    success_url_default = (
+        f'{base_url}/perfil/plan/?billing=success&session_id={{CHECKOUT_SESSION_ID}}'
+    )
     cancel_url_default = f'{base_url}/perfil/plan/?billing=cancel'
 
     success_url = success_url_body or success_url_settings or success_url_default
+    success_url = _append_checkout_session_param(success_url)
     cancel_url = cancel_url_body or cancel_url_settings or cancel_url_default
     return success_url, cancel_url
+
+
+def _append_checkout_session_param(url: str) -> str:
+    placeholder = '{CHECKOUT_SESSION_ID}'
+    if placeholder in str(url):
+        return str(url)
+    separator = '&' if '?' in str(url) else '?'
+    return f'{url}{separator}session_id={placeholder}'
 
 
 @csrf_exempt
@@ -196,6 +208,137 @@ def create_checkout_session_view(request):
             'status': 'OK',
             'session_id': checkout['id'],
             'checkout_url': checkout['url'],
+        },
+        status=200,
+    )
+
+
+def _find_pending_checkout_subscription(guia, checkout_session_id: str | None = None):
+    queryset = Subscription.objects.filter(
+        guia=guia,
+        tier=Guia.Suscripcion.PREMIUM,
+        status=Subscription.Status.INCOMPLETE,
+    ).order_by('-created_at')
+    if checkout_session_id:
+        queryset = queryset.filter(metadata__checkout_session_id=checkout_session_id)
+    return queryset.first()
+
+
+@csrf_exempt
+@require_POST
+def sync_checkout_session_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Debes iniciar sesión para sincronizar el checkout.'},
+            status=401,
+        )
+
+    if not getattr(settings, 'STRIPE_ENABLED', False):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Stripe no está habilitado en este entorno.'},
+            status=503,
+        )
+
+    if hasattr(request.user, 'turista'):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Solo los guías pueden sincronizar su suscripción.'},
+            status=403,
+        )
+
+    guia = _obtener_guia_para_usuario(request.user)
+    if guia is None:
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'Solo los guías pueden sincronizar su suscripción.'},
+            status=403,
+        )
+
+    try:
+        body = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        body = {}
+
+    checkout_session_id = str((body or {}).get('session_id') or '').strip()
+    local_subscription = _find_pending_checkout_subscription(guia, checkout_session_id or None)
+    if not checkout_session_id and local_subscription is not None:
+        metadata = local_subscription.metadata if isinstance(local_subscription.metadata, dict) else {}
+        checkout_session_id = str(metadata.get('checkout_session_id') or '').strip()
+
+    if not checkout_session_id:
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'No hay checkout pendiente para sincronizar.',
+                'code': 'BILLING_NOTHING_TO_SYNC',
+            },
+            status=409,
+        )
+
+    try:
+        checkout_session = fetch_checkout_session(
+            secret_key=getattr(settings, 'STRIPE_SECRET_KEY', ''),
+            checkout_session_id=checkout_session_id,
+        )
+    except StripeAPIError as exc:
+        logger.warning('Error Stripe sincronizando checkout %s: %s', checkout_session_id, exc)
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': str(exc), 'code': 'BILLING_STRIPE_ERROR'},
+            status=502,
+        )
+    except Exception:
+        logger.exception('Error inesperado sincronizando checkout %s', checkout_session_id)
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'No se pudo sincronizar el checkout.'},
+            status=500,
+        )
+
+    metadata = checkout_session.get('metadata') if isinstance(checkout_session, dict) else {}
+    metadata = metadata if isinstance(metadata, dict) else {}
+    metadata_guia_id = str(metadata.get('guia_id') or '').strip()
+    if metadata_guia_id and metadata_guia_id.isdigit() and int(metadata_guia_id) != int(guia.id):
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'El checkout no pertenece al guía autenticado.'},
+            status=403,
+        )
+
+    if not metadata_guia_id:
+        checkout_session = dict(checkout_session)
+        checkout_session['metadata'] = {
+            **metadata,
+            'guia_id': str(guia.id),
+        }
+
+    try:
+        subscription = _procesar_checkout_completed(checkout_session)
+    except Exception:
+        logger.exception('Error procesando sincronización del checkout %s', checkout_session_id)
+        return JsonResponse(
+            {'status': 'ERROR', 'mensaje': 'No se pudo aplicar la sincronización.'},
+            status=500,
+        )
+
+    if subscription is None:
+        return JsonResponse(
+            {
+                'status': 'ERROR',
+                'mensaje': 'No se encontró una suscripción vinculable al checkout.',
+                'code': 'BILLING_SUBSCRIPTION_NOT_FOUND',
+            },
+            status=409,
+        )
+
+    return JsonResponse(
+        {
+            'status': 'OK',
+            'mensaje': 'Checkout sincronizado correctamente.',
+            'checkout_status': checkout_session.get('status'),
+            'payment_status': checkout_session.get('payment_status'),
+            'subscription_status': subscription.status,
+            'stripe_subscription_id': subscription.stripe_subscription_id or '',
+            'current_period_end': (
+                subscription.current_period_end.isoformat()
+                if subscription.current_period_end
+                else None
+            ),
         },
         status=200,
     )
