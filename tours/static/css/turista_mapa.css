@@ -544,6 +544,13 @@ main.container {
     gap: 8px;
 }
 
+.timeline-item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .timeline-item.active {
     border-color: rgba(79, 70, 229, 0.4);
     box-shadow: 0 16px 34px rgba(79, 70, 229, 0.18);
