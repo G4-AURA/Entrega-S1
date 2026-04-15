@@ -2,6 +2,7 @@
 Django settings for config project.
 """
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url  # <--- NECESARIO PARA NEON (Asegúrate de tenerlo en requirements.txt)
@@ -41,6 +42,14 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 # DEBUG: En la nube será False. En local (si está en .env) será True.
 DEBUG = _env_bool('DEBUG', default=False)
+DATABASE_URL = os.getenv('DATABASE_URL')
+GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', '').strip()
+USE_GCS_MEDIA = bool(GS_BUCKET_NAME)
+IS_TESTING = (
+    'test' in sys.argv
+    or Path(sys.argv[0]).name in {'pytest', 'py.test'}
+    or os.getenv('PYTEST_CURRENT_TEST') is not None
+)
 
 # 1. ALLOWED_HOSTS: El punto al principio (.run.app) es la clave para subdominios
 ALLOWED_HOSTS = [
@@ -71,13 +80,21 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis', # GeoDjango
-    'storages',
     'tours',
     'creacion',
     'rutas',
     'allowList',
     'billing',
 ]
+
+if USE_GCS_MEDIA:
+    try:
+        import storages  # noqa: F401
+    except ModuleNotFoundError as exc:
+        raise ImproperlyConfigured(
+            'GS_BUCKET_NAME está definido pero falta instalar django-storages[google].'
+        ) from exc
+    INSTALLED_APPS.append('storages')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -129,9 +146,12 @@ DATABASES = {
 
 # Configuración para NUBE (Neon)
 # Si existe la variable DATABASE_URL, dj_database_url la usa para sobreescribir la configuración local.
-db_from_env = dj_database_url.config(conn_max_age=600, ssl_require=not DEBUG)
-
-if db_from_env:
+if DATABASE_URL:
+    db_from_env = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=not DEBUG,
+    )
     DATABASES['default'].update(db_from_env)
     # IMPORTANTE: dj_database_url pone el motor estándar de postgres.
     # Nosotros necesitamos PostGIS, así que lo forzamos aquí:
@@ -220,20 +240,36 @@ else:
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_BACKEND = (
+    'django.contrib.staticfiles.storage.StaticFilesStorage'
+    if IS_TESTING
+    else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+)
 
 # --- MEDIA FILES ---
-GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', '')
-
 if GS_BUCKET_NAME:
-    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.gcloud.GoogleCloudStorage',
+        },
+        'staticfiles': {
+            'BACKEND': STATICFILES_BACKEND,
+        },
+    }
     GS_DEFAULT_ACL = None
     GS_QUERYSTRING_AUTH = False
     MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
 else:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': STATICFILES_BACKEND,
+        },
+    }
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
-
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -325,7 +361,7 @@ _validar_configuracion_stripe()
 
 
 # --- SEGURIDAD SSL (SOLO PRODUCCIÓN) ---
-if not DEBUG:
+if not DEBUG and not IS_TESTING:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -337,21 +373,3 @@ else:
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
-
-
-
-#GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME")
-
-#DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
-
-#MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/"
-MEDIA_URL = f"https://storage.googleapis.com/{os.getenv('GS_BUCKET_NAME')}/"
-
-STORAGES = {
-    "default": {
-        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
