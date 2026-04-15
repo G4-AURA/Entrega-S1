@@ -17,9 +17,9 @@
 **Nombre del grupo:** AURA  
 
 **Tipo de documento:** Análisis  
-**Entrega:** S3  
+**Entrega:** S2  
 **Versión:** v1.0  
-**Fecha:** 15/04/26
+**Fecha:** 15/04/2026  
 </div>
 
 ---
@@ -58,50 +58,58 @@ A continuación, se muestra el análisis de desviaciones respecto a este objetiv
 
 ### 4.1. Tabla de desviaciones por miembro
 
-| Miembro                          | Horas reales |  Objetivo |  Desviación     | % sobre objetivo |
-|----------------------------------|---------------|------------|--------------|-------------------|
-| maxcor                           | 57:51         | 30h        | +27,8h       | 184%              |
-| Marruivaz1                       | 46:14         | 30h        | +16h         | 154%              |
-| nicpargen                        | 38:41         | 30h        | +8h          | 129%              |
-| fraayadia                        | 38:19         | 30h        | +8h          | 128%              |
-| Javluqrui                        | 35:47         | 30h        | +5h          | 119%              |
-| emiespeli                        | 35:31         | 30h        | +5h          | 118%              |
-| Mario Reyes Apresa               | 34:07         | 30h        | +4h          | 114%              |
-| Javier Ramírez Núñez             | 32:33         | 30h        | +2h          | 108%              |
-| Javier Manrique Riquelme         | 31:47         | 30h        | +1,7h        | 106%              |
-| Felipepn_13                      | 31:51         | 30h        | +1,8h        | 104%              |
-| Alexis Molins                    | 30:35         | 30h        | +0,5h        | 102%              |
-| Alberto José Paleteiro López     | 24:59         | 30h        | -5h          | 83%               |
-| Rafa Bermudo Álvarez             | 23:56         | 30h        | -6h          | 80%               |
+| Miembro | Horas reales | Objetivo | Desviación | % sobre objetivo |
+| :--- | :--- | :--- | :--- | :--- |
+| maxcor | 36:27 | 20h | +16,45h | 182% |
+| Marruivaz1 | 33:00 | 20h | +13,00h | 165% |
+| Javier Manrique Riquelme | 29:47 | 20h | +9,78h | 149% |
+| Mario Reyes Apresa | 29:16 | 20h | +9,27h | 146% |
+| fraayadia | 26:30 | 20h | +6,50h | 133% |
+| nicpargen | 26:03 | 20h | +6,05h | 130% |
+| Javluqrui | 25:14 | 20h | +5,23h | 126% |
+| Felipepn_13 | 23:44 | 20h | +3,73h | 119% |
+| Rafa Bermudo Álvarez | 23:33 | 20h | +3,55h | 118% |
+| emiespeli | 22:50 | 20h | +2,83h | 114% |
+| Javier Ramirez Núñez | 22:33 | 20h | +2,55h | 113% |
+| Alberto José Paleteiro López | 20:28 | 20h | +0,47h | 102% |
+| Alexis Molins | 16:57 | 20h | -3,04h | 85% |
 
 ---
 
 ## 4.2. Interpretación de resultados
 
 ### 4.2.1. Cumplimiento del objetivo
-- **El 85% del equipo ha cumplido o superado el mínimo exigido (30h)** 
-- Esto indica un **nivel de compromiso muy alto y generalizado** en el grupo.
+- El 92% del equipo ha cumplido o superado el mínimo exigido (20h).
+
+- Esto indica un nivel de compromiso muy alto y generalizado en el grupo a pesar de la reducción del tiempo de sprint.
 
 ### 4.2.2. Desviaciones significativas
-Se observan desviaciones al alza en la gran mayoría del equipo, aunque con dos perfiles que aún requieren ajuste:
+Se observan desviaciones al alza en casi la totalidad del equipo, destacando los siguientes perfiles:
 
-- Un **15% del equipo supera el 150% del objetivo**, con un máximo del 184%.
-- La mayor parte de los integrantes se encuentra en la franja del **102% al 130%**, lo que muestra una carga de trabajo constante.
+- Un 15% del equipo supera el 160% del objetivo, con un máximo del 182% vinculado a tareas de despliegue en Pre-producción.
 
-**Esto indica**:
-- Una mejor distribución del esfuerzo al ampliar el plazo a 3 semanas.
-- Persistencia de sobrecarga en roles críticos que asumen tareas de gran volumen.
-- Necesidad de apoyo puntual para los dos miembros que han quedado ligeramente por debajo del umbral de las 30h.
-  
+- La mayor parte de los integrantes se encuentra en la franja del 113% al 149%, lo que muestra una carga de trabajo constante y superior a la estimada.
+
+Esto indica:
+
+- Una alta intensidad de trabajo concentrada en un plazo de 2 semanas.
+
+- Persistencia de sobrecarga en roles críticos que asumen tareas de despliegue y documentación adicional.
+
+- Necesidad de apoyo puntual para el miembro que ha quedado por debajo del umbral de las 20h.
+
 ### 4.2.3. Posibles Soluciones para equilibrar al equipo
-- Se mantiene una **dispersión en la dedicación** entre el mínimo (~24h) y el máximo (~57h).
+- Se mantiene una dispersión en la dedicación entre el mínimo (~17h) y el máximo (~36h).
+
 - Es prioritario optimizar el reparto para evitar el agotamiento de los perfiles con mayor carga.
 
-**Posibles cambios**:
-- Delegar tareas de los perfiles con desviaciones superiores al 150%.
-- Balancear el reparto de tareas críticas.  
-- Seguimiento semanal de horas para detectar desviaciones a tiempo.
-- Reducir el alcance o redistribuir subtareas en el siguiente Sprint.
+Posibles cambios:
 
----
+- Delegar tareas de los perfiles con desviaciones superiores al 160%.
+
+- Balancear el reparto de tareas críticas de infraestructura y despliegue.
+
+- Seguimiento semanal de horas para detectar estas desviaciones de forma temprana.
+
+- Ajustar el alcance de las subtareas en el siguiente Sprint para normalizar la carga.
 
