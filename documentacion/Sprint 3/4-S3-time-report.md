@@ -43,7 +43,7 @@ Este documento permite visualizar de forma clara:
 
 ---
 ## 3. Enlace al informe de tiempo y esfuerzo 
-[Enlace time-report Sprint 3]()
+[Enlace time-report Sprint 3](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-S3-time-report.pdf)
 
 ---
 ## 4. Análisis de los resultados
