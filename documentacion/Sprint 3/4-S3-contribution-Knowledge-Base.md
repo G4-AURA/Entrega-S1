@@ -446,7 +446,7 @@ Este contenido se **actualiza de forma semanal** a partir del feedback recibido 
 
 ---
 
-### Semana 8 (9/03) - Sprint 3
+### Semana 8 (9/04) - Sprint 3
 
 #### Feedback AURA:
 - Inicio efectivo mal planteado, no hay killer opener real. Buscar hacerlo más corto e impactante.
