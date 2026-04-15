@@ -89,9 +89,7 @@ Permite a un usuario autenticarse en la plataforma mediante sus credenciales reg
 
 ### UC03 – Cerrar Sesión 
 
-Permite al usuario autenticado finalizar su sesión activa, garantizando la  
-
-seguridad y evitando accesos no autorizados desde el mismo dispositivo. 
+Permite al usuario autenticado finalizar su sesión activa, garantizando la seguridad y evitando accesos no autorizados desde el mismo dispositivo. 
 
  
 
@@ -108,9 +106,7 @@ seguridad y evitando accesos no autorizados desde el mismo dispositivo.
 
 ### UC04 – Personalizar Perfil 
 
-Permite al usuario editar su información personal como nombre, foto,  
-
-descripción o preferencias visibles dentro de la plataforma. 
+Permite al usuario editar su información personal como nombre, foto, descripción o preferencias visibles dentro de la plataforma. 
 
 **Felipe:** 
 - Funciona correctamente, a tener en cuenta la posibilidad de limitar las opciones de Universidad y Grado para que no se pueda poner información incorrecta y solo poder seleccionar universidades y grados reales. 
