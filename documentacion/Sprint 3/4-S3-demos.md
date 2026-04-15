@@ -31,8 +31,10 @@ El contenido de los vídeos se centra en la representación de los **casos de us
 
 Además, en las demos se reflejan los **distintos roles implicados en el sistema**, mostrando las interacciones entre ellos (por ejemplo, guía y turista) y cómo cada uno utiliza la plataforma en función de sus necesidades.
 
-## 2. Enlace al video demostrativo de las funcionalidades principales de la aplicación
+## 2. Enlace al video demostrativo de la presentación
 
 [Enlace demo presentacion Sprint 3]()
+
+## 3. Enlace al video demostrativo completo 
 
 [Enlace demo completa y comentada Sprint 3]()
