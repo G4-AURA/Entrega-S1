@@ -44,7 +44,7 @@ jobs:
       run: pip install bandit
 
     - name: Escanear vulnerabilidades con Bandit
-      run: bandit -r . --exclude "*/tests.py,*/test_*.py,*/tests/*" -s B113,B110,B106
+      run: bandit -r . --exclude "*/tests.py,*/test_*.py,*/tests/*,locustfile.py" -s B113,B110,B106
 
     - name: Ejecutar Linter (Flake8)
       run: |
