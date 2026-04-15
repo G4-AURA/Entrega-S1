@@ -6,7 +6,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from rutas.models import Parada, Ruta
+from creacion.models import Historial_ia
+from rutas.models import Parada, Ruta, Guia, AuthUser
 from tours.models import TURISTA
 
 
@@ -46,6 +47,8 @@ class GeneracionRutaIATestCase(TestCase):
         mock_consultar.return_value = self.ruta_ia
 
         guia_user = User.objects.create_user(username='guia1', password='1234')
+        auth_user = AuthUser.objects.create(user=guia_user)
+        Guia.objects.create(user=auth_user)
         self.client.login(username='guia1', password='1234')
 
         response = self.client.post(
@@ -54,12 +57,29 @@ class GeneracionRutaIATestCase(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         payload = response.json()
-        self.assertEqual(payload['status'], 'OK')
-        self.assertTrue(payload.get('datos', {}).get('ruta_id'))
+        self.assertEqual(payload['status'], 'Accepted')
+        session_id = payload.get('datos', {}).get('sesion_generacion_id')
+        
+        # Simular que Celery ha terminado creando el Historial_ia
+        Historial_ia.objects.create(
+            sesion_id=session_id,
+            estado_tarea='completado',
+            respuesta=self.ruta_ia,
+            prompt="Prompt test"
+        )
 
-        ruta = Ruta.objects.get(id=payload['datos']['ruta_id'])
+        # Polling para reconciliar
+        response_poll = self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id}))
+
+        # Ahora el catálogo debería tener la ruta
+        rutas = Ruta.objects.filter(guia=auth_user.guia)
+        poll_data = response_poll.json()
+        ruta_id = poll_data['datos'].get('ruta_id')
+        self.assertTrue(ruta_id)
+
+        ruta = Ruta.objects.get(id=ruta_id)
         self.assertEqual(ruta.guia.user.user, guia_user)
         self.assertEqual(ruta.titulo, f"Sevilla {timezone.localtime().strftime('%Y-%m-%d')}")
         self.assertTrue(ruta.es_generada_ia)
@@ -86,7 +106,9 @@ class GeneracionRutaIATestCase(TestCase):
 
 class CatalogoRutasIATestCase(TestCase):
     def test_filtro_solo_ia(self):
-        User.objects.create_user(username='guia2', password='1234')
+        user2 = User.objects.create_user(username='guia2', password='1234')
+        auth_user2 = AuthUser.objects.create(user=user2)
+        Guia.objects.create(user=auth_user2)
         self.client.login(username='guia2', password='1234')
 
         with patch('creacion.views.consultar_langgraph') as mock_consultar:
@@ -105,7 +127,7 @@ class CatalogoRutasIATestCase(TestCase):
                     }
                 ],
             }
-            self.client.post(
+            response_gen = self.client.post(
                 reverse('creacion:generar_ruta_ia'),
                 data=json.dumps({
                     'ciudad': 'Sevilla',
@@ -116,6 +138,19 @@ class CatalogoRutasIATestCase(TestCase):
                 }),
                 content_type='application/json',
             )
+            self.assertEqual(response_gen.status_code, 202)
+            session_id = response_gen.json()['datos']['sesion_generacion_id']
+            
+            # Simular que Celery ha terminado creando el Historial_ia
+            Historial_ia.objects.create(
+                sesion_id=session_id,
+                estado_tarea='completado',
+                respuesta=mock_consultar.return_value,
+                prompt="Prompt test"
+            )
+
+            # Polling para reconciliar
+            self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id}))
 
         response = self.client.get(reverse('rutas-catalogo') + '?tipo=ia')
         self.assertEqual(response.status_code, 200)
@@ -146,11 +181,16 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
             ],
         }
 
-        User.objects.create_user(username='guia_catalogo_1', password='1234')
+        user_1 = User.objects.create_user(username='guia_catalogo_1', password='1234')
+        AuthUser.objects.create(user=user_1)
+        Guia.objects.create(user=AuthUser.objects.get(user=user_1))
+        
         user_2 = User.objects.create_user(username='guia_catalogo_2', password='1234')
+        AuthUser.objects.create(user=user_2)
+        Guia.objects.create(user=AuthUser.objects.get(user=user_2))
 
         self.client.login(username='guia_catalogo_1', password='1234')
-        self.client.post(
+        resp1 = self.client.post(
             reverse('creacion:generar_ruta_ia'),
             data=json.dumps({
                 'ciudad': 'Sevilla',
@@ -161,10 +201,19 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
             }),
             content_type='application/json',
         )
+        self.assertEqual(resp1.status_code, 202)
+        session_id_1 = resp1.json()['datos']['sesion_generacion_id']
+        Historial_ia.objects.create(
+            sesion_id=session_id_1,
+            estado_tarea='completado',
+            respuesta=mock_consultar.return_value,
+            prompt="Prompt test 1"
+        )
+        self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id_1}))
         self.client.logout()
 
         self.client.login(username='guia_catalogo_2', password='1234')
-        self.client.post(
+        resp2 = self.client.post(
             reverse('creacion:generar_ruta_ia'),
             data=json.dumps({
                 'ciudad': 'Granada',
@@ -175,6 +224,15 @@ class CatalogoRutasUsuarioActualTestCase(TestCase):
             }),
             content_type='application/json',
         )
+        self.assertEqual(resp2.status_code, 202)
+        session_id_2 = resp2.json()['datos']['sesion_generacion_id']
+        Historial_ia.objects.create(
+            sesion_id=session_id_2,
+            estado_tarea='completado',
+            respuesta=mock_consultar.return_value,
+            prompt="Prompt test 2"
+        )
+        self.client.get(reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id_2}))
 
         response = self.client.get(reverse('rutas-catalogo'))
         self.assertEqual(response.status_code, 200)

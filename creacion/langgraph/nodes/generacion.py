@@ -24,6 +24,7 @@ from creacion.langgraph.utils import (
     construir_bloque_deseos,
     construir_bloque_metadata,
     llamar_gemini,
+    medir_tiempo_nodo,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ def _construir_pois_fallback_allowlist(ciudad: str, moods: list, cantidad_objeti
         return []
 
 
+@medir_tiempo_nodo
 def nodo_generacion(state: State) -> dict:
     """Genera POIs crudos con Gemini y los almacena en *pois_crudos*."""
     logger.debug("--- NODO 1: GENERACIÓN DE POIs ---")
@@ -97,9 +99,9 @@ def nodo_generacion(state: State) -> dict:
             moods=datos.get("mood") or [],
             cantidad_objetivo=objetivo_paradas,
         )
-        if len(pois_crudos) < objetivo_paradas:
+        if not pois_crudos:
             raise ErrorIntegracionIA(
-                "Gemini no respondió y no hay suficientes POIs en la allowlist para completar la ruta."
+                "Gemini no respondió y no hay ningún POI disponible en la allowlist para esta ciudad."
             ) from exc
 
     return {"pois_crudos": pois_crudos}

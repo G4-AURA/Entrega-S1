@@ -21,6 +21,8 @@
     const inputSugerenciasAdicionales = document.getElementById('input-sugerencias-adicionales');
     const moodButtonsContainer = form?.querySelector('.mood-buttons');
     const moodError = document.getElementById('mood-error');
+    const loadingProgressBar = document.getElementById('loading-progress-bar');
+    const loadingEta = document.getElementById('loading-eta');
     const IA_SESSION_STORAGE_KEY = 'aura_sesiones_generacion_ia';
     const feedback = window.AuraFeedback;
 
@@ -57,14 +59,75 @@
 
     function iniciarMensajesProgreso(tipo = 'generar') {
         detenerMensajesProgreso();
-        const steps = tipo === 'adicionales' ? PROGRESS_STEPS_ADICIONALES : PROGRESS_STEPS_GENERAR;
-        progressStepIndex = 0;
-        actualizarMensajeProgreso(steps[progressStepIndex]);
+        // Usamos los mensajes fijos para el inicio rápido
+        const step = (tipo === 'adicionales' ? PROGRESS_STEPS_ADICIONALES : PROGRESS_STEPS_GENERAR)[0];
+        actualizarMensajeProgreso(step);
+    }
 
-        progressTimerId = window.setInterval(() => {
-            progressStepIndex = (progressStepIndex + 1) % steps.length;
-            actualizarMensajeProgreso(steps[progressStepIndex]);
-        }, 5000);
+    function iniciarPollingProgreso(historialId) {
+        detenerMensajesProgreso();
+        
+        // Polling inmediato para la primera actualización
+        const poll = async () => {
+            try {
+                // Reemplazar el placeholder '0' generado por el template tag {% url ... historial_id=0 %}
+                const url = config.urls.progreso.replace('/0/', `/${historialId}/`);
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Error en polling de progreso');
+                
+                const data = await response.json();
+                if (data.status !== 'OK') throw new Error(data.mensaje || 'Error en respuesta de progreso');
+                
+                const { estado_tarea, cargando_porcentaje, eta_segundos, etapa_actual, datos_ruta, mensaje_error } = data.datos;
+                
+                // Actualizar UI
+                if (loadingProgressBar) {
+                    loadingProgressBar.style.width = `${cargando_porcentaje}%`;
+                    loadingProgressBar.setAttribute('aria-valuenow', cargando_porcentaje);
+                }
+                if (loadingEta) {
+                    loadingEta.textContent = eta_segundos > 0 ? `Tiempo est. restante: ~${eta_segundos}s` : '';
+                }
+                
+                // Mapeo de etapas a mensajes legibles
+                const mensajesEtapa = {
+                    'generacion': { title: 'Generando ruta con IA...', detail: 'El modelo Gemini está redactando tu itinerario.' },
+                    'validacion': { title: 'Validando coordenadas...', detail: 'Verificando existencia real de los puntos sugeridos.' },
+                    'scoring': { title: 'Evaluando calidad...', detail: 'Seleccionando la mejor combinación de paradas.' },
+                    'optimizacion': { title: 'Optimizando ruta...', detail: 'Calculando el orden logístico ideal para tu grupo.' }
+                };
+                
+                if (mensajesEtapa[etapa_actual]) {
+                    actualizarMensajeProgreso(mensajesEtapa[etapa_actual]);
+                }
+
+                if (estado_tarea === 'completado') {
+                    detenerMensajesProgreso();
+                    setCargando(false);
+                    // Mostrar resultados
+                    form.classList.add('d-none');
+                    document.getElementById('subtitulo-form').classList.add('d-none');
+                    renderizarRutaPropuesta(datos_ruta || {});
+                    
+                    estado.className = 'alert alert-success mt-3';
+                    estado.innerHTML = `Ruta generada con éxito. <span class="badge bg-primary ms-2">ID: ${historialId}</span>`;
+                    estado.classList.remove('d-none');
+                } else if (estado_tarea === 'error') {
+                    throw new Error(mensaje_error || 'Error desconocido en la generación IA');
+                }
+            } catch (error) {
+                console.error('Error en polling:', error);
+                detenerMensajesProgreso();
+                setCargando(false);
+                renderizarErrores(error.message);
+            }
+        };
+
+        // Disparo inicial inmediato
+        poll();
+        
+        // Intervalo de polling cada 1.5 segundos
+        progressTimerId = window.setInterval(poll, 1500);
     }
 
     function detenerMensajesProgreso() {
@@ -357,7 +420,7 @@
             );
         }
 
-        if (!response.ok || data.status !== 'OK') {
+        if (!response.ok || (data.status !== 'OK' && data.status !== 'Accepted')) {
             const error = new Error(data.mensaje || 'Error desconocido al generar la ruta');
             if (data?.errores && typeof data.errores === 'object') {
                 error.fieldErrors = data.errores;
@@ -598,14 +661,28 @@
         return data;
     }
 
-    document.querySelectorAll('.mood-btn input[type="checkbox"]').forEach(function (checkbox) {
-        checkbox.addEventListener('change', function () {
-            this.closest('.mood-btn').classList.toggle('active', this.checked);
-            if (this.checked) {
-                limpiarErrorMood();
+    console.log("AURA: route_personalization.js v3 initialized");
+
+    if (moodButtonsContainer) {
+        // Usar delegación de eventos 'change' (estándar para checkboxes dentro de labels)
+        moodButtonsContainer.addEventListener('change', function (e) {
+            const checkbox = e.target;
+            if (checkbox && checkbox.name === 'mood') {
+                const btn = checkbox.closest('.mood-btn');
+                if (btn) {
+                    btn.classList.toggle('active', checkbox.checked);
+                }
+                if (checkbox.checked) {
+                    limpiarErrorMood();
+                }
             }
         });
-    });
+
+        // Sincronizar estado inicial (fundamental para back-button o precarga)
+        moodButtonsContainer.querySelectorAll('input[name="mood"]').forEach(cb => {
+            cb.closest('.mood-btn')?.classList.toggle('active', cb.checked);
+        });
+    }
 
     if (selectExigencia) {
         selectExigencia.addEventListener('change', actualizarAyudaExigencia);
@@ -623,22 +700,17 @@
             let payload = await leerFormulario();
             payload = validarPayloadPersonalizacion(payload);
             const data = await enviarPeticion(payload);
-            sesionGeneracionActiva = data.sesion_generacion_id || null;
-
-            form.classList.add('d-none');
-            document.getElementById('subtitulo-form').classList.add('d-none');
-            renderizarRutaPropuesta(data.datos_ruta || {});
-
-            estado.className = 'alert alert-success mt-3';
-            estado.innerHTML = `
-                ${data.mensaje}
-                <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${data.checkpoint_actual || 'ruta_generada'}</span>
-            `;
-            estado.classList.remove('d-none');
+            
+            // Al recibir 202, inciamos el polling real
+            if (data.datos && data.datos.historial_id) {
+                sesionGeneracionActiva = data.datos.sesion_generacion_id || null;
+                iniciarPollingProgreso(data.datos.historial_id);
+            } else {
+                throw new Error('No se recibió el ID de seguimiento para la generación.');
+            }
         } catch (error) {
             console.error(error);
             renderizarErrores(error.message, error.fieldErrors || null);
-        } finally {
             setCargando(false);
         }
     });

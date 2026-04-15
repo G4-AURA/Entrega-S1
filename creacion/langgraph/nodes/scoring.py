@@ -16,9 +16,11 @@ from creacion.langgraph.utils import (
     calcular_diversidad_paradas,
 )
 
+from creacion.langgraph.utils import medir_tiempo_nodo
+
 logger = logging.getLogger(__name__)
 
-
+@medir_tiempo_nodo
 def nodo_scoring(state: State) -> dict:
     """
     Calcula métricas de calidad de los POIs validados.

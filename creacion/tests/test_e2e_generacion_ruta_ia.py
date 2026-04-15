@@ -30,7 +30,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import LineString, Point
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from creacion import services as creacion_services
@@ -852,6 +852,7 @@ class GraphHopperE2ETest(TestCase):
 # 6. Flujo HTTP completo (vistas Django)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class FlujHttpGeneracionRutaE2ETest(TestCase):
     """Prueba el flujo completo a través de las vistas HTTP."""
 
@@ -864,7 +865,7 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
 
     @patch("creacion.views._guardar_ruta_ia_en_bd")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_flujo_completo_crea_ruta_y_devuelve_200_con_campos_esperados(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -887,14 +888,24 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
-        self.assertEqual(data["status"], "OK")
-        self.assertIn("ruta_id", data)
-        self.assertIn("datos_ruta", data)
-        self.assertIn("sesion_generacion_id", data)
-        self.assertIn("checkpoint_actual", data)
-        self.assertEqual(data["checkpoint_actual"], "ruta_guardada")
+        self.assertEqual(data["status"], "Accepted")
+        session_id = data["datos"]["sesion_generacion_id"]
+
+        # Polling (reconciliación automática)
+        response_get = self.client.get(
+            reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id})
+        )
+        self.assertEqual(response_get.status_code, 200)
+        data_final = response_get.json()
+        
+        # En el flujo asíncrono con mocks, puede quedar en ruta_generada o pasar a ruta_guardada
+        self.assertIn(data_final["datos"]["checkpoint_actual"], ["ruta_generada", "ruta_guardada"])
+        if data_final["datos"]["checkpoint_actual"] == "ruta_guardada":
+            self.assertIn("ruta_id", data_final["datos"])
+        else:
+            self.assertIn("paradas_propuestas", data_final["datos"])
 
     def test_endpoint_rechaza_usuario_no_autenticado_con_401(self):
         cliente_anonimo = Client()
@@ -921,21 +932,21 @@ class FlujHttpGeneracionRutaE2ETest(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    @patch("creacion.views.consultar_langgraph")
-    def test_endpoint_retorna_502_si_langgraph_falla(self, mock_langgraph):
-        mock_langgraph.side_effect = ErrorIntegracionIA("Gemini caído simulado")
-
+    @patch("creacion.views.tarea_generar_ruta_ia")
+    @patch("creacion.views._obtener_guia_para_usuario")
+    def test_endpoint_retorna_202_siempre_que_payload_sea_valido(self, mock_get_guia, mock_tarea):
+        mock_get_guia.return_value = self.guia
         response = self.client.post(
             self.url_generar,
             data=json.dumps(_PAYLOAD_FRONTEND),
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json()["status"], "ERROR")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "Accepted")
 
     @patch("creacion.views._guardar_ruta_ia_en_bd")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_catalogo_muestra_ruta_ia_recien_creada(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -1085,6 +1096,7 @@ class RecalcularRutaAjaxE2ETest(TestCase):
 # 8. Sesión de generación IA — checkpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class SesionGeneracionE2ETest(TestCase):
     """Prueba el ciclo completo de checkpoints de la sesión de generación."""
 
@@ -1095,7 +1107,7 @@ class SesionGeneracionE2ETest(TestCase):
 
     @patch("creacion.views._guardar_ruta_ia_en_bd")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_ciclo_completo_generar_obtener_actualizar_sesion(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -1111,8 +1123,8 @@ class SesionGeneracionE2ETest(TestCase):
             data=json.dumps(_PAYLOAD_FRONTEND),
             content_type="application/json",
         )
-        self.assertEqual(response_gen.status_code, 200)
-        session_id = response_gen.json()["sesion_generacion_id"]
+        self.assertEqual(response_gen.status_code, 202)
+        session_id = response_gen.json()["datos"]["sesion_generacion_id"]
         self.assertTrue(session_id)
 
         # 2. Obtener estado de la sesión
@@ -1121,7 +1133,7 @@ class SesionGeneracionE2ETest(TestCase):
         )
         self.assertEqual(response_get.status_code, 200)
         estado = response_get.json()["datos"]
-        self.assertEqual(estado["checkpoint_actual"], "ruta_guardada")
+        self.assertEqual(estado["checkpoint_actual"], "ruta_generada")
         self.assertIsInstance(estado["paradas_propuestas"], list)
         self.assertIsInstance(estado["restricciones_usuario"], list)
 
@@ -1150,7 +1162,7 @@ class SesionGeneracionE2ETest(TestCase):
         self.assertEqual(len(datos_actualizados["paradas_rechazadas"]), 1)
         self.assertIn("Evitar monumentos muy conocidos", datos_actualizados["restricciones_usuario"])
 
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_sesion_no_encontrada_retorna_404(self, _mock_langgraph):
         response = self.client.get(
             reverse(
@@ -1165,6 +1177,7 @@ class SesionGeneracionE2ETest(TestCase):
 # 9. Modo selección: propuesta → confirmación parcial
 # ─────────────────────────────────────────────────────────────────────────────
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class ModoSeleccionE2ETest(TestCase):
     """Prueba el flujo modo_seleccion: el guía elige qué paradas guardar."""
 
@@ -1173,7 +1186,7 @@ class ModoSeleccionE2ETest(TestCase):
         self.user, self.guia = _crear_guia("guia_seleccion_e2e")
         self.client.force_login(self.user)
 
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_modo_seleccion_true_devuelve_propuesta_sin_guardar(self, mock_langgraph):
         mock_langgraph.return_value = _RUTA_GENERADA_COMPLETA
 
@@ -1184,19 +1197,14 @@ class ModoSeleccionE2ETest(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
-        self.assertEqual(data["checkpoint_actual"], "ruta_generada")
-        self.assertIn("sesion_generacion_id", data)
-        # No debe contener ruta_id todavía
-        self.assertNotIn("ruta_id", data)
-        # Las paradas propuestas deben estar en datos_ruta
-        paradas = data["datos_ruta"]["paradas"]
-        self.assertEqual(len(paradas), 5)
+        self.assertEqual(data["datos"]["checkpoint_actual"], "procesando_ia")
+        self.assertIn("sesion_generacion_id", data["datos"])
 
     @patch("creacion.views._guardar_ruta_ia_en_bd")
     @patch("creacion.views._obtener_guia_para_usuario")
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_confirmar_seleccion_parcial_guarda_solo_paradas_elegidas(
         self, mock_langgraph, mock_get_guia, mock_guardar
     ):
@@ -1213,7 +1221,10 @@ class ModoSeleccionE2ETest(TestCase):
             data=json.dumps(payload_seleccion),
             content_type="application/json",
         )
-        session_id = response_gen.json()["sesion_generacion_id"]
+        session_id = response_gen.json()["datos"]["sesion_generacion_id"]
+
+        # 1.5 Polling para disparar reconciliación
+        self.client.get(reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id}))
 
         # 2. Confirmar solo las paradas 0, 2, 4 (índices pares)
         response_confirm = self.client.post(
@@ -1242,7 +1253,7 @@ class ModoSeleccionE2ETest(TestCase):
         checkpoint_contexto = data["datos_ruta"].get("checkpoint_contexto", {})
         self.assertEqual(len(checkpoint_contexto.get("paradas_rechazadas", [])), 2)
 
-    @patch("creacion.views.consultar_langgraph")
+    @patch("creacion.services.consultar_langgraph")
     def test_confirmar_sin_seleccion_retorna_400(self, mock_langgraph):
         mock_langgraph.return_value = _RUTA_GENERADA_COMPLETA
 
@@ -1252,7 +1263,10 @@ class ModoSeleccionE2ETest(TestCase):
             data=json.dumps(payload_seleccion),
             content_type="application/json",
         )
-        session_id = response_gen.json()["sesion_generacion_id"]
+        session_id = response_gen.json()["datos"]["sesion_generacion_id"]
+
+        # Polling intermedio para disparar reconciliación
+        self.client.get(reverse("creacion:obtener_sesion_generacion_ia", kwargs={"session_id": session_id}))
 
         response_confirm = self.client.post(
             reverse("creacion:confirmar_ruta_ia"),

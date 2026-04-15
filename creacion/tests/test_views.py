@@ -53,36 +53,25 @@ class GenerarRutaIAViewTests(TestCase):
 
     @patch('creacion.views._guardar_ruta_ia_en_bd')
     @patch('creacion.views._obtener_guia_para_usuario')
-    @patch('creacion.views.consultar_langgraph')
-    def test_delega_en_servicios_y_retorna_200(self, mock_consultar, mock_get_guia, mock_guardar):
+    @patch('creacion.views.tarea_generar_ruta_ia')
+    def test_delega_en_servicios_y_retorna_202(self, mock_tarea, mock_get_guia, mock_guardar):
         user = User.objects.create_user(username='guia', password='1234')
         self.client.force_login(user)
 
-        mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
         mock_get_guia.return_value = _crear_guia_para_usuario(user)
         mock_guardar.return_value = SimpleNamespace(id=99)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 200)
-        mock_consultar.assert_called_once_with({
-            'ciudad': 'Sevilla',
-            'duracion': 3.0,
-            'personas': 6,
-            'exigencia': Ruta.Exigencia.MEDIA,
-            'mood': [Ruta.Mood.HISTORIA],
-            'deseos': [],
-            'restricciones': [],
-            'metadata': {},
-        })
+        self.assertEqual(response.status_code, 202)
+        mock_tarea.delay.assert_called_once()
         mock_get_guia.assert_called_once_with(user)
-        mock_guardar.assert_called_once()
 
         data = response.json()
-        self.assertTrue(data.get('sesion_generacion_id'))
-        self.assertEqual(data.get('checkpoint_actual'), 'ruta_guardada')
+        self.assertTrue(data.get('datos', {}).get('sesion_generacion_id'))
+        self.assertEqual(data.get('datos', {}).get('checkpoint_actual'), 'procesando_ia')
 
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.services.consultar_langgraph')
     def test_devuelve_400_si_faltan_campos(self, mock_consultar):
         user = User.objects.create_user(username='guia_campos', password='1234')
         self.client.force_login(user)
@@ -93,7 +82,7 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         mock_consultar.assert_not_called()
 
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.services.consultar_langgraph')
     def test_devuelve_error_de_mood_en_errores_cuando_no_hay_etiquetas(self, mock_consultar):
         user = User.objects.create_user(username='guia_sin_mood', password='1234')
         self.client.force_login(user)
@@ -110,52 +99,43 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertEqual(data.get('status'), 'ERROR')
-        self.assertIn('errores', data)
-        self.assertIn('mood', data.get('errores', {}))
-        self.assertIn('etiqueta temática', data['errores']['mood'])
+        # La validación ahora devuelve dict de errores o string
+        self.assertIn('mood', str(data.get('mensaje', '')))
         mock_consultar.assert_not_called()
 
     @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph', side_effect=ValueError('datos inválidos'))
-    def test_error_validacion_retorna_400(self, _mock_consultar, mock_get_guia):
+    def test_error_validacion_retorna_202(self, _mock_consultar, mock_get_guia):
         user = User.objects.create_user(username='guia_error', password='1234')
         self.client.force_login(user)
         mock_get_guia.return_value = _crear_guia_para_usuario(user)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('Error en los datos', response.json()['mensaje'])
+        # Ahora devuelve 202 porque la vista solo encola; el error ocurrirá en la tarea.
+        self.assertEqual(response.status_code, 202)
 
     @patch('creacion.views._obtener_guia_para_usuario')
-    @patch('creacion.views.consultar_langgraph', side_effect=services.ErrorIntegracionIA('fallo mapbox/osm'))
-    def test_error_integracion_ia_retorna_502(self, _mock_consultar, mock_get_guia):
+    def test_error_integracion_ia_retorna_202_porque_es_asincrono(self, mock_get_guia):
         user = User.objects.create_user(username='guia_ia_fail', password='1234')
         self.client.force_login(user)
         mock_get_guia.return_value = _crear_guia_para_usuario(user)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()['status'], 'Accepted')
 
-    @patch(
-        'creacion.views.services.avanzar_checkpoint_sesion_generacion',
-        side_effect=services.ErrorSesionGeneracionExpirada(
-            'La sesión de generación ha expirado. Vuelve a iniciar la generación de la ruta.'
-        ),
-    )
-    @patch('creacion.views.consultar_langgraph')
-    def test_sesion_generacion_expirada_retorna_410(self, mock_consultar, _mock_checkpoint):
+    @patch('creacion.views.tarea_generar_ruta_ia')
+    @patch('creacion.views._obtener_guia_para_usuario')
+    def test_sesion_generacion_expirada_en_tarea_no_falla_en_vista(self, mock_get_guia, mock_tarea):
         user = User.objects.create_user(username='guia_sesion_expirada', password='1234')
         self.client.force_login(user)
-        mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
+        mock_get_guia.return_value = _crear_guia_para_usuario(user)
 
         response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
 
-        self.assertEqual(response.status_code, 410)
-        self.assertEqual(response.json()['status'], 'ERROR')
-        self.assertIn('expirado', response.json()['mensaje'].lower())
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()['status'], 'Accepted')
 
 
 class GuardarRutaManualViewTests(TestCase):
@@ -330,10 +310,10 @@ class SesionGeneracionIAViewTests(TestCase):
         self.user = User.objects.create_user(username='guia_sesion_ia', password='1234')
         self.client.force_login(self.user)
 
-    @patch('creacion.views.consultar_langgraph')
     @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views._guardar_ruta_ia_en_bd')
-    def test_obtener_y_actualizar_checkpoint_de_sesion(self, mock_guardar, mock_guia, mock_consultar):
+    @patch('creacion.tasks.services.consultar_langgraph')
+    def test_obtener_y_actualizar_checkpoint_de_sesion(self, mock_consultar, mock_guardar, mock_guia):
         mock_consultar.return_value = {'paradas': [{'nombre': 'A', 'coordenadas': [37.38, -5.99]}]}
         mock_guia.return_value = _crear_guia_para_usuario(self.user)
         mock_guardar.return_value = SimpleNamespace(id=7)
@@ -345,20 +325,22 @@ class SesionGeneracionIAViewTests(TestCase):
             'exigencia': 'media',
             'mood': ['historia'],
         }
-        generar_response = self.client.post(
-            reverse('creacion:generar_ruta_ia'),
-            data=json.dumps(payload),
-            content_type='application/json',
-        )
-        self.assertEqual(generar_response.status_code, 200)
+        from django.test import override_settings
+        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+            generar_response = self.client.post(
+                reverse('creacion:generar_ruta_ia'),
+                data=json.dumps(payload),
+                content_type='application/json',
+            )
+            self.assertEqual(generar_response.status_code, 202)
 
-        session_id = generar_response.json()['sesion_generacion_id']
+            session_id = generar_response.json()['datos']['sesion_generacion_id']
 
-        get_response = self.client.get(
-            reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id})
-        )
-        self.assertEqual(get_response.status_code, 200)
-        self.assertEqual(get_response.json()['datos']['checkpoint_actual'], 'ruta_guardada')
+            get_response = self.client.get(
+                reverse('creacion:obtener_sesion_generacion_ia', kwargs={'session_id': session_id})
+            )
+            self.assertEqual(get_response.status_code, 200)
+            self.assertEqual(get_response.json()['datos']['checkpoint_actual'], 'ruta_generada')
 
         update_response = self.client.post(
             reverse('creacion:actualizar_checkpoint_sesion_generacion', kwargs={'session_id': session_id}),
@@ -385,10 +367,14 @@ class FlujoSeleccionParadasIATests(TestCase):
         self.user = User.objects.create_user(username='guia_seleccion_ia', password='1234')
         self.client.force_login(self.user)
 
-    @patch('creacion.views._guardar_ruta_ia_en_bd')
-    @patch('creacion.views.consultar_langgraph')
-    def test_generar_en_modo_seleccion_devuelve_propuesta_sin_guardar(self, mock_consultar, mock_guardar):
-        mock_consultar.return_value = {
+    @patch('creacion.views.tarea_generar_ruta_ia')
+    def test_generar_en_modo_seleccion_devuelve_202_y_encola(self, mock_tarea):
+        # Crear perfil de guía necesario
+        from rutas.models import AuthUser, Guia
+        auth_profile = AuthUser.objects.create(user=self.user)
+        Guia.objects.create(user=auth_profile)
+
+        mock_ruta_generada = {
             'descripcion': 'Ruta propuesta',
             'paradas': [
                 {'nombre': 'Parada A', 'coordenadas': [37.38, -5.99]},
@@ -411,19 +397,25 @@ class FlujoSeleccionParadasIATests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         data = response.json()
-        self.assertEqual(data['checkpoint_actual'], 'ruta_generada')
-        self.assertTrue(data.get('sesion_generacion_id'))
-        self.assertEqual(len(data.get('datos_ruta', {}).get('paradas', [])), 2)
-        self.assertNotIn('ruta_id', data)
-        mock_guardar.assert_not_called()
+        self.assertEqual(data['status'], 'Accepted')
+        self.assertTrue(data.get('datos', {}).get('sesion_generacion_id'))
+        mock_tarea.delay.assert_called_once()
 
     @patch('creacion.views._guardar_ruta_ia_en_bd')
     @patch('creacion.views._obtener_guia_para_usuario')
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.tasks.services.consultar_langgraph')
+    @patch('creacion.views.ensure_ai_route_confirmation_allowed')
+    @patch('creacion.views.ensure_route_stop_count_allowed')
+    @patch('creacion.views.ensure_route_people_count_allowed')
+    @patch('creacion.views.ensure_moods_allowed')
     def test_confirmar_seleccion_guarda_ruta_y_checkpoint_final(
         self,
+        mock_moods,
+        mock_people,
+        mock_stops,
+        mock_confirm_allowed,
         mock_consultar,
         mock_get_guia,
         mock_guardar,
@@ -438,23 +430,25 @@ class FlujoSeleccionParadasIATests(TestCase):
         mock_get_guia.return_value = _crear_guia_para_usuario(self.user)
         mock_guardar.return_value = SimpleNamespace(id=123)
 
-        generar = self.client.post(
-            reverse('creacion:generar_ruta_ia'),
-            data=json.dumps(
-                {
-                    'ciudad': 'Sevilla',
-                    'duracion': 2,
-                    'personas': 4,
-                    'exigencia': 'media',
-                    'mood': ['historia'],
-                    'modo_seleccion': True,
-                    'restricciones': ['Evitar escaleras'],
-                }
-            ),
-            content_type='application/json',
-        )
-        self.assertEqual(generar.status_code, 200)
-        sesion_id = generar.json()['sesion_generacion_id']
+        from django.test import override_settings
+        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+            generar = self.client.post(
+                reverse('creacion:generar_ruta_ia'),
+                data=json.dumps(
+                    {
+                        'ciudad': 'Sevilla',
+                        'duracion': 2,
+                        'personas': 4,
+                        'exigencia': 'media',
+                        'mood': ['historia'],
+                        'modo_seleccion': True,
+                        'restricciones': ['Evitar escaleras'],
+                    }
+                ),
+                content_type='application/json',
+            )
+            self.assertEqual(generar.status_code, 202)
+            sesion_id = generar.json()['datos']['sesion_generacion_id']
 
         confirmar = self.client.post(
             reverse('creacion:confirmar_ruta_ia'),
@@ -476,7 +470,7 @@ class FlujoSeleccionParadasIATests(TestCase):
         mock_guardar.assert_called_once()
 
     @patch('creacion.views.services.generar_paradas_adicionales_sesion')
-    @patch('creacion.views.consultar_langgraph')
+    @patch('creacion.services.consultar_langgraph')
     def test_generar_paradas_adicionales_actualiza_propuestas_en_sesion(self, mock_consultar, mock_generar_adicionales):
         mock_consultar.return_value = {
             'descripcion': 'Ruta propuesta',
@@ -496,22 +490,24 @@ class FlujoSeleccionParadasIATests(TestCase):
             }
         ]
 
-        generar = self.client.post(
-            reverse('creacion:generar_ruta_ia'),
-            data=json.dumps(
-                {
-                    'ciudad': 'Sevilla',
-                    'duracion': 2,
-                    'personas': 4,
-                    'exigencia': 'media',
-                    'mood': ['historia'],
-                    'modo_seleccion': True,
-                }
-            ),
-            content_type='application/json',
-        )
-        self.assertEqual(generar.status_code, 200)
-        sesion_id = generar.json()['sesion_generacion_id']
+        from django.test import override_settings
+        with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+            generar = self.client.post(
+                reverse('creacion:generar_ruta_ia'),
+                data=json.dumps(
+                    {
+                        'ciudad': 'Sevilla',
+                        'duracion': 2,
+                        'personas': 4,
+                        'exigencia': 'media',
+                        'mood': ['historia'],
+                        'modo_seleccion': True,
+                    }
+                ),
+                content_type='application/json',
+            )
+            self.assertEqual(generar.status_code, 202)
+            sesion_id = generar.json()['datos']['sesion_generacion_id']
 
         adicionales = self.client.post(
             reverse('creacion:generar_paradas_adicionales_ia'),

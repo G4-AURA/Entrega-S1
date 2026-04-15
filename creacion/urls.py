@@ -8,6 +8,7 @@ urlpatterns = [
     path('manual/', views.creacion_manual, name='creacion_manual'),
     path('generar/', views.generar_ruta, name='generar_ruta'),
     path('api/generar/', views.generar_ruta_ia, name='generar_ruta_ia'),
+    path('api/generar/progreso/<int:historial_id>/', views.obtener_progreso_ia, name='obtener_progreso_ia'),
     path('api/generar/confirmar/', views.confirmar_ruta_ia, name='confirmar_ruta_ia'),
     path('api/generar/adicionales/', views.generar_paradas_adicionales_ia, name='generar_paradas_adicionales_ia'),
     path('api/guardar-manual/', views.guardar_ruta_manual, name='guardar_ruta_manual'),
