@@ -23,6 +23,13 @@
 
 ---
 
+**Horas Trabajadas por Miembro:**
+* **Mario:** 00:58:56
+* **Rafa:** 00:58:06
+* **Alberto:** 01:02:15
+
+---
+
 ## **Listado casos de uso**  
 
 ## Map 

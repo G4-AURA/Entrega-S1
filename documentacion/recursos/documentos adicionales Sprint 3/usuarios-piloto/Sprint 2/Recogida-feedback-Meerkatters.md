@@ -23,6 +23,13 @@
 
 ---
 
+**Horas Trabajadas por Miembro:**
+* **Javier Ramnu:** 00:58:12
+* **Felipe:** 00:57:23
+* **Alexis:** 00:54:08
+
+---
+
 ## **Listado casos de uso** 
 
  

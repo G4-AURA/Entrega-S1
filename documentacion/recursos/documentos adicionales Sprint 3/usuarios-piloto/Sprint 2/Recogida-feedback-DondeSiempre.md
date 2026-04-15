@@ -23,6 +23,13 @@
 
 ---
 
+**Horas Trabajadas por Miembro:**
+* **Mario:** 01:01:34
+* **Rafa:** 00:57:53
+* **Alberto:** 00:58:54
+
+---
+
 ## **Listado casos de uso** 
 
 ## 1. Como tienda:  
