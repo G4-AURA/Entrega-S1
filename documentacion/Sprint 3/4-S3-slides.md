@@ -31,6 +31,8 @@ Con el objetivo de garantizar la integridad del contenido y evitar cualquier tip
 
 Este archivo recoge de manera estructurada los aspectos clave del proyecto que hemos recogido en el feedback, sirviendo como soporte visual durante la exposición y como referencia para la evaluación.
 
+Hay algunas diapositivas que no se visualizan correctamente en la vista previa de GitHub. Es recomendable descargarse el documento de la presentación para verla de manera adecuada.
+
 ## 2. Enlace al documento que contiene las transparencias
 
 [Enlace a las slides Sprint 3](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-S3-slides.pdf)
