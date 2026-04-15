@@ -22,7 +22,7 @@ from django.db.models import Prefetch
 import requests
 from config.gemini_keys import iter_gemini_api_keys, is_quota_or_rate_limit_error
 
-from .models import Curiosidad, Parada, Ruta
+from .models import Curiosidad, Parada, Ruta, RutaAuditoria
 from tours.models import SESION_TOUR
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,42 @@ def _es_misma_duracion(ruta, duracion_horas):
     except (TypeError, ValueError):
         return False
     return math.isclose(actual, duracion_horas, rel_tol=0.0, abs_tol=1e-9)
+
+
+def registrar_evento_auditoria_ruta(
+    ruta,
+    tipo_evento,
+    *,
+    parada=None,
+    usuario=None,
+    motivo='',
+    detalles=None,
+    parada_id_snapshot=None,
+    parada_nombre_snapshot=None,
+    parada_orden_snapshot=None,
+):
+    if not ruta.es_generada_ia:
+        return None
+
+    detalles_normalizados = detalles if isinstance(detalles, dict) else {}
+    if parada_id_snapshot is None:
+        parada_id_snapshot = getattr(parada, 'id', None)
+    if parada_nombre_snapshot is None:
+        parada_nombre_snapshot = getattr(parada, 'nombre', '') or ''
+    if parada_orden_snapshot is None:
+        parada_orden_snapshot = getattr(parada, 'orden', None)
+
+    return RutaAuditoria.objects.create(
+        ruta=ruta,
+        parada=parada,
+        parada_id_snapshot=parada_id_snapshot,
+        parada_nombre_snapshot=parada_nombre_snapshot,
+        parada_orden_snapshot=parada_orden_snapshot,
+        tipo_evento=tipo_evento,
+        usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
+        motivo=(motivo or '').strip(),
+        detalles=detalles_normalizados,
+    )
 
 
 # ================================================
@@ -214,7 +250,21 @@ def actualizar_exigencia_ruta(ruta, raw_exigencia):
     ruta.save(update_fields=["nivel_exigencia"])
 
 
-def eliminar_parada_y_reordenar(ruta, parada):
+def eliminar_parada_y_reordenar(ruta, parada, *, usuario=None, motivo=''):
+    registrar_evento_auditoria_ruta(
+        ruta,
+        RutaAuditoria.TipoEvento.PARADA_ELIMINADA,
+        parada=parada,
+        usuario=usuario,
+        motivo=motivo,
+        detalles={
+            'parada': {
+                'id': parada.id,
+                'nombre': parada.nombre,
+                'orden': parada.orden,
+            }
+        },
+    )
     parada.delete()
     for index, parada_restante in enumerate(ruta.paradas.order_by("orden", "id"), start=1):
         if parada_restante.orden != index:
@@ -239,7 +289,13 @@ def _validar_coordenadas(raw_lat, raw_lon):
         raise ValueError("Coordenadas inválidas")
 
 
-def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
+def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion='', *, usuario=None, motivo=''):
+    nombre_anterior = parada.nombre
+    descripcion_anterior = parada.descripcion
+    coordenadas_anteriores = None
+    if parada.coordenadas:
+        coordenadas_anteriores = [parada.coordenadas.y, parada.coordenadas.x]
+
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -253,9 +309,31 @@ def editar_parada(parada, raw_nombre, raw_lat, raw_lon, descripcion=''):
     parada.descripcion = descripcion_limpia
     parada.coordenadas = Point(lon, lat, srid=4326)
     parada.save(update_fields=["nombre", "descripcion", "coordenadas"])
+    registrar_evento_auditoria_ruta(
+        parada.ruta,
+        RutaAuditoria.TipoEvento.PARADA_MODIFICADA,
+        parada=parada,
+        usuario=usuario,
+        motivo=motivo,
+        parada_nombre_snapshot=nombre_anterior,
+        parada_orden_snapshot=parada.orden,
+        parada_id_snapshot=parada.id,
+        detalles={
+            'antes': {
+                'nombre': nombre_anterior,
+                'descripcion': descripcion_anterior,
+                'coordenadas': coordenadas_anteriores,
+            },
+            'despues': {
+                'nombre': parada.nombre,
+                'descripcion': parada.descripcion,
+                'coordenadas': [parada.coordenadas.y, parada.coordenadas.x],
+            },
+        },
+    )
 
 
-def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
+def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion='', *, usuario=None, motivo=''):
     nombre = (raw_nombre or "").strip()
     if not nombre:
         raise ValueError("El nombre no puede estar vacío")
@@ -265,16 +343,31 @@ def añadir_parada(ruta, raw_nombre, raw_lat, raw_lon, descripcion=''):
     lat, lon = _validar_coordenadas(raw_lat, raw_lon)
 
     ultimo_orden = ruta.paradas.order_by("-orden").values_list("orden", flat=True).first() or 0
-    Parada.objects.create(
+    parada = Parada.objects.create(
         ruta=ruta,
         orden=ultimo_orden + 1,
         nombre=nombre,
         descripcion=(descripcion or "").strip()[:500],
         coordenadas=Point(lon, lat, srid=4326),
     )
+    registrar_evento_auditoria_ruta(
+        ruta,
+        RutaAuditoria.TipoEvento.PARADA_ANADIDA,
+        parada=parada,
+        usuario=usuario,
+        motivo=motivo,
+        detalles={
+            'parada': {
+                'id': parada.id,
+                'nombre': parada.nombre,
+                'orden': parada.orden,
+                'coordenadas': [parada.coordenadas.y, parada.coordenadas.x],
+            }
+        },
+    )
 
 
-def reordenar_paradas(ruta, ordered_ids):
+def reordenar_paradas(ruta, ordered_ids, *, usuario=None, motivo=''):
     """
     Actualiza el campo `orden` de cada parada según la nueva secuencia.
 
@@ -282,11 +375,28 @@ def reordenar_paradas(ruta, ordered_ids):
         ordered_ids: Lista de IDs enteros ya parseada por la vista.
     """
     paradas_by_id = {parada.id: parada for parada in ruta.paradas.all()}
+    orden_anterior = [
+        {'id': parada.id, 'nombre': parada.nombre, 'orden': parada.orden}
+        for parada in ruta.paradas.order_by('orden', 'id')
+    ]
     for index, parada_id in enumerate(ordered_ids, start=1):
         parada = paradas_by_id.get(parada_id)
         if parada and parada.orden != index:
             parada.orden = index
             parada.save(update_fields=["orden"])
+    registrar_evento_auditoria_ruta(
+        ruta,
+        RutaAuditoria.TipoEvento.PARADAS_REORDENADAS,
+        usuario=usuario,
+        motivo=motivo,
+        detalles={
+            'antes': orden_anterior,
+            'despues': [
+                {'id': parada.id, 'nombre': parada.nombre, 'orden': parada.orden}
+                for parada in ruta.paradas.order_by('orden', 'id')
+            ],
+        },
+    )
 
 
 def actualizar_moods(ruta, raw_moods):

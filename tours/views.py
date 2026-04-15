@@ -11,7 +11,7 @@ import json
 import logging
 import math
 import os
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -1681,6 +1681,9 @@ def obtener_mensajes(request, sesion_id):
         parsed = parse_datetime(desde_str)
         if not parsed:
             return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        if timezone.is_naive(parsed):
+            # Compatibilidad: cuando no se indica zona horaria, tratamos el corte como UTC.
+            parsed = timezone.make_aware(parsed, dt_timezone.utc)
         desde_dt = parsed
         primer_id_mismo_momento = qs.filter(momento=desde_dt).order_by("id").values_list("id", flat=True).first()
         if primer_id_mismo_momento is None:
@@ -1823,6 +1826,9 @@ def mensajes_privados_hilo(request, sesion_id, turista_id):
         desde_dt = parse_datetime(desde_str)
         if not desde_dt:
             return JsonResponse({"error": "El parámetro desde debe ser una fecha ISO-8601 válida."}, status=400)
+        if timezone.is_naive(desde_dt):
+            # Compatibilidad con clientes que envían ISO sin offset.
+            desde_dt = timezone.make_aware(desde_dt, dt_timezone.utc)
  
     mensajes = services.obtener_mensajes_privados_turista(sesion, turista, desde=desde_dt, limite=limite)
  

@@ -638,6 +638,7 @@ def ruta_detalle_view(request, ruta_id):
 
     if request.method == "POST":
         form_type = request.POST.get("form_type")
+        motivo_auditoria = request.POST.get("motivo", "")
 
         # ── Título / descripción (sin efecto en la geometría) ─────────────────
         if form_type == "title":
@@ -668,7 +669,12 @@ def ruta_detalle_view(request, ruta_id):
         if form_type == "stop_delete":
             parada_id = request.POST.get("parada_id")
             parada = get_object_or_404(Parada, id=parada_id, ruta=ruta)
-            services.eliminar_parada_y_reordenar(ruta, parada)
+            services.eliminar_parada_y_reordenar(
+                ruta,
+                parada,
+                usuario=request.user,
+                motivo=motivo_auditoria,
+            )
             return redirect(f"{request.path}?stop_deleted=1")
 
         # ── Editar parada ─────────────────────────────────────────────────────
@@ -681,6 +687,8 @@ def ruta_detalle_view(request, ruta_id):
                     request.POST.get("nombre"),
                     request.POST.get("lat"),
                     request.POST.get("lon"),
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
                     descripcion=request.POST.get("descripcion", ""),
                 )
             except ValueError:
@@ -702,6 +710,8 @@ def ruta_detalle_view(request, ruta_id):
                     request.POST.get("lat"),
                     request.POST.get("lon"),
                     descripcion=request.POST.get("descripcion", ""),
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
                 )
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
@@ -725,7 +735,12 @@ def ruta_detalle_view(request, ruta_id):
                 return redirect(f"{request.path}?stop_error=1")
 
             try:
-                services.reordenar_paradas(ruta, ordered_ids)
+                services.reordenar_paradas(
+                    ruta,
+                    ordered_ids,
+                    usuario=request.user,
+                    motivo=motivo_auditoria,
+                )
             except ValueError:
                 return redirect(f"{request.path}?stop_error=1")
 
@@ -748,6 +763,9 @@ def ruta_detalle_view(request, ruta_id):
     ruta.refresh_from_db()
     paradas = sorted(ruta.paradas.all(), key=lambda p: p.orden)
     paradas_json = services.obtener_paradas_json(paradas)
+    auditoria_ruta = list(
+        ruta.auditoria.select_related("usuario", "parada").all()[:20]
+    )
 
     mood_choices_disponibles = get_allowed_moods_for_guia(ruta.guia)
     mood_choices_disponibles_set = set(mood_choices_disponibles)
@@ -765,6 +783,7 @@ def ruta_detalle_view(request, ruta_id):
         "ruta": ruta,
         "paradas": paradas,
         "paradas_json": paradas_json,
+        "auditoria_ruta": auditoria_ruta,
         "ai_stop_replacement_enabled": is_feature_enabled_for_guia(
             ruta.guia, 'ai_stop_replacement'
         ),
