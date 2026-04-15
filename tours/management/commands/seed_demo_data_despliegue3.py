@@ -23,7 +23,7 @@ from tours.models import SESION_TOUR, TURISTA, TURISTASESION
 
 
 SEED_SOURCE = "seed_demo_data_despliegue3"
-DEMO_PASSWORD = "demo123"
+DEMO_PASSWORD = "demo123"  # nosec B105 - contraseña demo para dataset de seed no productivo
 
 
 GUIDES_DATA = [
