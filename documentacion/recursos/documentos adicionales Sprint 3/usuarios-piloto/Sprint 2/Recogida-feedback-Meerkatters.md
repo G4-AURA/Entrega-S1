@@ -31,17 +31,10 @@
 
 ### UC01 – Registrarse 
 
-Permite a un usuario no autenticado crear una cuenta en la plataforma  
+Permite a un usuario no autenticado crear una cuenta en la plataforma proporcionando sus datos básicos. Durante el registro se valida si el dominio del correo pertenece a una institución reconocida para aplicar posibles beneficios o restricciones. 
 
-proporcionando sus datos básicos. Durante el registro se valida si el dominio  
-
-del correo pertenece a una institución reconocida para aplicar posibles  
-
-beneficios o restricciones. 
-
- 
-
-**Felipe:** tanto la política de privacidad como términos de servicio no muestran nada, además no se puede registrar ni mediante google o LinkedIn, otra cosa a tener en cuenta es poder elegir si registrarte como profesor o alumno, y por último, deberían estar puestas las condiciones para que se considere valida la contraseña. 
+**Felipe:** 
+- tanto la política de privacidad como términos de servicio no muestran nada, además no se puede registrar ni mediante google o LinkedIn, otra cosa a tener en cuenta es poder elegir si registrarte como profesor o alumno, y por último, deberían estar puestas las condiciones para que se considere valida la contraseña. 
 
 **Alexis:** 
 - Botones de registrarse con Google o LinkedIn no tienen utilidad al no estar implementada esa función. 
@@ -54,7 +47,8 @@ beneficios o restricciones.
 
 - Según está descrito hay dos tipos de roles y no aparece opción para elegir entre ellos al crear una cuenta, se crea una cuenta de estudiante de forma automática. 
 
-**Javi:** Ver tanto términos de servicio como política de privacidad no está implementado. Ofrece opción de registrarte con cuenta de Google o LinkedIn, pero dichos botones no están implementados.  
+**Javi:** 
+- Ver tanto términos de servicio como política de privacidad no está implementado. Ofrece opción de registrarte con cuenta de Google o LinkedIn, pero dichos botones no están implementados.  
 
 - No salta una advertencia por no marcar la casilla de aceptar términos de servicio y política de privacidad, siendo esta acción obligatoria para registrarte en el sistema. 
 
@@ -72,9 +66,7 @@ beneficios o restricciones.
 
 ### UC02 – Iniciar Sesión 
 
-Permite a un usuario autenticarse en la plataforma mediante sus credenciales  
-
-registradas para acceder a funcionalidades personalizadas. 
+Permite a un usuario autenticarse en la plataforma mediante sus credenciales registradas para acceder a funcionalidades personalizadas. 
 
  
 
@@ -153,9 +145,7 @@ descripción o preferencias visibles dentro de la plataforma.
 
 ### UC05 – Ver Perfil 
 
-Permite visualizar el perfil propio o el de otros usuarios, mostrando información  
-
-pública relevante. 
+Permite visualizar el perfil propio o el de otros usuarios, mostrando información pública relevante. 
 
  
 
@@ -182,9 +172,7 @@ pública relevante.
 
 ### UC06 – Cambiar Contraseña 
 
-Permite al usuario modificar su contraseña actual para reforzar la seguridad de  
-
-su cuenta. 
+Permite al usuario modificar su contraseña actual para reforzar la seguridad de su cuenta. 
 
  
 
@@ -209,9 +197,7 @@ su cuenta.
 
 ### UC07 – Eliminar Cuenta 
 
-Permite al usuario eliminar permanentemente su cuenta y todos los datos  
-
-asociados según la política de privacidad. 
+Permite al usuario eliminar permanentemente su cuenta y todos los datos asociados según la política de privacidad. 
 
  
 
@@ -234,9 +220,7 @@ asociados según la política de privacidad.
 
 ### UC8 – Crear Comunidad 
 
-Permite a un usuario crear una nueva comunidad con un nombre, descripción y  
-
-configuración inicial. 
+Permite a un usuario crear una nueva comunidad con un nombre, descripción y configuración inicial. 
 
  
 
@@ -265,9 +249,7 @@ configuración inicial.
 
 ### UC9 – Configurar Privacidad Comunidad 
 
-Permite al administrador definir si la comunidad es pública o privada y  
-
-establecer reglas de acceso. 
+Permite al administrador definir si la comunidad es pública o privada y establecer reglas de acceso. 
 
 **Javi:** 
 - Aparece un botón editar en la sección de comunidades creadas, pero no está implementado, te redirige a una pantalla en blanco. 
@@ -281,10 +263,6 @@ establecer reglas de acceso.
 
 - No sé cómo puede acceder un usuario a una comunidad privada, no se indica en ningún sitio de la pestaña explorar comunidades. 
 
- 
-
- 
-
 ### UC10 – Buscar Comunidades 
 
 Permite a los usuarios buscar comunidades mediante filtros o palabras clave. 
@@ -297,13 +275,10 @@ Permite a los usuarios buscar comunidades mediante filtros o palabras clave.
 
 - No tiene funcionalidad el filtro, ni hay palabras claves. Se vería bien implementar a modo de etiquetas las categorías predefinidas. 
 
- 
 
 ### UC11 – Explorar Comunidades 
 
 Permite navegar por comunidades. 
-
- 
 
 **Javi:** 
 - Aparecen todas las comunidades públicas a las que te puedes unir, con una interfaz muy intuitiva. 
@@ -313,15 +288,11 @@ Permite navegar por comunidades.
 
 - Vería interesante en esta pantalla alguna referencia a comunidades privadas. 
 
- 
 
 ### UC12 – Unirse a Comunidad Pública 
 
-Permite al usuario acceder directamente a una comunidad pública sin  
+Permite al usuario acceder directamente a una comunidad pública sin necesidad de aprobación. 
 
-necesidad de aprobación. 
-
- 
 
 **Alexis:** 
 - Permite unirte sin problemas a la comunidad, pero una vez unido, en algún caso concreto, sigue apareciendo la opción de unirse. 
@@ -331,7 +302,6 @@ necesidad de aprobación.
 **Javi:** 
 - Permite unirse correctamente a cualquier comunidad pública, cambiando el estado del botón a “Unido”. 
 
- 
 
 ### UC13 – Abandonar Comunidad 
 
@@ -347,11 +317,8 @@ Permite al usuario dejar voluntariamente una comunidad a la que pertenece.
 
 ### UC14 – Chat de Comunidad 
 
-Permite a los miembros comunicarse en tiempo real dentro de la comunidad  
+Permite a los miembros comunicarse en tiempo real dentro de la comunidad mediante mensajes y archivos. 
 
-mediante mensajes y archivos. 
-
- 
 
 **Javi:** 
 - Muy buena opción poder editar los mensajes una vez están enviados. 
@@ -360,7 +327,6 @@ mediante mensajes y archivos.
 
 **Alexis:** 
 - Funciona a tiempo real tanto el envío de mensajes de texto como archivos varios. 
-
 
 - Al eliminar un mensaje es necesario recargar la página para que se actualice desde otro usuario, no se produce de forma automática. 
 
@@ -372,9 +338,7 @@ Gestión de Eventos (Felipe y Alexis)
 
 ### UC15 – Crear Evento 
 
-Permite crear un evento asociado a una comunidad o independiente,  
-
-definiendo sus características principales. 
+Permite crear un evento asociado a una comunidad o independiente, definiendo sus características principales. 
 
  
 
@@ -392,7 +356,6 @@ definiendo sus características principales.
 
 - Permite añadir más del máximo de personas posibles. 
 
- 
 
 ### UC16 – Configurar Privacidad Evento 
 
@@ -428,11 +391,7 @@ Permite definir fecha, hora, descripción y otros detalles relevantes.
 
 ### UC18 – Seleccionar Ubicación (Google Maps) 
 
-Permite establecer una ubicación física utilizando servicios de mapas  
-
-Integrados. 
-
- 
+Permite establecer una ubicación física utilizando servicios de mapas Integrados. 
 
 **Felipe:** 
 - El mapa funciona bien, pero ¿Hay alguna razón de que aparezcan tantos conventos/cementerios al hacer zoom? 
@@ -513,9 +472,7 @@ Permite modificar la información de un evento existente.
 
 ### UC24 – Cancelar Evento 
 
-Permite al creador cancelar el evento, añadiendo un motivo sobre la  
-
-cancelación. 
+Permite al creador cancelar el evento, añadiendo un motivo sobre la cancelación. 
 
 **Felipe:** 
 - Funciona, pero debería especificarse si cancelar evento sígnifica eliminar también dicho evento, ya que sería buena idea mantener los datos para modificar la fecha en caso de que el evento se quiera postponer, no perdiendo los usuarios que haya dentro del evento. 
@@ -523,7 +480,6 @@ cancelación.
 **Alexis:** 
 - Funciona correctamente, lo único que vería a implementar es que no desaparezcan los eventos cancelados, o por lo menos que los pueda visualizar el creador. 
 
- 
 
 Gestión de Contenido (Felipe y Javier Ramu) 
 
@@ -635,8 +591,6 @@ Gestiona la transacción económica mediante la pasarela de pago integrada.
 
 Permite finalizar una suscripción activa. 
 
- 
-
 **Felipe:** 
 - Se cancela correctamente, pero si he pagado un mes y cancelo, el resto del mes debería tener mi plan de suscripción activo. ¿Abuso del consumidor? 
 
@@ -646,7 +600,6 @@ Permite finalizar una suscripción activa.
 - Lo correcto sería poder darte de baja, pero mantener tu plan premium hasta el periodo que hayas pagado, ya sea lo que reste de mes o lo que reste de año. 
 
  
-
 Publicidad y Ajustes (Javi y Felipe) 
 
 ### UC33 – Panel de Ajustes 
