@@ -362,6 +362,42 @@ def _obtener_suscripcion_premium_cancelable(guia):
     )
 
 
+def _subscription_metadata_dict(subscription) -> dict:
+    metadata = getattr(subscription, 'metadata', None)
+    if isinstance(metadata, dict):
+        return metadata
+    return {}
+
+
+def _is_seed_demo_mock_subscription(subscription) -> bool:
+    metadata = _subscription_metadata_dict(subscription)
+    stripe_mode = str(metadata.get('stripe_mode') or '').strip().lower()
+    if stripe_mode == 'mock':
+        return True
+
+    seed_source = str(metadata.get('seed_source') or '').strip()
+    stripe_subscription_id = str(
+        getattr(subscription, 'stripe_subscription_id', '') or ''
+    ).strip()
+    return (
+        seed_source == 'seed_demo_data_despliegue3'
+        and stripe_subscription_id.startswith('sub_seed_demo_data_despliegue3_')
+    )
+
+
+def _schedule_downgrade_for_seed_mock_subscription(subscription):
+    updated_fields = ['cancel_at_period_end', 'metadata', 'updated_at']
+    subscription.cancel_at_period_end = True
+
+    existing_metadata = _subscription_metadata_dict(subscription)
+    subscription.metadata = {
+        **existing_metadata,
+        'downgrade_requested_at': timezone.now().isoformat(),
+        'downgrade_via': 'seed_mock',
+    }
+    subscription.save(update_fields=updated_fields)
+
+
 @csrf_exempt
 @require_POST
 def schedule_downgrade_view(request):
@@ -437,6 +473,21 @@ def schedule_downgrade_view(request):
             {
                 'status': 'OK',
                 'mensaje': 'La baja ya estaba programada para el final del periodo actual.',
+                'current_period_end': (
+                    subscription.current_period_end.isoformat()
+                    if subscription.current_period_end
+                    else None
+                ),
+            },
+            status=200,
+        )
+
+    if _is_seed_demo_mock_subscription(subscription):
+        _schedule_downgrade_for_seed_mock_subscription(subscription)
+        return JsonResponse(
+            {
+                'status': 'OK',
+                'mensaje': 'Baja programada. Mantendrás Premium hasta el fin de tu periodo actual.',
                 'current_period_end': (
                     subscription.current_period_end.isoformat()
                     if subscription.current_period_end
