@@ -949,7 +949,7 @@ function _manejarFinDeTour() {
     if (timerContainer && timerValue) {
         timerContainer.classList.remove('waiting', 'en_curso', 'paused');
         timerContainer.classList.add('finished');
-        timerValue.textContent = '00:00:00';
+        timerValue.textContent = '00:00';
     }
     if (startBtn) startBtn.disabled = true;
     if (pauseBtn) {
@@ -1653,8 +1653,10 @@ function _initRecordatorios() {
                 osc.type = 'sine';
                 osc.frequency.value = freq;
                 gain.gain.setValueAtTime(0.0001, startAt);
-                gain.gain.exponentialRampToValueAtTime(0.2, startAt + 0.02);
+
+                gain.gain.exponentialRampToValueAtTime(0.8, startAt + 0.02); 
                 gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.3);
+                
                 osc.connect(gain);
                 gain.connect(context.destination);
                 osc.start(startAt);
@@ -1662,13 +1664,18 @@ function _initRecordatorios() {
             };
 
             const now = context.currentTime;
-            beep(now, 880);
-            beep(now + 0.35, 660);
-            beep(now + 0.7, 880);
+            
+            for (let i = 0; i < 7; i++) {
+                let offset = i * 1.2; 
+                beep(now + offset, 880);
+                beep(now + offset + 0.35, 660);
+                beep(now + offset + 0.7, 880);
+            }
 
             setTimeout(() => {
                 context.close().catch(() => {});
-            }, 1500);
+            }, 4500); 
+            
         } catch {
             return;
         }

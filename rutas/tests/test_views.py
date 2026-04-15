@@ -353,11 +353,14 @@ class RutasViewsTest(TestCase):
         response = self.client.post(url, {
             'form_type': 'stop_add',
             'nombre': 'Parada 2',
+            'descripcion': 'Descripcion de la nueva parada',
             'lat': '10.0',
             'lon': '10.0'
         })
         self.assertRedirects(response, f"{url}?stop_added=1")
         self.assertEqual(self.ruta.paradas.count(), 2)
+        parada_agregada = self.ruta.paradas.order_by('-orden').first()
+        self.assertEqual(parada_agregada.descripcion, 'Descripcion de la nueva parada')
 
     def test_ruta_detalle_post_stop_edit_success(self):
         url = reverse('ruta-detalle', args=[self.ruta.id])
@@ -373,14 +376,28 @@ class RutasViewsTest(TestCase):
         self.parada.refresh_from_db()
         self.assertEqual(self.parada.descripcion, 'Descripcion editada manualmente')
 
-    def test_ruta_detalle_post_stop_delete_success(self):
+    def test_ruta_detalle_post_stop_delete_bloqueado_con_dos_paradas_minimas(self):
+        Parada.objects.create(orden=2, nombre="Parada 2", coordenadas=Point(1, 1), ruta=self.ruta)
         url = reverse('ruta-detalle', args=[self.ruta.id])
         response = self.client.post(url, {
             'form_type': 'stop_delete',
             'parada_id': self.parada.id
         })
-        self.assertRedirects(response, f"{url}?stop_deleted=1")
+        self.assertRedirects(response, f"{url}?stop_error=1")
+        self.assertEqual(self.ruta.paradas.count(), 2)
 
+    def test_ruta_detalle_post_stop_delete_success_con_mas_de_dos_paradas(self):
+        parada2 = Parada.objects.create(orden=2, nombre="Parada 2", coordenadas=Point(1, 1), ruta=self.ruta)
+        parada3 = Parada.objects.create(orden=3, nombre="Parada 3", coordenadas=Point(2, 2), ruta=self.ruta)
+        url = reverse('ruta-detalle', args=[self.ruta.id])
+        response = self.client.post(url, {
+            'form_type': 'stop_delete',
+            'parada_id': parada3.id,
+        })
+        self.assertRedirects(response, f"{url}?stop_deleted=1")
+        self.assertEqual(self.ruta.paradas.count(), 2)
+        self.assertTrue(Parada.objects.filter(id=parada2.id).exists())
+    
     def test_ruta_detalle_post_stop_reorder_success(self):
         parada2 = Parada.objects.create(orden=2, nombre="P2", coordenadas=Point(1, 1), ruta=self.ruta)
         url = reverse('ruta-detalle', args=[self.ruta.id])
@@ -543,6 +560,19 @@ class RutasViewsTest(TestCase):
         url = reverse('parada-curiosidad', args=[self.parada.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 502)
+
+    @patch('rutas.services.generar_curiosidad_parada_preview')
+    def test_obtener_curiosidad_parada_api_error_ia_unavailable(self, mock_preview):
+        mock_preview.side_effect = RuntimeError(
+            "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand.'}}"
+        )
+        url = reverse('parada-curiosidad', args=[self.parada.id]) + '?preview=1'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 503)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('IA no está disponible', data['mensaje'])
+        self.assertNotIn('503 UNAVAILABLE', data['mensaje'])
 
     # 6. S3.1-09 Guardado manual de curiosidad
     def test_guardar_curiosidad_parada_api_post_persiste(self):

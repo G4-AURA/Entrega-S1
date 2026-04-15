@@ -64,9 +64,13 @@
             const premiumStates = ['active', 'trialing', 'past_due'];
             if (premiumStates.includes(String(payload.subscription_status || '').toLowerCase())) {
                 showFeedback(
-                    'Pago confirmado. Tu plan Premium ya está activo.',
+                    'Pago confirmado. Tu plan Premium ya está activo. Actualizando página...',
                     'alert-success'
                 );
+
+                window.setTimeout(function () {
+                    window.location.assign(window.location.pathname);
+                }, 1500);
                 return;
             }
 
