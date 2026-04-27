@@ -52,7 +52,7 @@ Para garantizar una entrada sólida en el mercado, se ejecutarán las siguientes
 
 - **Estrategia de Contenidos "IA-Powered Travel":** 
 
-    - **Acción:** Publicación de una serie de blogs y videos (Reels/TikTok) demostrando cómo la IA de AURA puede diseñar una ruta histórica en menos de 30 segundos. 
+    - **Acción:** Publicación de una serie de blogs y videos (Reels/TikTok) demostrando cómo la IA de AURA puede diseñar una ruta histórica perfectamente personalizada. 
 
     - **Objetivo:** Posicionarse como una herramienta innovadora y tecnológica, atrayendo a guías que buscan ahorrar tiempo en la planificación y turistas que buscan experiencias modernas. 
 
