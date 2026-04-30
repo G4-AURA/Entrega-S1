@@ -58,6 +58,15 @@ class SettingsDefaultValuesTest(SimpleTestCase):
     def test_ttl_cache_ruta_es_entero(self):
         self.assertIsInstance(settings.ROUTE_SNAPSHOT_CACHE_TTL, int)
 
+    def test_referrer_policy_permite_tiles_osm_cross_origin(self):
+        self.assertEqual(
+            settings.SECURE_REFERRER_POLICY,
+            'strict-origin-when-cross-origin',
+        )
+
+    def test_configuracion_tiles_tiene_proveedor(self):
+        self.assertIn(settings.MAP_TILE_PROVIDER, {'mapbox', 'carto', 'osm'})
+
 
 class SettingsConditionalBranchesTest(SimpleTestCase):
 

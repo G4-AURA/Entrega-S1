@@ -44,10 +44,7 @@
 
         // Crear mapa
         leafletMap = L.map('mapa-ruta').setView(coordenadaInicial, 14);
-        
-        L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`, {
-            attribution: '© Mapbox'
-        }).addTo(leafletMap);
+        window.AuraMapTiles.createTileLayer({ token: mapboxToken, style: 'streets' }).addTo(leafletMap);
 
         const puntos = [];
         

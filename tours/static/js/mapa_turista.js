@@ -91,16 +91,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Tiles minimalistas: fondo neutro claro donde la polilínea y los marcadores
     // destacan sin competir con texturas de satélite.
     const token = typeof mapboxToken !== 'undefined' ? mapboxToken : '';
-    const tileUrl = token
-        ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-
-    L.tileLayer(tileUrl, {
-        maxZoom:     19,
-        attribution: token
-            ? '© <a href="https://mapbox.com">Mapbox</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
-            : '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
-    }).addTo(map);
+    window.AuraMapTiles.createTileLayer({ token, style: 'light' }).addTo(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 

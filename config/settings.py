@@ -303,6 +303,17 @@ GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_API_KEYS = _parse_csv_env_list(os.getenv('GEMINI_API_KEYS'))
 
+# --- MAP TILES ---
+# OSM's volunteer tile servers require identifiable browser requests with a
+# Referer. In production we default to Mapbox when a token exists and otherwise
+# to CARTO, keeping direct OSM usage as an explicit/local choice.
+_default_map_tile_provider = 'mapbox' if MAPBOX_ACCESS_TOKEN else ('osm' if DEBUG else 'carto')
+MAP_TILE_PROVIDER = os.getenv('MAP_TILE_PROVIDER', _default_map_tile_provider).strip().lower()
+MAP_TILE_URL = os.getenv('MAP_TILE_URL', '').strip()
+MAP_TILE_ATTRIBUTION = os.getenv('MAP_TILE_ATTRIBUTION', '').strip()
+MAP_TILE_MAX_ZOOM = int(os.getenv('MAP_TILE_MAX_ZOOM', '19'))
+SECURE_REFERRER_POLICY = os.getenv('SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
+
 if GEMINI_API_KEYS:
     GEMINI_API_KEY = GEMINI_API_KEYS[0]
 elif GEMINI_API_KEY:
