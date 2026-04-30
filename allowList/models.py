@@ -45,6 +45,7 @@ class POI(models.Model):
     class Fuente(models.TextChoices):
         OSM    = 'osm',    'OpenStreetMap'
         MANUAL = 'manual', 'Manual'
+        GOOGLE = 'google', 'Google Places'
 
     # ── Identificación ────────────────────────────────────────────────────────
     nombre     = models.CharField(max_length=255, db_index=True)
