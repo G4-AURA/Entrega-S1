@@ -300,6 +300,7 @@ def _parse_csv_env_list(raw_value: str | None) -> tuple[str, ...]:
 
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 GRAPHHOPPER_API_KEY = os.getenv('GRAPHHOPPER_API_KEY')
+GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_API_KEYS = _parse_csv_env_list(os.getenv('GEMINI_API_KEYS'))
 
