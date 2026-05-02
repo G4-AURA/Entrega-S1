@@ -157,7 +157,26 @@ def nodo_generacion(state: State) -> dict:
             len(pois_base), objetivo_paradas, faltan, ciudad,
         )
         try:
-            pois_gemini = _llamar_gemini_para_complemento(datos, faltan, nombres_excluidos)
+            pois_gemini_raw = _llamar_gemini_para_complemento(datos, faltan, nombres_excluidos)
+            if isinstance(pois_gemini_raw, list):
+                from allowList.services import resolver_poi
+                pois_gemini = []
+                for item in pois_gemini_raw:
+                    if not isinstance(item, dict): continue
+                    res_poi = resolver_poi(
+                        item.get("nombre", ""),
+                        item.get("ciudad", str(datos.get("ciudad") or "")),
+                        item.get("tipo_poi", "")
+                    )
+                    if res_poi is not None:
+                        pois_gemini.append({
+                            "nombre": res_poi.nombre,
+                            "coords": [float(res_poi.lat), float(res_poi.lon)],
+                            "desc": item.get("desc", ""),
+                            "categoria": str(getattr(res_poi, "categoria", item.get("tipo_poi", "")))
+                        })
+            else:
+                pois_gemini = pois_gemini_raw
             if not isinstance(pois_gemini, list):
                 raise ErrorIntegracionIA("Gemini devolvió un formato inválido.")
         except ErrorIntegracionIA as exc:
