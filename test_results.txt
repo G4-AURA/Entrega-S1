@@ -1,0 +1,282 @@
+﻿.\env\Scripts\python.exe : Creating test database for alias 'default' 
+('test_aura_s1')...
+En línea: 1 Carácter: 1
++ .\env\Scripts\python.exe manage.py test creacion.tests.test_services  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Creating test d...st_aura_s1')... 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+Found 21 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: gis, messages, staticfiles
+  Apply all migrations: admin, allowList, auth, billing, contenttypes, creacion, rutas, sessions, tours
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying auth.0001_initial... OK
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
+  Applying admin.0003_logentry_add_action_flag_choices... OK
+  Applying allowList.0001_allow_list... OK
+  Applying allowList.0002_add_google_fuente... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0002_alter_permission_name_max_length... OK
+  Applying auth.0003_alter_user_email_max_length... OK
+  Applying auth.0004_alter_user_username_opts... OK
+  Applying auth.0005_alter_user_last_login_null... OK
+  Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
+  Applying auth.0009_alter_user_last_name_max_length... OK
+  Applying auth.0010_alter_group_name_max_length... OK
+  Applying auth.0011_update_proxy_permissions... OK
+  Applying auth.0012_alter_user_first_name_max_length... OK
+  Applying rutas.0001_initial... OK
+  Applying rutas.0002_alter_parada_orden_alter_ruta_duracion_horas_and_more... OK
+  Applying rutas.0003_add_graphhopper_fields... OK
+  Applying rutas.0004_curiosidad... OK
+  Applying rutas.0005_parada_descripcion... OK
+  Applying billing.0001_initial... OK
+  Applying billing.0002_tierusageevent... OK
+  Applying billing.0003_featureaccesssetting... OK
+  Applying billing.0004_remove_featureaccesssetting_billing_fea_availab_5fd1d8_idx_and_more... OK
+  Applying creacion.0001_initial... OK
+  Applying rutas.0006_rutaauditoria... OK
+  Applying rutas.0006_curiosidad_imagen_manual... OK
+  Applying rutas.0007_merge_20260415_0000... OK
+  Applying sessions.0001_initial... OK
+  Applying tours.0001_initial... OK
+  Applying tours.0002_rename_models_to_pascalcase... OK
+  Applying tours.0003_alter_sesiontour_turistas_alter_turista_table_and_more... OK
+  Applying tours.0004_ubicacionvivo_turista_nullable_usuario... OK
+  Applying tours.0005_mensajechat_imagen... OK
+  Applying tours.0006_chat_privado... OK
+  Applying tours.0007_recordatorios_sesion... OK
+  Applying tours.0008_rename_tours_recor_sesion__272d0f_idx_tours_recor_sesion__31f651_idx... OK
+test_fallback_a_siguiente_key_si_recibe_429 (creacion.tests.test_services.Gemin
+iBypassResilienceTests.test_fallback_a_siguiente_key_si_recibe_429) ... Gemini 
+devolvi¾ cuota/429 en clave 1/2; se intenta fallback.
+ok
+test_lanza_error_integracion_si_agota_reintentos (creacion.tests.test_services.
+GeminiBypassResilienceTests.test_lanza_error_integracion_si_agota_reintentos) 
+... Timeout Gemini (reintento 1/1).
+ok
+test_lanza_error_si_todas_las_keys_agotan_cuota (creacion.tests.test_services.G
+eminiBypassResilienceTests.test_lanza_error_si_todas_las_keys_agotan_cuota) 
+... Gemini devolvi¾ cuota/429 en clave 1/2; se intenta fallback.
+Gemini devolvi¾ cuota/429 en clave 2/2; se intenta fallback.
+ok
+test_reintenta_timeout_y_recupera_respuesta (creacion.tests.test_services.Gemin
+iBypassResilienceTests.test_reintenta_timeout_y_recupera_respuesta) ... 
+Timeout Gemini (reintento 1/1).
+ok
+test_consultar_langgraph_descarta_alternativas_con_error (creacion.tests.test_s
+ervices.GeneracionRutaResilienteIATests.test_consultar_langgraph_descarta_alter
+nativas_con_error)
+Verifica que si una alternativa falla, se ignora y se usan las vßlidas. ... ok
+test_consultar_langgraph_evalua_alternativas_y_elige_mejor (creacion.tests.test
+_services.GeneracionRutaResilienteIATests.test_consultar_langgraph_evalua_alter
+nativas_y_elige_mejor) ... ok
+test_descarta_duplicados_y_respeta_dedupe_en_regeneracion (creacion.tests.test_
+services.GenerarCandidatosParadasIATests.test_descarta_duplicados_y_respeta_ded
+upe_en_regeneracion) ... Validaci¾n geogrßfica estricta sin convergencia para 
+ruta_id=1: No fue posible completar 2 paradas vßlidas tras validar coordenadas 
+(obtenidas 0/2, presupuesto=4).. Aplicando fallback relajado para edici¾n.
+ERROR
+test_falla_con_cantidad_fuera_de_rango (creacion.tests.test_services.GenerarCan
+didatosParadasIATests.test_falla_con_cantidad_fuera_de_rango) ... ok
+test_falla_si_no_puede_completar_cantidad_objetivo (creacion.tests.test_service
+s.GenerarCandidatosParadasIATests.test_falla_si_no_puede_completar_cantidad_obj
+etivo) ... Validaci¾n geogrßfica estricta sin convergencia para ruta_id=3: No 
+fue posible completar 1 paradas vßlidas tras validar coordenadas (obtenidas 
+0/1, presupuesto=2).. Aplicando fallback relajado para edici¾n.
+FAIL
+test_fallback_relajado_devuelve_sugerencias_si_falla_validacion_externa (creaci
+on.tests.test_services.GenerarCandidatosParadasIATests.test_fallback_relajado_d
+evuelve_sugerencias_si_falla_validacion_externa) ... Validaci¾n geogrßfica 
+estricta sin convergencia para ruta_id=4: No fue posible completar 1 paradas 
+vßlidas tras validar coordenadas (obtenidas 0/1, presupuesto=2).. Aplicando 
+fallback relajado para edici¾n.
+ok
+test_genera_candidatos_exactos_y_regenera_hasta_completar_cantidad (creacion.te
+sts.test_services.GenerarCandidatosParadasIATests.test_genera_candidatos_exacto
+s_y_regenera_hasta_completar_cantidad) ... ERROR
+test_obtener_guia_crea_perfil_para_usuario_valido (creacion.tests.test_services
+.GuiaValidationTests.test_obtener_guia_crea_perfil_para_usuario_valido) ... ok
+test_obtener_guia_retorna_none_para_turista (creacion.tests.test_services.GuiaV
+alidationTests.test_obtener_guia_retorna_none_para_turista) ... ok
+test_guardado_ruta_ia_normaliza_exigencia_y_moods (creacion.tests.test_services
+.MoodAndExigenciaNormalizationTests.test_guardado_ruta_ia_normaliza_exigencia_y
+_moods) ... ok
+test_normalizar_moods_acepta_alias_y_descarta_invalidos (creacion.tests.test_se
+rvices.MoodAndExigenciaNormalizationTests.test_normalizar_moods_acepta_alias_y_
+descarta_invalidos) ... ok
+test_guardado_ruta_ia_lanza_error_con_paradas_invalidas (creacion.tests.test_se
+rvices.RutaStorageServiceTests.test_guardado_ruta_ia_lanza_error_con_paradas_in
+validas) ... ok
+test_guardado_ruta_ia_lanza_error_sin_lista_de_paradas (creacion.tests.test_ser
+vices.RutaStorageServiceTests.test_guardado_ruta_ia_lanza_error_sin_lista_de_pa
+radas) ... ok
+test_guardado_ruta_ia_persiste_ruta_y_paradas (creacion.tests.test_services.Rut
+aStorageServiceTests.test_guardado_ruta_ia_persiste_ruta_y_paradas) ... ok
+test_avanza_checkpoint_y_recupera_estado (creacion.tests.test_services.SesionGe
+neracionCheckpointTests.test_avanza_checkpoint_y_recupera_estado) ... ok
+test_crea_estado_inicial_de_sesion_con_checkpoint (creacion.tests.test_services
+.SesionGeneracionCheckpointTests.test_crea_estado_inicial_de_sesion_con_checkpo
+int) ... ok
+test_lanza_error_controlado_si_la_sesion_ha_expirado (creacion.tests.test_servi
+ces.SesionGeneracionCheckpointTests.test_lanza_error_controlado_si_la_sesion_ha
+_expirado) ... ok
+
+======================================================================
+ERROR: test_descarta_duplicados_y_respeta_dedupe_en_regeneracion (creacion.test
+s.test_services.GenerarCandidatosParadasIATests.test_descarta_duplicados_y_resp
+eta_dedupe_en_regeneracion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 1639, in generar_candidatos_paradas_ia
+    candidatos = completar_lista_paradas_validadas(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\geo_validat
+ion.py", line 482, in completar_lista_paradas_validadas
+    raise NoConvergenciaCoordenadasError(
+creacion.geo_validation.NoConvergenciaCoordenadasError: No fue posible 
+completar 2 paradas vßlidas tras validar coordenadas (obtenidas 0/2, 
+presupuesto=4).
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\tests\test_
+services.py", line 375, in 
+test_descarta_duplicados_y_respeta_dedupe_en_regeneracion
+    resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, 
+cantidad=2)
+                
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 1671, in generar_candidatos_paradas_ia
+    nuevos = _proveedor_candidatos_adicionales(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 1627, in _proveedor_candidatos_adicionales
+    return _solicitar_candidatos_paradas_ia(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 951, in _solicitar_candidatos_paradas_ia
+    respuesta = llamar_gemini_bypass(prompt)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1200, in _execute_mock_call
+    result = next(effect)
+             ^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_genera_candidatos_exactos_y_regenera_hasta_completar_cantidad (crea
+cion.tests.test_services.GenerarCandidatosParadasIATests.test_genera_candidatos
+_exactos_y_regenera_hasta_completar_cantidad)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\tests\test_
+services.py", line 279, in 
+test_genera_candidatos_exactos_y_regenera_hasta_completar_cantidad
+    resultado = services.generar_candidatos_paradas_ia(ruta=self.ruta, 
+cantidad=2)
+                
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 1639, in generar_candidatos_paradas_ia
+    candidatos = completar_lista_paradas_validadas(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\geo_validat
+ion.py", line 399, in completar_lista_paradas_validadas
+    nuevos = proveedor_candidatos(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 1627, in _proveedor_candidatos_adicionales
+    return _solicitar_candidatos_paradas_ia(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\services.py", 
+line 951, in _solicitar_candidatos_paradas_ia
+    respuesta = llamar_gemini_bypass(prompt)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1200, in _execute_mock_call
+    result = next(effect)
+             ^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+FAIL: test_falla_si_no_puede_completar_cantidad_objetivo (creacion.tests.test_s
+ervices.GenerarCandidatosParadasIATests.test_falla_si_no_puede_completar_cantid
+ad_objetivo)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\unittest\mock.py", 
+line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\xxnii\OneDrive\Documentos\ISPP\ProyectoS1\creacion\tests\test_
+services.py", line 321, in test_falla_si_no_puede_completar_cantidad_objetivo
+    with self.assertRaisesMessage(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File 
+"C:\Users\xxnii\AppData\Local\Python\pythoncore-3.12-64\Lib\contextlib.py", 
+line 144, in __exit__
+    next(self.gen)
+AssertionError: ErrorIntegracionIA not raised
+
+----------------------------------------------------------------------
+Ran 21 tests in 9.286s
+
+FAILED (failures=1, errors=2)
+Destroying test database for alias 'default' ('test_aura_s1')...
+
+  Applying tours.0009_sesiontour_cronometro_pausable... OK
+System check identified no issues (0 silenced).

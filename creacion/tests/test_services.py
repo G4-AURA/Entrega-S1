@@ -235,7 +235,16 @@ class GenerarCandidatosParadasIATests(TestCase):
             }
         ]
 
-    def test_genera_candidatos_exactos_y_regenera_hasta_completar_cantidad(self):
+    @patch('allowList.services.resolver_poi')
+    def test_genera_candidatos_exactos_y_regenera_hasta_completar_cantidad(self, mock_resolver_poi):
+        class FalsaPOI:
+            def __init__(self, lat=0, lon=0, nombre="", categoria="general"):
+                self.lat = lat
+                self.lon = lon
+                self.nombre = nombre
+                self.categoria = categoria
+        mock_resolver_poi.side_effect = lambda n,c,t: FalsaPOI(lat=37.3891, lon=-5.9845, nombre=n, categoria=t)
+
         respuesta_primera = [
             {
                 'nombre': 'Puerta del Sol',  # fuera de Sevilla
@@ -285,7 +294,16 @@ class GenerarCandidatosParadasIATests(TestCase):
         with self.assertRaisesMessage(services.ErrorValidacionRuta, 'La cantidad de sugerencias debe estar entre 1 y 10.'):
             services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=0)
 
-    def test_falla_si_no_puede_completar_cantidad_objetivo(self):
+    @patch('allowList.services.resolver_poi')
+    def test_falla_si_no_puede_completar_cantidad_objetivo(self, mock_resolver_poi):
+        class FalsaPOI:
+            def __init__(self, lat=0, lon=0, nombre="", categoria="general"):
+                self.lat = lat
+                self.lon = lon
+                self.nombre = nombre
+                self.categoria = categoria
+        mock_resolver_poi.side_effect = lambda n,c,t: FalsaPOI(lat=37.3891, lon=-5.9845, nombre=n, categoria=t)
+
         respuesta_ia = [
             {
                 'nombre': 'Puerta del Sol',
@@ -306,7 +324,16 @@ class GenerarCandidatosParadasIATests(TestCase):
                 ):
                     services.generar_candidatos_paradas_ia(ruta=self.ruta, cantidad=1)
 
-    def test_descarta_duplicados_y_respeta_dedupe_en_regeneracion(self):
+    @patch('allowList.services.resolver_poi')
+    def test_descarta_duplicados_y_respeta_dedupe_en_regeneracion(self, mock_resolver_poi):
+        class FalsaPOI:
+            def __init__(self, lat=0, lon=0, nombre="", categoria="general"):
+                self.lat = lat
+                self.lon = lon
+                self.nombre = nombre
+                self.categoria = categoria
+        mock_resolver_poi.side_effect = lambda n,c,t: FalsaPOI(lat=37.3891, lon=-5.9845, nombre=n, categoria=t)
+
         respuesta_primera = [
             {
                 'nombre': 'Catedral',  # duplicado con parada existente
@@ -353,7 +380,16 @@ class GenerarCandidatosParadasIATests(TestCase):
             ['Archivo de Indias', 'Giralda'],
         )
 
-    def test_fallback_relajado_devuelve_sugerencias_si_falla_validacion_externa(self):
+    @patch('allowList.services.resolver_poi')
+    def test_fallback_relajado_devuelve_sugerencias_si_falla_validacion_externa(self, mock_resolver_poi):
+        class FalsaPOI:
+            def __init__(self, lat=0, lon=0, nombre="", categoria="general"):
+                self.lat = lat
+                self.lon = lon
+                self.nombre = nombre
+                self.categoria = categoria
+        mock_resolver_poi.side_effect = lambda n,c,t: FalsaPOI(lat=37.3891, lon=-5.9845, nombre=n, categoria=t)
+
         respuesta_ia = [
             {
                 'nombre': 'Archivo de Indias',
