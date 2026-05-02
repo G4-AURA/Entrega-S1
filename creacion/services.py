@@ -720,7 +720,31 @@ def _solicitar_pois_adicionales_para_ruta_ia(
         respuesta = None
 
     if isinstance(respuesta, list):
-        return respuesta
+        try:
+            from allowList.services import resolver_poi
+            candidatos = []
+            ciudad = str(datos.get('ciudad') or '')
+            for item in respuesta:
+                if not isinstance(item, dict):
+                    continue
+                poi_resuelto = resolver_poi(
+                    item.get("nombre", ""),
+                    item.get("ciudad", ciudad),
+                    item.get("tipo_poi", "")
+                )
+                if poi_resuelto is not None:
+                    candidatos.append({
+                        "nombre": poi_resuelto.nombre,
+                        "coords": [float(poi_resuelto.lat), float(poi_resuelto.lon)],
+                        "desc": item.get("desc", ""),
+                        "categoria": str(getattr(poi_resuelto, "categoria", item.get("tipo_poi", ""))),
+                    })
+            if candidatos:
+                return candidatos[:cantidad]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Error al resolver POI: %s', e)
+
 
     fallback = _construir_pois_fallback_allowlist(
         ciudad=str(datos.get('ciudad') or ''),
@@ -822,9 +846,13 @@ def _extraer_lista_desde_respuesta_ia(respuesta) -> list[dict]:
     Acepta:
     - Lista directa: [...]
     - Objeto con claves tipo: candidatos/paradas/sugerencias/items/data/results
+    
+    Note: This function only extracts the list structure. POI resolution
+    (resolver_poi) is handled by the caller to avoid side effects in the extractor.
     """
     if isinstance(respuesta, list):
         return respuesta
+
     if not isinstance(respuesta, dict):
         return []
 
@@ -926,7 +954,28 @@ def _solicitar_candidatos_paradas_ia(
 
     candidatos_ia = _extraer_lista_desde_respuesta_ia(respuesta)
     if candidatos_ia:
-        return candidatos_ia
+        try:
+            from allowList.services import resolver_poi
+            validados = []
+            for item in candidatos_ia:
+                if not isinstance(item, dict):
+                    continue
+                poi_resuelto = resolver_poi(
+                    item.get("nombre", ""),
+                    item.get("ciudad", ciudad_contexto),
+                    item.get("tipo_poi", item.get("categoria", ""))
+                )
+                if poi_resuelto is not None:
+                    item['coordenadas'] = [float(poi_resuelto.lat), float(poi_resuelto.lon)]
+                    item['nombre'] = poi_resuelto.nombre
+                    item['categoria'] = str(getattr(poi_resuelto, "categoria", item.get("tipo_poi", "")))
+                    validados.append(item)
+            if validados:
+                return validados[:cantidad]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Error al resolver candidatos IA: %s', e)
+
 
     fallback_pois = _construir_pois_fallback_allowlist(
         ciudad=ciudad_contexto,

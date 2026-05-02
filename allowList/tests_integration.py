@@ -162,3 +162,46 @@ class AllowListApiIntegrationTests(TestCase):
         self.assertEqual(second_response.status_code, 200)
         self.assertEqual(second_response.json()["ya_existian"], 1)
         self.assertEqual(POI.objects.filter(osm_id=777).count(), 1)
+
+    def test_resolver_poi_local(self):
+        from .services import resolver_poi
+        poi = resolver_poi("POI existente", "Sevilla", "")
+        self.assertIsNotNone(poi)
+        self.assertEqual(poi.id, self.poi_existente.id)
+        self.assertEqual(poi.fuente, POI.Fuente.MANUAL)
+
+    @patch('allowList.services.requests.get')
+    def test_resolver_poi_google_fallback(self, mock_get):
+        from .services import resolver_poi
+        from django.test import override_settings
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "status": "OK",
+            "results": [{
+                "name": "Nuevo POI Google",
+                "geometry": {
+                    "location": {
+                        "lat": 37.1234,
+                        "lng": -5.1234
+                    }
+                },
+                "formatted_address": "Calle Falsa 123"
+            }]
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with override_settings(GOOGLE_PLACES_API_KEY='dummy_key'):
+            poi = resolver_poi("Nuevo POI", "Madrid", "")
+            
+        self.assertIsNotNone(poi)
+        self.assertEqual(poi.nombre, "Nuevo POI Google")
+        self.assertEqual(poi.ciudad, "Madrid")
+        self.assertEqual(poi.direccion, "Calle Falsa 123")
+        self.assertEqual(poi.fuente, POI.Fuente.GOOGLE)
+        self.assertEqual(poi.coordenadas.x, -5.1234)
+        self.assertEqual(poi.coordenadas.y, 37.1234)
+        
+        # Verify it was saved to DB
+        self.assertTrue(POI.objects.filter(nombre="Nuevo POI Google", fuente=POI.Fuente.GOOGLE).exists())

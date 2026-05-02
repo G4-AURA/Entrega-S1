@@ -462,3 +462,66 @@ def serializar_pois_para_ruta(ciudad: str, categorias: list[str] | None = None) 
         }
         for poi in qs.order_by('nombre')
     ]
+
+def resolver_poi(nombre: str, ciudad: str, tipo_hint: str) -> POI | None:
+    """
+    Busca un POI localmente por nombre y ciudad.
+    Si no lo encuentra, realiza fallback a Google Places API.
+    Si Google encuentra resultados, lo crea en la bd y lo devuelve.
+    """
+    from django.conf import settings
+    
+    # 1. Búsqueda local
+    poi_local = POI.objects.filter(nombre__icontains=nombre, ciudad__icontains=ciudad).first()
+    if poi_local:
+        return poi_local
+
+    # 2. Fallback a Google Places API
+    api_key = getattr(settings, 'GOOGLE_PLACES_API_KEY', None)
+    if not api_key:
+        logger.error('GOOGLE_PLACES_API_KEY no configurada.')
+        return None
+
+    query_str = f"{nombre} {ciudad}"
+    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    params = {
+        'query': query_str,
+        'key': api_key
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('status') == 'OK' and data.get('results'):
+            primer_resultado = data['results'][0]
+            
+            location = primer_resultado.get('geometry', {}).get('location', {})
+            lat = location.get('lat')
+            lng = location.get('lng')
+            
+            if lat is None or lng is None:
+                return None
+                
+            nombre_google = primer_resultado.get('name', nombre)
+            direccion = primer_resultado.get('formatted_address', '')
+            
+            with transaction.atomic():
+                poi_nuevo = POI.objects.create(
+                    nombre=nombre_google,
+                    categoria=CategoriaOSM.OTRO,
+                    coordenadas=Point(lng, lat, srid=4326),
+                    ciudad=ciudad,
+                    direccion=direccion,
+                    fuente=POI.Fuente.GOOGLE,
+                )
+            logger.info('POI %s importado y guardado desde Google Places.', nombre_google)
+            return poi_nuevo
+
+    except requests.RequestException as e:
+        logger.error('Error llamando a Google Places: %s', e)
+    except (KeyError, ValueError, TypeError) as e:
+        logger.error('Error parseando respuesta de Google Places: %s', e)
+        
+    return None
