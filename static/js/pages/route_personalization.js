@@ -49,6 +49,13 @@
         media: 'Ritmo equilibrado, con caminatas moderadas y pausas razonables. Opción recomendada para la mayoría de grupos.',
         alta: 'Ritmo intenso, más distancia caminada y menos pausas. Pensada para grupos habituados a caminar.',
     };
+    const AVISO_COORDENADAS_IA = {
+        title: 'Revisión recomendada',
+        message:
+            'Las coordenadas generadas por la IA pueden no ser exactas. Revisa cada parada antes de guardar la ruta.',
+        buttonText: 'Entendido',
+        type: 'info',
+    };
 
     function actualizarMensajeProgreso(step) {
         if (loadingStatusTitle) loadingStatusTitle.textContent = step.title;
@@ -447,6 +454,14 @@
         estado.classList.remove('d-none');
     }
 
+    async function mostrarAvisoRevisionCoordenadasIA() {
+        if (feedback && typeof feedback.alert === 'function') {
+            await feedback.alert(AVISO_COORDENADAS_IA);
+            return;
+        }
+        window.alert(AVISO_COORDENADAS_IA.message);
+    }
+
     function firmaParada(parada) {
         const nombre = String(parada?.nombre || '').trim().toLowerCase();
         const coords = Array.isArray(parada?.coordenadas) ? parada.coordenadas : [null, null];
@@ -628,6 +643,7 @@
             form.classList.add('d-none');
             document.getElementById('subtitulo-form').classList.add('d-none');
             renderizarRutaPropuesta(data.datos_ruta || {});
+            await mostrarAvisoRevisionCoordenadasIA();
 
             estado.className = 'alert alert-success mt-3';
             estado.innerHTML = `
@@ -691,6 +707,7 @@
                     },
                     { firmasSeleccionadas, firmasPrevias },
                 );
+                await mostrarAvisoRevisionCoordenadasIA();
 
                 if (inputSugerenciasAdicionales) inputSugerenciasAdicionales.value = '';
 
