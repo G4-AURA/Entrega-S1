@@ -48,6 +48,7 @@ class FeatureAccessPanelViewTest(TestCase):
         self.assertContains(response, 'Sustitucion con IA de paradas')
         self.assertContains(response, 'Chat por separado')
         self.assertContains(response, 'Quedada programada con notificacion')
+        self.assertContains(response, 'Curiosidad automatica por proximidad')
         self.assertContains(response, 'Campo de deseos con IA')
         self.assertNotContains(response, 'Gestion de paradas por ruta')
         self.assertNotContains(response, 'Curiosidades en rutas')

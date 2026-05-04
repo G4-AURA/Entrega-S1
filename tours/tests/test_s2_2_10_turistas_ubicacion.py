@@ -4,6 +4,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from billing.models import FeatureAccessSetting
 from rutas.models import AuthUser, Curiosidad, Guia, Parada, Ruta
 from tours.models import SesionTour, Turista, TuristaSesion, UbicacionVivo
 
@@ -148,3 +149,36 @@ class TuristasUbicacionSesionTests(TestCase):
         self.assertIsNotNone(payload["curiosidad_cercana"])
         self.assertEqual(payload["curiosidad_cercana"]["parada"]["id"], parada.id)
         self.assertEqual(payload["curiosidad_cercana"]["curiosidad"]["id"], curiosidad.id)
+
+    def test_registrar_ubicacion_turista_no_devuelve_curiosidad_si_toggle_proximidad_esta_off(self):
+        FeatureAccessSetting.objects.create(
+            key="tourist_proximity_curiosity",
+            enabled_freemium=False,
+            enabled_premium=True,
+        )
+
+        parada = Parada.objects.create(
+            ruta=self.ruta,
+            orden=1,
+            nombre="Catedral de Sevilla",
+            coordenadas=Point(-5.9927, 37.3861, srid=4326),
+        )
+        Curiosidad.objects.create(
+            parada=parada,
+            ciudad="Sevilla",
+            titulo="Curiosidad Catedral",
+            texto="Dato breve de prueba para validación de integración en vivo.",
+            tipo=Curiosidad.TipoCuriosidad.HISTORIA,
+        )
+
+        client = self._client_turista(self.turista_a.id)
+        response = client.post(
+            reverse("tours:registrar_ubicacion_turista", args=[self.sesion.id]),
+            data='{"latitud": 37.38612, "longitud": -5.99268}',
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertIn("curiosidad_cercana", payload)
+        self.assertIsNone(payload["curiosidad_cercana"])
