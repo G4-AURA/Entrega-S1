@@ -20,13 +20,22 @@ from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
 from allowList.models import CategoriaOSM, POI
 
 logger = logging.getLogger(__name__)
 
 PLACES_API_URL = 'https://places.googleapis.com/v1/places:searchText'
-PLACES_FIELD_MASK = 'places.displayName,places.location,places.types,places.formattedAddress,places.primaryType'
+PLACES_FIELD_MASK = (
+    'places.name,'
+    'places.id,'
+    'places.displayName,'
+    'places.location,'
+    'places.types,'
+    'places.formattedAddress,'
+    'places.primaryType'
+)
 
 CIUDADES_DEFAULT = [
     'Sevilla',
@@ -107,6 +116,7 @@ def _buscar_places(query: str, api_key: str, max_resultados: int) -> list[dict]:
     body = {
         'textQuery': query,
         'languageCode': 'es',
+        'rankPreference': 'RELEVANCE',
         'maxResultCount': min(max_resultados, 20),  # Places API (New) máx 20 por llamada
     }
     try:
@@ -151,6 +161,9 @@ def _procesar_place(place: dict, ciudad: str, categoria_consulta: str) -> dict |
 
     direccion = place.get('formattedAddress', '').strip()
     categoria = _inferir_categoria(place, categoria_consulta)
+    place_name = str(place.get('name') or '').strip()
+    place_id = str(place.get('id') or '').strip()
+    google_place_id = place_id or (place_name.split('/', 1)[1] if place_name.startswith('places/') else place_name)
 
     return {
         'nombre': nombre,
@@ -159,6 +172,7 @@ def _procesar_place(place: dict, ciudad: str, categoria_consulta: str) -> dict |
         'ciudad': ciudad,
         'direccion': direccion,
         'categoria': categoria,
+        'google_place_id': google_place_id,
     }
 
 
@@ -225,22 +239,24 @@ class Command(BaseCommand):
                 query = f'{termino} en {ciudad}, España'
                 places = _buscar_places(query, api_key, limite)
 
-                for place in places:
+                for rank_position, place in enumerate(places, start=1):
                     datos = _procesar_place(place, ciudad, categoria)
                     if datos is None:
                         ciudad_errores += 1
                         continue
+                    datos['google_rank_position'] = rank_position
+                    datos['google_search_query'] = query
 
                     if dry_run:
                         self.stdout.write(
-                            f'  [dry-run] {datos["nombre"]} ({datos["categoria"]}) — {datos["lat"]:.4f},{datos["lon"]:.4f}'
+                            f'  [dry-run] #{rank_position} {datos["nombre"]} ({datos["categoria"]}) — {datos["lat"]:.4f},{datos["lon"]:.4f}'
                         )
                         ciudad_creados += 1
                         continue
 
                     try:
                         with transaction.atomic():
-                            _, fue_creado = POI.objects.get_or_create(
+                            poi, fue_creado = POI.objects.get_or_create(
                                 nombre=datos['nombre'],
                                 ciudad=ciudad,
                                 defaults={
@@ -248,8 +264,33 @@ class Command(BaseCommand):
                                     'coordenadas': Point(datos['lon'], datos['lat'], srid=4326),
                                     'direccion':   datos['direccion'],
                                     'fuente':      POI.Fuente.GOOGLE,
+                                    'google_place_id': datos['google_place_id'],
+                                    'google_rank_position': datos['google_rank_position'],
+                                    'google_search_query': datos['google_search_query'],
+                                    'google_last_seen_at': timezone.now(),
                                 },
                             )
+                            if not fue_creado and poi.fuente == POI.Fuente.GOOGLE:
+                                cambios = []
+                                if datos['google_place_id'] and poi.google_place_id != datos['google_place_id']:
+                                    poi.google_place_id = datos['google_place_id']
+                                    cambios.append('google_place_id')
+                                nuevo_rank = datos.get('google_rank_position')
+                                if nuevo_rank and (
+                                    poi.google_rank_position is None or int(nuevo_rank) < int(poi.google_rank_position)
+                                ):
+                                    poi.google_rank_position = int(nuevo_rank)
+                                    cambios.append('google_rank_position')
+                                if poi.google_search_query != datos['google_search_query']:
+                                    poi.google_search_query = datos['google_search_query']
+                                    cambios.append('google_search_query')
+                                poi.google_last_seen_at = timezone.now()
+                                cambios.append('google_last_seen_at')
+                                if poi.categoria != datos['categoria']:
+                                    poi.categoria = datos['categoria']
+                                    cambios.append('categoria')
+                                if cambios:
+                                    poi.save(update_fields=sorted(set(cambios)))
                         if fue_creado:
                             ciudad_creados += 1
                         else:

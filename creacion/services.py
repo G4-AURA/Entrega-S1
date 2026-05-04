@@ -427,59 +427,22 @@ def _obtener_pois_allowlist(ciudad: str, moods: list[str]) -> list[dict]:
     Importación diferida del modelo POI para evitar dependencias circulares.
     """
     try:
-        from allowList.models import POI  # importación diferida intencionada
+        from creacion.allowlist_selector import seleccionar_pois_allowlist
     except ImportError:
-        logger.warning('No se pudo importar el modelo POI de allowList; se omiten recomendaciones.')
+        logger.warning('No se pudo importar el selector allowlist; se omiten recomendaciones.')
         return []
-
-    categorias_relevantes: set[str] = set()
-    for mood in moods:
-        categorias_relevantes.update(_MOOD_A_CATEGORIAS_OSM.get(str(mood).strip().lower(), []))
 
     try:
-        ciudad_limpia = str(ciudad or '').strip()
-
-        def _serializar_qs(qs):
-            return [
-                {
-                    'nombre': poi.nombre,
-                    'coords': [poi.lat, poi.lon],
-                    'categoria': poi.get_categoria_display(),
-                }
-                for poi in qs
-            ]
-
-        qs = POI.objects.all()
-        if ciudad_limpia:
-            qs = qs.filter(ciudad__icontains=ciudad_limpia)
-        if categorias_relevantes:
-            qs = qs.filter(categoria__in=categorias_relevantes)
-
-        resultado = _serializar_qs(qs.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT])
-        if resultado:
-            return resultado
-
-        # Si la ciudad inferida no coincide con la allowlist, relajar filtro de ciudad.
-        if ciudad_limpia:
-            qs_relajado = POI.objects.all()
-            if categorias_relevantes:
-                qs_relajado = qs_relajado.filter(categoria__in=categorias_relevantes)
-            resultado = _serializar_qs(
-                qs_relajado.order_by('nombre')[:MAX_POIS_ALLOWLIST_EN_PROMPT]
-            )
-            if resultado:
-                logger.warning(
-                    'Allowlist sin resultados para ciudad="%s"; se usa fallback sin filtro de ciudad.',
-                    ciudad_limpia,
-                )
-                return resultado
-
-        return []
-    except (ImportError, LookupError) as exc:
-        logger.warning('Error al consultar la allowlist de POIs: %s', exc)
+        return seleccionar_pois_allowlist(
+            ciudad=str(ciudad or '').strip(),
+            moods=moods or [],
+            limite=MAX_POIS_ALLOWLIST_EN_PROMPT,
+        )
+    except (LookupError, ValueError, TypeError) as exc:
+        logger.warning('Error en selector allowlist para ciudad="%s": %s', ciudad, exc)
         return []
     except DatabaseError as exc:
-        logger.warning('Error de BD al consultar la allowlist de POIs: %s', exc)
+        logger.warning('Error de BD al consultar allowlist rankeada: %s', exc)
         return []
 
 
