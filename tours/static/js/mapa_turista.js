@@ -56,6 +56,11 @@ let solicitudCuriosidadEnCurso = false;
 let curiosidadPopupActual = null;
 let sesionEstadoActual = (typeof sesionEstado !== 'undefined' && sesionEstado) ? sesionEstado : '';
 const RADIO_PARADA_METROS = 75;
+const PROXIMITY_CURIOSITY_ENABLED = (
+    typeof proximityCuriosityEnabled === 'boolean'
+        ? proximityCuriosityEnabled
+        : true
+);
 
 // ── Estados de centrado del mapa ───────────────────────────────────────────
 const CENTRADO_STATES = {
@@ -399,6 +404,7 @@ async function _iniciarRastreoLocal() {
                             return r.json();
                         })
                         .then(data => {
+                            if (!PROXIMITY_CURIOSITY_ENABLED) return;
                             const curiosidadCercana = data?.curiosidad_cercana;
                             const parada = curiosidadCercana?.parada;
                             const curiosidad = curiosidadCercana?.curiosidad;
@@ -536,7 +542,13 @@ function _getCsrf() {
 }
 
 function _detectarParadaYSolicitarCuriosidad(lat, lng) {
-    if (esGuia || !_sesionEnCurso() || !Array.isArray(paradasData) || !paradasData.length) return;
+    if (
+        esGuia
+        || !PROXIMITY_CURIOSITY_ENABLED
+        || !_sesionEnCurso()
+        || !Array.isArray(paradasData)
+        || !paradasData.length
+    ) return;
 
     const paradaMasCercana = _buscarParadaMasCercanaEnRadio(lat, lng, RADIO_PARADA_METROS);
 

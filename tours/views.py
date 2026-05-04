@@ -138,6 +138,13 @@ def _is_scheduled_meetup_enabled_for_sesion(sesion: SesionTour) -> bool:
         return False
 
 
+def _is_tourist_proximity_curiosity_enabled_for_sesion(sesion: SesionTour) -> bool:
+    try:
+        return is_feature_enabled_for_guia(sesion.ruta.guia, 'tourist_proximity_curiosity')
+    except Exception:
+        return False
+
+
 def _distancia_haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     earth_radius_m = 6371000.0
     phi1 = math.radians(lat1)
@@ -508,6 +515,7 @@ def mapa_turista_anonimo(request, token):
             "current_user_name":   turista.alias,
             "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
             "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
+            "proximity_curiosity_enabled": _is_tourist_proximity_curiosity_enabled_for_sesion(sesion),
         },
     )
 
@@ -862,6 +870,7 @@ def mapa_guia(request, sesion_id):
             "current_user_name":   request.user.username,
             "private_chat_enabled": _is_private_chat_enabled_for_sesion(sesion),
             "scheduled_meetup_enabled": _is_scheduled_meetup_enabled_for_sesion(sesion),
+            "proximity_curiosity_enabled": _is_tourist_proximity_curiosity_enabled_for_sesion(sesion),
         },
     )
 
@@ -1084,7 +1093,10 @@ def registrar_ubicacion_turista(request, sesion_id):
         ubicacion = ultima
 
     curiosidad_cercana = None
-    if sesion.estado == SesionTour.EN_CURSO:
+    if (
+        sesion.estado == SesionTour.EN_CURSO
+        and _is_tourist_proximity_curiosity_enabled_for_sesion(sesion)
+    ):
         curiosidad_cercana = _resolver_curiosidad_cercana(sesion, latitud, longitud)
 
     payload = {

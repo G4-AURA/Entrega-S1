@@ -344,6 +344,7 @@
   const fallbackCuriosidadImg = "{% static 'img/logo_aura.png' %}";
   const privateChatEnabled   = ('{% if private_chat_enabled %}true{% else %}false{% endif %}' === 'true');
   const scheduledMeetupEnabled = ('{% if scheduled_meetup_enabled %}true{% else %}false{% endif %}' === 'true');
+  const proximityCuriosityEnabled = ('{% if proximity_curiosity_enabled %}true{% else %}false{% endif %}' === 'true');
   // Chat privado — URLs de API
   const bandejaPrivadaUrl    = '{% url "tours:bandeja_privada_guia" sesion.id %}';
   const mensajesPrivadosBaseUrl = '/tours/sesiones/{{ sesion.id }}/chat-privado/';

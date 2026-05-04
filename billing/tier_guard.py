@@ -138,6 +138,16 @@ FEATURE_ACCESS_DEFINITIONS = (
         'default_premium': True,
     },
     {
+        'key': 'tourist_proximity_curiosity',
+        'name': 'Curiosidad automatica por proximidad',
+        'description': (
+            'Si esta activa, el turista recibe curiosidades automaticamente '
+            'al acercarse a una parada (sin accion manual del guia).'
+        ),
+        'default_freemium': True,
+        'default_premium': True,
+    },
+    {
         'key': 'payload_wishes',
         'name': 'Campo de deseos con IA',
         'description': (
