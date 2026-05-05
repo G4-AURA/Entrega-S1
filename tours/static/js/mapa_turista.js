@@ -56,6 +56,9 @@ let solicitudCuriosidadEnCurso = false;
 let curiosidadPopupActual = null;
 let sesionEstadoActual = (typeof sesionEstado !== 'undefined' && sesionEstado) ? sesionEstado : '';
 const RADIO_PARADA_METROS = 75;
+let curiosidadVisibleVersionActual = 0;
+let curiosidadCerradaManualParadaId = null;
+let curiosidadCerradaManualVersion = null;
 const PROXIMITY_CURIOSITY_ENABLED = (
     typeof proximityCuriosityEnabled === 'boolean'
         ? proximityCuriosityEnabled
@@ -695,6 +698,9 @@ function _mostrarCuriosidadAutomatica(parada, curiosidad) {
                 } catch {
                     // Si falla, al menos cerramos localmente.
                 }
+            } else if (!esGuia && parada && parada.id) {
+                curiosidadCerradaManualParadaId = _parseParadaId(parada.id);
+                curiosidadCerradaManualVersion = curiosidadVisibleVersionActual;
             }
             _cerrarCuriosidadVisible();
             if (esGuia) _syncCuriosidadButtons(null);
@@ -856,6 +862,11 @@ function _syncCuriosidadStateFromRemote(data) {
 
     if (esGuia) return;
     const visibleParadaId = _parseParadaId(data.curiosidad_visible_parada_id);
+    const visibleVersionRaw = Number.parseInt(String(data.curiosidad_visible_version ?? 0), 10);
+    const visibleVersion = Number.isFinite(visibleVersionRaw) && visibleVersionRaw >= 0
+        ? visibleVersionRaw
+        : 0;
+    curiosidadVisibleVersionActual = visibleVersion;
 
     const historyIds = Array.isArray(data.curiosidades_historial_paradas_ids)
         ? data.curiosidades_historial_paradas_ids.map(_parseParadaId).filter(Boolean)
@@ -867,7 +878,16 @@ function _syncCuriosidadStateFromRemote(data) {
 
     const popupParadaId = _getPopupParadaId();
     if (!visibleParadaId) {
+        curiosidadCerradaManualParadaId = null;
+        curiosidadCerradaManualVersion = null;
         if (popupParadaId) _cerrarCuriosidadVisible();
+        return;
+    }
+
+    if (
+        curiosidadCerradaManualParadaId === visibleParadaId
+        && curiosidadCerradaManualVersion === visibleVersion
+    ) {
         return;
     }
 
