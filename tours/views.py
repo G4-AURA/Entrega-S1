@@ -343,6 +343,7 @@ def _build_cronometro_payload(sesion: SesionTour, now=None) -> dict:
         "parada_actual_id": sesion.parada_actual_id,
         "curiosidad_visible_parada_id": curiosity_state.get("visible_parada_id"),
         "curiosidades_historial_paradas_ids": curiosity_state.get("history_parada_ids", []),
+        "curiosidad_visible_version": curiosity_state.get("visible_version", 0),
     }
 
 
@@ -1230,6 +1231,7 @@ def actualizar_visibilidad_curiosidad(request, sesion_id, parada_id):
             "visible": visible,
             "curiosidad_visible_parada_id": new_state.get("visible_parada_id"),
             "curiosidades_historial_paradas_ids": new_state.get("history_parada_ids", []),
+            "curiosidad_visible_version": new_state.get("visible_version", 0),
         }
     )
 
@@ -1253,6 +1255,7 @@ def estado_curiosidades_sesion(request, sesion_id):
             "status": "ok",
             "curiosidad_visible_parada_id": state.get("visible_parada_id"),
             "curiosidades_historial_paradas_ids": state.get("history_parada_ids", []),
+            "curiosidad_visible_version": state.get("visible_version", 0),
         }
     )
 
