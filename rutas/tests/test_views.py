@@ -321,6 +321,12 @@ class RutasViewsTest(TestCase):
         })
         self.assertRedirects(response, f"{url}?meta_updated=1")
 
+    def test_ruta_detalle_meta_duracion_usa_incrementos_media_hora(self):
+        response = self.client.get(reverse('ruta-detalle', args=[self.ruta.id]))
+
+        self.assertContains(response, 'name="duracion_horas"')
+        self.assertContains(response, 'step="0.5"')
+
     def test_ruta_detalle_post_meta_success_con_duracion_legacy_sin_cambiar(self):
         self.ruta.duracion_horas = 1.2
         self.ruta.save(update_fields=["duracion_horas"])
