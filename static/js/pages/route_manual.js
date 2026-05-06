@@ -173,6 +173,15 @@
                         <button class="btn-map" type="button">
                             <span class="material-icons-round">map</span>
                         </button>
+                        <input
+                            type="text"
+                            class="input-field coords-field"
+                            readonly
+                            disabled
+                            tabindex="-1"
+                            hidden
+                            aria-label="Coordenadas seleccionadas para la parada ${index}"
+                        >
                     </div>
                 </div>
             </div>
@@ -353,17 +362,20 @@
     }
 
     function cerrarModalMapa() {
-        if (currentInputTarget && selectorUbicacion && typeof selectorUbicacion.getCoords === 'function') {
-            const coords = selectorUbicacion.getCoords();
-            if (coords) {
-                currentInputTarget.dataset.lat = coords.lat;
-                currentInputTarget.dataset.lon = coords.lng;
-            }
-        }
         mapModal.style.display = 'none';
         if (selectorUbicacion && typeof selectorUbicacion.close === 'function') {
             selectorUbicacion.close();
         }
+    }
+
+    function mostrarCoordenadasSeleccionadas(stopCard, coords) {
+        const coordsField = stopCard.querySelector('.coords-field');
+        if (!coordsField) {
+            return;
+        }
+
+        coordsField.value = `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+        coordsField.hidden = false;
     }
 
     function renderizarErrores(mensaje) {
@@ -499,7 +511,7 @@
 
         currentInputTarget.dataset.lat = coords.lat;
         currentInputTarget.dataset.lon = coords.lng;
-        currentInputTarget.value = `📍 Ubicación guardada (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
+        mostrarCoordenadasSeleccionadas(currentInputTarget, coords);
         cerrarModalMapa();
     });
 
