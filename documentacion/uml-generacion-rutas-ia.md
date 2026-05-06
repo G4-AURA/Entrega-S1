@@ -154,20 +154,9 @@ if (n_disponibles > 0?) then (Si)
   stop
 endif
 
-:Allowlist vacía -> Gemini completo;
-if (Gemini devuelve lista válida?) then (Si)
-  :return Gemini;
-  stop
-else (No)
-  :fallback allowlist;
-  if (fallback >= objetivo?) then (Si)
-    :return fallback;
-    stop
-  else (No)
-    :ErrorIntegracionIA;
-    stop
-  endif
-endif
+:Allowlist vacía;
+:ErrorValidacionRuta\n"Esta ciudad no está contemplada en esta version de la aplicacion";
+stop
 
 @enduml
 ```
@@ -246,7 +235,7 @@ if (hay categorías filtrables?) then (Si)
 endif
 
 :Resolver CityBoundary activa por nombre normalizado;
-:city_qs por ciudad__icontains;
+:city_qs por ciudad normalizada exacta;
 
 if (Boundary existe?) then (Si)
   :strict_qs = city_qs intersecta polígono;
@@ -261,10 +250,6 @@ else (No)
   :source=strict;
 endif
 
-if (siguen vacíos?) then (Si)
-  :candidates = base_qs;\nsource=global_relaxed;
-endif
-
 if (sin candidatos?) then (Si)
   :return [];
   stop
@@ -276,10 +261,10 @@ endif
 :Ordenar desc por final_score;
 :top_k = min(len, max(limite, limite*factor));
 :Pool = top_k;
-:Muestreo ponderado sin reemplazo\n(aleatoriedad controlada por seed);
+:Reservar 1-3 POIs top como anclas;
+:Muestreo ponderado sin reemplazo para el resto\n(aleatoriedad controlada por seed);
 :Serializar y return;
 stop
 
 @enduml
 ```
-

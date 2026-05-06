@@ -53,57 +53,93 @@ class NodoGeneracionTestCase(TestCase):
 
     @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
-    def test_devuelve_pois_crudos_de_gemini(self, mock_gemini, _mock_allowlist):
-        pois_esperados = [_poi_crudo('A'), _poi_crudo('B')]
-        mock_gemini.return_value = pois_esperados
+    def test_rechaza_ciudad_sin_pois_locales_sin_llamar_gemini(self, mock_gemini, _mock_allowlist):
+        from creacion.exceptions import ErrorValidacionRuta
+
+        from creacion.langgraph.nodes.generacion import nodo_generacion
+        state = _estado_base()
+        with self.assertRaisesMessage(
+            ErrorValidacionRuta,
+            'Esta ciudad no está contemplada en esta version de la aplicacion',
+        ):
+            nodo_generacion(state)
+
+        mock_gemini.assert_not_called()
+
+    @patch('creacion.langgraph.nodes.generacion.calcular_objetivo_paradas_ia', return_value=5)
+    @patch(
+        'creacion.langgraph.nodes.generacion._obtener_pois_allowlist',
+        return_value=[_poi_crudo('Local A'), _poi_crudo('Local B')],
+    )
+    @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
+    def test_completa_allowlist_parcial_con_gemini(self, mock_gemini, _mock_allowlist, _mock_objetivo):
+        pois_gemini = [_poi_crudo('Gemini C'), _poi_crudo('Gemini D'), _poi_crudo('Gemini E')]
+        mock_gemini.return_value = pois_gemini
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
         state = _estado_base()
         resultado = nodo_generacion(state)
 
-        self.assertIn('pois_crudos', resultado)
-        self.assertEqual(resultado['pois_crudos'], pois_esperados)
+        self.assertEqual(len(resultado['pois_crudos']), 5)
+        self.assertEqual(resultado['pois_crudos'][0]['nombre'], 'Local A')
+        mock_gemini.assert_called_once()
 
-    @patch('creacion.langgraph.nodes.generacion._construir_pois_fallback_allowlist')
-    @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
+    @patch('creacion.langgraph.nodes.generacion.calcular_objetivo_paradas_ia', return_value=5)
+    @patch(
+        'creacion.langgraph.nodes.generacion._obtener_pois_allowlist',
+        return_value=[_poi_crudo('Local A'), _poi_crudo('Local B')],
+    )
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
-    def test_usa_fallback_si_gemini_falla(self, mock_gemini, _mock_allowlist, mock_fallback):
+    def test_si_gemini_falla_en_complemento_usa_solo_pois_locales(self, mock_gemini, _mock_allowlist, _mock_objetivo):
         from creacion.langgraph.utils import ErrorIntegracionIA
         mock_gemini.side_effect = ErrorIntegracionIA('timeout')
-        fallback_pois = [_poi_crudo('Fallback A'), _poi_crudo('Fallback B'),
-                         _poi_crudo('Fallback C'), _poi_crudo('Fallback D'),
-                         _poi_crudo('Fallback E')]
-        mock_fallback.return_value = fallback_pois
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
-        state = _estado_base(duracion=2)  # objetivo mínimo = 5 paradas
+        state = _estado_base()
         resultado = nodo_generacion(state)
 
-        self.assertEqual(resultado['pois_crudos'], fallback_pois)
+        self.assertEqual([p['nombre'] for p in resultado['pois_crudos']], ['Local A', 'Local B'])
 
-    @patch('creacion.langgraph.nodes.generacion._construir_pois_fallback_allowlist', return_value=[])
-    @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
+    @patch('creacion.langgraph.nodes.generacion.calcular_objetivo_paradas_ia', return_value=5)
+    @patch(
+        'creacion.langgraph.nodes.generacion._obtener_pois_allowlist',
+        return_value=[
+            _poi_crudo('Catedral'),
+            _poi_crudo('Giralda'),
+            _poi_crudo('Torre del Oro'),
+            _poi_crudo('Alcazar'),
+            _poi_crudo('Plaza de Espana'),
+            _poi_crudo('Otro POI'),
+        ],
+    )
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
-    def test_lanza_error_si_gemini_y_fallback_fallan(self, mock_gemini, _mock_allowlist, _mock_fallback):
-        from creacion.langgraph.utils import ErrorIntegracionIA
-        mock_gemini.side_effect = ErrorIntegracionIA('timeout')
-
+    def test_respeta_orden_rankeado_de_allowlist_sin_remuestrear(self, mock_gemini, _mock_allowlist, _mock_objetivo):
         from creacion.langgraph.nodes.generacion import nodo_generacion
-        state = _estado_base(duracion=2)
-        with self.assertRaises(ErrorIntegracionIA):
-            nodo_generacion(state)
+        state = _estado_base()
+        resultado = nodo_generacion(state)
 
-    @patch('creacion.langgraph.nodes.generacion._construir_pois_fallback_allowlist', return_value=[])
-    @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
+        self.assertEqual(
+            [p['nombre'] for p in resultado['pois_crudos']],
+            ['Catedral', 'Giralda', 'Torre del Oro', 'Alcazar', 'Plaza de Espana'],
+        )
+        mock_gemini.assert_not_called()
+
+    @patch('creacion.langgraph.nodes.generacion.calcular_objetivo_paradas_ia', return_value=5)
+    @patch(
+        'creacion.langgraph.nodes.generacion._obtener_pois_allowlist',
+        return_value=[_poi_crudo('Local A'), _poi_crudo('Local B')],
+    )
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
-    def test_lanza_error_si_gemini_devuelve_no_lista(self, mock_gemini, _mock_allowlist, _mock_fallback):
-        from creacion.langgraph.utils import ErrorIntegracionIA
+    def test_si_gemini_devuelve_no_lista_en_complemento_usa_solo_pois_locales(
+        self, mock_gemini, _mock_allowlist, _mock_objetivo
+    ):
         mock_gemini.return_value = {'error': 'formato incorrecto'}
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
         state = _estado_base()
-        with self.assertRaises(ErrorIntegracionIA):
-            nodo_generacion(state)
+        resultado = nodo_generacion(state)
+
+        self.assertEqual([p['nombre'] for p in resultado['pois_crudos']], ['Local A', 'Local B'])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -304,7 +340,10 @@ class GrafoCompletoTestCase(TestCase):
     @patch('creacion.langgraph.nodes.validacion.OSMGeocodingClient')
     @patch('creacion.langgraph.nodes.validacion.MapboxGeocodingClient')
     @patch('creacion.langgraph.nodes.validacion.completar_lista_paradas_validadas')
-    @patch('creacion.langgraph.nodes.generacion._obtener_pois_allowlist', return_value=[])
+    @patch(
+        'creacion.langgraph.nodes.generacion._obtener_pois_allowlist',
+        return_value=[_poi_crudo('A'), _poi_crudo('B'), _poi_crudo('C'), _poi_crudo('D'), _poi_crudo('E')],
+    )
     @patch('creacion.langgraph.nodes.generacion.llamar_gemini')
     def test_grafo_produce_todos_los_artefactos_de_estado(
         self,

@@ -5,7 +5,9 @@ Objetivos:
 1) Priorizar el ranking nativo de Google SearchText (rankPreference=RELEVANCE).
 2) Respetar coherencia mood -> categoría allowlist.
 3) Filtrar por polígono oficial de ciudad cuando exista.
-4) Introducir aleatoriedad controlada para evitar rutas clónicas.
+4) No devolver POIs de otras ciudades como fallback.
+5) Reservar POIs icónicos/top para que aparezcan con frecuencia.
+6) Introducir aleatoriedad controlada para evitar rutas clónicas.
 """
 
 from __future__ import annotations
@@ -116,6 +118,18 @@ def _weighted_sample_without_replacement(
     return selected_ids
 
 
+def _calcular_num_anclas_top(limite: int, disponibles: int) -> int:
+    if limite <= 0 or disponibles <= 0:
+        return 0
+    if limite >= 9:
+        objetivo = 3
+    elif limite >= 5:
+        objetivo = 2
+    else:
+        objetivo = 1
+    return min(objetivo, limite, disponibles)
+
+
 def seleccionar_pois_allowlist(
     *,
     ciudad: str,
@@ -129,6 +143,9 @@ def seleccionar_pois_allowlist(
     limite = max(1, int(limite))
     top_k_factor = max(1, int(top_k_factor))
     ciudad_limpia = str(ciudad or '').strip()
+    if not ciudad_limpia:
+        return []
+
     category_weights = _build_category_weights(moods)
     categorias_filtrables = set(category_weights.keys())
 
@@ -139,21 +156,27 @@ def seleccionar_pois_allowlist(
             'categoria': poi.get_categoria_display(),
         }
 
-    base_qs = POI.objects.all()
+    ciudad_norm = _normalizar_texto(ciudad_limpia)
+    city_ids = [
+        poi.id
+        for poi in POI.objects.only('id', 'ciudad')
+        if _normalizar_texto(poi.ciudad) == ciudad_norm
+    ]
+    city_scope_qs = POI.objects.filter(id__in=city_ids)
+    base_qs = city_scope_qs
     if categorias_filtrables:
         base_qs = base_qs.filter(categoria__in=categorias_filtrables)
 
     boundary = _resolve_city_boundary(ciudad_limpia)
-    city_qs = base_qs
-    if ciudad_limpia:
-        city_qs = city_qs.filter(ciudad__icontains=ciudad_limpia)
-
     if boundary is not None:
-        strict_qs = city_qs.filter(coordenadas__intersects=boundary.polygon)
+        strict_qs = base_qs.filter(coordenadas__intersects=boundary.polygon)
+        city_relaxed_qs = city_scope_qs.filter(coordenadas__intersects=boundary.polygon)
     else:
-        strict_qs = city_qs
+        strict_qs = base_qs
+        city_relaxed_qs = city_scope_qs
 
-    # Fallbacks progresivos manteniendo preferencia por ciudad.
+    # Fallback progresivo dentro de la misma ciudad: primero mood/categoría,
+    # después cualquier categoría local. Nunca cae a POIs globales.
     candidates = list(
         strict_qs.only(
             'id',
@@ -167,7 +190,7 @@ def seleccionar_pois_allowlist(
     source = 'strict'
     if not candidates:
         candidates = list(
-            city_qs.only(
+            city_relaxed_qs.only(
                 'id',
                 'nombre',
                 'categoria',
@@ -177,18 +200,6 @@ def seleccionar_pois_allowlist(
             )
         )
         source = 'city_relaxed'
-    if not candidates:
-        candidates = list(
-            base_qs.only(
-                'id',
-                'nombre',
-                'categoria',
-                'ciudad',
-                'coordenadas',
-                'google_rank_position',
-            )
-        )
-        source = 'global_relaxed'
 
     if not candidates:
         return []
@@ -197,18 +208,14 @@ def seleccionar_pois_allowlist(
     rng = random.Random(seed)
 
     scored: list[_CandidateScore] = []
-    ciudad_norm = _normalizar_texto(ciudad_limpia)
     for poi in candidates:
         google_score = _google_relevance_score(poi.google_rank_position)
         mood_score = category_weights.get(poi.categoria, 0.1 if category_weights else 0.5)
 
         if source == 'strict':
             city_score = 1.0
-        elif source == 'city_relaxed':
-            city_score = 0.8
         else:
-            poi_city_norm = _normalizar_texto(poi.ciudad)
-            city_score = 0.4 if ciudad_norm and poi_city_norm == ciudad_norm else 0.2
+            city_score = 0.8
 
         final_score = (
             float(weights.get('google_relevance', 0.7)) * google_score
@@ -228,7 +235,17 @@ def seleccionar_pois_allowlist(
     scored.sort(key=lambda item: item.final_score, reverse=True)
     top_k = min(len(scored), max(limite, limite * top_k_factor))
     selection_pool = scored[:top_k]
-    chosen_ids = _weighted_sample_without_replacement(selection_pool, limite, rng)
+
+    num_anclas = _calcular_num_anclas_top(limite, len(selection_pool))
+    anchor_ids = [item.poi_id for item in selection_pool[:num_anclas]]
+    anchor_id_set = set(anchor_ids)
+    random_pool = [item for item in selection_pool if item.poi_id not in anchor_id_set]
+    random_ids = _weighted_sample_without_replacement(
+        random_pool,
+        limite - len(anchor_ids),
+        rng,
+    )
+    chosen_ids = anchor_ids + random_ids
 
     by_id = {poi.id: poi for poi in candidates}
     selected = [by_id[poi_id] for poi_id in chosen_ids if poi_id in by_id]

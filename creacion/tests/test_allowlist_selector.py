@@ -39,6 +39,28 @@ class AllowlistSelectorTest(TestCase):
         nombres = [item['nombre'] for item in seleccion]
         self.assertIn('Rank 1', nombres)
 
+    def test_reserva_pois_top_como_anclas_de_la_seleccion(self):
+        self._create_poi(nombre='Catedral', lat=37.386, lon=-5.993, ciudad='Sevilla', rank=1)
+        self._create_poi(nombre='Giralda', lat=37.386, lon=-5.992, ciudad='Sevilla', rank=2)
+        self._create_poi(nombre='Torre del Oro', lat=37.382, lon=-5.996, ciudad='Sevilla', rank=3)
+        for idx in range(4, 12):
+            self._create_poi(
+                nombre=f'POI menor {idx}',
+                lat=37.38 + idx * 0.001,
+                lon=-5.99 + idx * 0.001,
+                ciudad='Sevilla',
+                rank=idx,
+            )
+
+        seleccion = seleccionar_pois_allowlist(
+            ciudad='Sevilla',
+            moods=['historia'],
+            limite=8,
+            seed=99,
+        )
+
+        self.assertEqual([item['nombre'] for item in seleccion[:2]], ['Catedral', 'Giralda'])
+
     def test_filtra_por_city_boundary_cuando_existe(self):
         # Polígono simplificado centrado en Sevilla capital.
         poly = Polygon(
@@ -69,6 +91,63 @@ class AllowlistSelectorTest(TestCase):
         nombres = {item['nombre'] for item in seleccion}
         self.assertIn('Dentro', nombres)
         self.assertNotIn('Fuera', nombres)
+
+    def test_no_usa_pois_de_otras_ciudades_como_fallback(self):
+        self._create_poi(nombre='Catedral Sevilla', lat=37.389, lon=-5.984, ciudad='Sevilla', rank=1)
+
+        seleccion = seleccionar_pois_allowlist(
+            ciudad='Granada',
+            moods=['historia'],
+            limite=2,
+            seed=1,
+        )
+
+        self.assertEqual(seleccion, [])
+
+    def test_no_confunde_ciudades_con_nombre_parcial(self):
+        self._create_poi(
+            nombre='Plaza ajena',
+            lat=40.346,
+            lon=-3.837,
+            ciudad='Sevilla la Nueva',
+            rank=1,
+        )
+
+        seleccion = seleccionar_pois_allowlist(
+            ciudad='Sevilla',
+            moods=['historia'],
+            limite=2,
+            seed=1,
+        )
+
+        self.assertEqual(seleccion, [])
+
+    def test_relaja_categoria_solo_dentro_de_la_misma_ciudad(self):
+        self._create_poi(
+            nombre='Museo local',
+            lat=37.389,
+            lon=-5.984,
+            ciudad='Sevilla',
+            categoria=CategoriaOSM.MUSEO,
+            rank=1,
+        )
+        self._create_poi(
+            nombre='Parque Granada',
+            lat=37.177,
+            lon=-3.599,
+            ciudad='Granada',
+            categoria=CategoriaOSM.PARQUE,
+            rank=1,
+        )
+
+        seleccion = seleccionar_pois_allowlist(
+            ciudad='Sevilla',
+            moods=['naturaleza'],
+            limite=2,
+            seed=1,
+        )
+
+        self.assertEqual([item['nombre'] for item in seleccion], ['Museo local'])
 
     def test_aleatoriedad_controlada_se_repite_con_misma_seed(self):
         for idx in range(1, 8):
