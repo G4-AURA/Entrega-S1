@@ -251,6 +251,48 @@ class GuardarRutaManualViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['status'], 'ERROR')
 
+    def test_guardar_manual_rechaza_parada_sin_nombre(self):
+        user = User.objects.create_user(username='guia_manual_sin_nombre', password='1234')
+        self.client.force_login(user)
+        payload = {
+            **self.payload,
+            'paradas': [
+                {'nombre': '   ', 'lat': 37.38, 'lon': -5.99},
+                {'nombre': 'Parada 2', 'lat': 37.39, 'lon': -6.00},
+            ],
+        }
+
+        response = self.client.post(self.url, data=json.dumps(payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertEqual(
+            response.json()['errores']['parada_1'],
+            'El nombre de la parada 1 es obligatorio.',
+        )
+        self.assertEqual(Ruta.objects.count(), 0)
+
+    def test_guardar_manual_rechaza_nombre_parada_mayor_a_50_caracteres(self):
+        user = User.objects.create_user(username='guia_manual_nombre_largo', password='1234')
+        self.client.force_login(user)
+        payload = {
+            **self.payload,
+            'paradas': [
+                {'nombre': 'A' * 51, 'lat': 37.38, 'lon': -5.99},
+                {'nombre': 'Parada 2', 'lat': 37.39, 'lon': -6.00},
+            ],
+        }
+
+        response = self.client.post(self.url, data=json.dumps(payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'ERROR')
+        self.assertEqual(
+            response.json()['errores']['parada_1'],
+            'El nombre de la parada 1 no puede superar los 50 caracteres.',
+        )
+        self.assertEqual(Ruta.objects.count(), 0)
+
 
 class GenerarParadasIAViewTests(TestCase):
     def setUp(self):

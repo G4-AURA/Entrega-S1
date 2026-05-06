@@ -24,6 +24,7 @@
         personasMax: Number.isFinite(personasMaxConfig) ? personasMaxConfig : 50,
         paradasMin: 2,
         paradasMax: Number.isFinite(paradasMaxConfig) ? paradasMaxConfig : 15,
+        nombreParadaMax: 50,
     };
 
     const feedback = window.AuraFeedback;
@@ -159,7 +160,7 @@
 
                 <div class="form-group">
                     <label class="input-label">Nombre del Lugar</label>
-                    <input type="text" class="input-field stop-nombre" placeholder="Nombre...">
+                    <input type="text" class="input-field stop-nombre" placeholder="Nombre..." maxlength="${LIMITES_MANUAL.nombreParadaMax}" required>
                 </div>
 
                 <div class="form-group">
@@ -251,7 +252,7 @@
             const rawLon = card.dataset.lon;
 
             return {
-                nombre: nombreInput && nombreInput.value ? nombreInput.value : `Parada ${index + 1}`,
+                nombre: nombreInput ? nombreInput.value : '',
                 descripcion: descInput && descInput.value ? descInput.value : '',
                 lat: rawLat === undefined ? null : parseFloat(rawLat),
                 lon: rawLon === undefined ? null : parseFloat(rawLon),
@@ -308,7 +309,14 @@
             const parada = paradas[i] || {};
             const nombre = String(parada.nombre || '').trim();
             if (!nombre) {
-                return `El nombre de la parada ${i + 1} es obligatorio.`;
+                const mensaje = `El nombre de la parada ${i + 1} es obligatorio.`;
+                mostrarErrorCampo(document.querySelector(`#stop-${i + 1} .stop-nombre`), mensaje);
+                return mensaje;
+            }
+            if (nombre.length > LIMITES_MANUAL.nombreParadaMax) {
+                const mensaje = `El nombre de la parada ${i + 1} no puede superar los ${LIMITES_MANUAL.nombreParadaMax} caracteres.`;
+                mostrarErrorCampo(document.querySelector(`#stop-${i + 1} .stop-nombre`), mensaje);
+                return mensaje;
             }
 
             const lat = Number(parada.lat);
@@ -370,9 +378,30 @@
         avisar(`Ocurrió un error al intentar guardar la ruta: ${mensaje}`, 'error', 4200);
     }
 
-    function renderizarErroresCampos(errores) {
-        // Limpiar errores previos
+    function limpiarErroresCampos() {
         document.querySelectorAll('.error-message').forEach(el => el.remove());
+        document.querySelectorAll('[aria-invalid="true"]').forEach(el => {
+            el.removeAttribute('aria-invalid');
+        });
+    }
+
+    function mostrarErrorCampo(input, mensaje) {
+        if (!input) {
+            avisar(mensaje, 'error', 3800);
+            return;
+        }
+
+        input.setAttribute('aria-invalid', 'true');
+        const errorSpan = document.createElement('span');
+        errorSpan.className = 'error-message';
+        errorSpan.textContent = mensaje;
+        input.parentNode.appendChild(errorSpan);
+        input.focus({ preventScroll: true });
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function renderizarErroresCampos(errores) {
+        limpiarErroresCampos();
 
         for (const [campo, mensaje] of Object.entries(errores)) {
             let input;
@@ -392,13 +421,7 @@
             }
 
             if (input) {
-                const errorSpan = document.createElement('span');
-                errorSpan.className = 'error-message';
-                errorSpan.style.color = 'red';
-                errorSpan.style.fontSize = '0.875rem';
-                errorSpan.style.marginTop = '0.25rem';
-                errorSpan.textContent = mensaje;
-                input.parentNode.appendChild(errorSpan);
+                mostrarErrorCampo(input, mensaje);
             }
         }
     }
@@ -532,6 +555,7 @@
 
         try {
             const payload = leerFormulario();
+            limpiarErroresCampos();
             const errorValidacion = validarFormulario(payload);
             if (errorValidacion) {
                 throw new Error(errorValidacion);
