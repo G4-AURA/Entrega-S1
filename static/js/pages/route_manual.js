@@ -418,9 +418,7 @@
                 if (!map) {
                     map = L.map('leaflet-map').setView([37.3886, -5.9823], 13);
 
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© OpenStreetMap contributors',
-                    }).addTo(map);
+                    window.AuraMapTiles.createTileLayer({ style: 'streets' }).addTo(map);
 
                     map.on('click', function (e) {
                         selectedCoords = e.latlng;

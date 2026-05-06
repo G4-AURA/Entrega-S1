@@ -1,12 +1,7 @@
 (function () {
     function crearMapaRuta({ elementId, center, token }) {
         const map = L.map(elementId).setView(center, 14);
-        const tileUrl = token
-            ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`
-            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        const attribution = token ? '© Mapbox' : '© OpenStreetMap contributors';
-
-        L.tileLayer(tileUrl, { attribution }).addTo(map);
+        window.AuraMapTiles.createTileLayer({ token, style: 'streets' }).addTo(map);
         return map;
     }
 
@@ -42,9 +37,7 @@
             }
 
             map = L.map(mapId).setView(initialCoords, 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors',
-            }).addTo(map);
+            window.AuraMapTiles.createTileLayer({ style: 'streets' }).addTo(map);
 
             map.on('click', function (event) {
                 tempCoords = event.latlng;

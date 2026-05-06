@@ -561,12 +561,7 @@ const primeraConCoords = paradas.find(p => Array.isArray(p.coordenadas) && p.coo
 const centroInicial    = primeraConCoords ? primeraConCoords.coordenadas : [40.4167, -3.7037];
 
 const mapa = L.map('mapa-ruta').setView(centroInicial, 14);
-
-const tileUrl = mapboxToken
-    ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
-    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-L.tileLayer(tileUrl, { attribution: mapboxToken ? '© Mapbox' : '© OpenStreetMap contributors' }).addTo(mapa);
+window.AuraMapTiles.createTileLayer({ token: mapboxToken, style: 'streets' }).addTo(mapa);
 
 // ── Marcadores ─────────────────────────────────────────────────────────────
 const puntos = [];
