@@ -234,10 +234,10 @@ class NormalizacionPayloadE2ETest(TestCase):
 class NodoGeneracionE2ETest(TestCase):
     """Prueba el nodo de generación de POIs de forma aislada."""
 
-    @patch("creacion.langgraph.nodes.generacion._obtener_pois_allowlist", return_value=[])
+    @patch("creacion.langgraph.nodes.generacion._obtener_pois_allowlist", return_value=[_POIS_GEMINI_SEVILLA[0]])
     @patch("creacion.langgraph.nodes.generacion.llamar_gemini")
     def test_nodo_devuelve_lista_de_pois_validos(self, mock_gemini, _mock_allowlist):
-        mock_gemini.return_value = _POIS_GEMINI_SEVILLA
+        mock_gemini.return_value = _POIS_GEMINI_SEVILLA[1:]
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
 
@@ -256,17 +256,10 @@ class NodoGeneracionE2ETest(TestCase):
         self.assertEqual(len(resultado["pois_crudos"]), 5)
         self.assertEqual(resultado["pois_crudos"][0]["nombre"], "Catedral de Sevilla")
 
-    @patch("creacion.langgraph.nodes.generacion.calcular_objetivo_paradas_ia", return_value=5)
-    @patch("creacion.langgraph.nodes.generacion._construir_pois_fallback_allowlist")
     @patch("creacion.langgraph.nodes.generacion._obtener_pois_allowlist", return_value=[])
     @patch("creacion.langgraph.nodes.generacion.llamar_gemini")
-    def test_nodo_usa_fallback_cuando_gemini_falla(
-        self, mock_gemini, _mock_allowlist, mock_fallback, mock_calcular_obj
-    ):
-        from creacion.langgraph.nodes.generacion import ErrorIntegracionIA
-        
-        mock_gemini.side_effect = ErrorIntegracionIA("timeout simulado")
-        mock_fallback.return_value = _POIS_GEMINI_SEVILLA
+    def test_nodo_rechaza_ciudad_sin_pois_sin_llamar_gemini(self, mock_gemini, _mock_allowlist):
+        from creacion.exceptions import ErrorValidacionRuta
 
         from creacion.langgraph.nodes.generacion import nodo_generacion
 
@@ -279,10 +272,13 @@ class NodoGeneracionE2ETest(TestCase):
                 "mood": ["Historia"],
             }
         }
-        resultado = nodo_generacion(state)
-        
-        self.assertEqual(len(resultado["pois_crudos"]), 5)
-        mock_fallback.assert_called_once()
+        with self.assertRaisesMessage(
+            ErrorValidacionRuta,
+            "Esta ciudad no está contemplada en esta version de la aplicacion",
+        ):
+            nodo_generacion(state)
+
+        mock_gemini.assert_not_called()
 
 
 class NodoValidacionE2ETest(TestCase):
@@ -520,7 +516,7 @@ class GrafoCompletoE2ETest(TestCase):
     @patch("creacion.langgraph.nodes.validacion.OSMGeocodingClient")
     @patch("creacion.langgraph.nodes.validacion.MapboxGeocodingClient")
     @patch("creacion.langgraph.nodes.validacion.completar_lista_paradas_validadas")
-    @patch("creacion.langgraph.nodes.generacion._obtener_pois_allowlist", return_value=[])
+    @patch("creacion.langgraph.nodes.generacion._obtener_pois_allowlist", return_value=[_POIS_GEMINI_SEVILLA[0]])
     @patch("creacion.langgraph.nodes.generacion.llamar_gemini")
     def test_pipeline_produce_ruta_final_con_todos_los_artefactos(
         self,

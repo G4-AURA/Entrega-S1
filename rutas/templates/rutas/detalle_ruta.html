@@ -528,6 +528,12 @@ const csrfToken     = '{{ csrf_token }}';
 const RECALCULAR_MIN_STOPS = 2;
 const sugerenciasIaUrl = "{% url 'creacion:generar_paradas_ia' ruta.id %}";
 const uiFeedback = window.AuraFeedback;
+const avisoCoordenadasIA = {
+    title: 'Revisión recomendada',
+    message: 'Las coordenadas generadas por la IA pueden no ser exactas. Revísalas antes de guardar los cambios.',
+    buttonText: 'Entendido',
+    type: 'info',
+};
 
 function getCsrfTokenFromCookie() {
     const value = `; ${document.cookie}`;
@@ -554,6 +560,21 @@ async function confirmarAccion(options) {
         return window.confirm(message);
     }
     return false;
+}
+
+async function mostrarAvisoCoordenadasIA() {
+    try {
+        if (uiFeedback && typeof uiFeedback.alert === 'function') {
+            await uiFeedback.alert(avisoCoordenadasIA);
+            return;
+        }
+    } catch (error) {
+        console.error('[AURA feedback] Error mostrando aviso de coordenadas IA:', error);
+    }
+
+    if (typeof window.alert === 'function') {
+        window.alert(avisoCoordenadasIA.message);
+    }
 }
 
 // ── Inicializar mapa ───────────────────────────────────────────────────────
@@ -1064,6 +1085,7 @@ document.addEventListener('click', async (event) => {
     });
     if (!confirmacion) return;
 
+    await mostrarAvisoCoordenadasIA();
     reemplazarParadaConSugerencia(paradaId, candidato);
 });
 

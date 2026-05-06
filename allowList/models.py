@@ -4,10 +4,8 @@ allowlist/models.py
 Modelo para la base de datos de lugares autorizados (Allowlist de POIs).
 Actúa como fuente de verdad para el motor generador de rutas.
 """
-from django.contrib.auth.models import User
 from django.contrib.gis.db import models as gis_models
 from django.db import models
-from django.utils import timezone
 
 
 class CategoriaOSM(models.TextChoices):
@@ -45,6 +43,7 @@ class POI(models.Model):
     class Fuente(models.TextChoices):
         OSM    = 'osm',    'OpenStreetMap'
         MANUAL = 'manual', 'Manual'
+        GOOGLE = 'google', 'Google Places'
 
     # ── Identificación ────────────────────────────────────────────────────────
     nombre     = models.CharField(max_length=255, db_index=True)
@@ -67,6 +66,30 @@ class POI(models.Model):
     osm_type     = models.CharField(max_length=10, blank=True,
                                     help_text='Tipo OSM: node, way o relation.')
 
+    # ── Señales de ranking Google Places SearchText (rankPreference=RELEVANCE) ──
+    google_place_id = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+        help_text='ID de lugar devuelto por Google Places v1 (places/{id}).',
+    )
+    google_rank_position = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Posición de ranking devuelta por Google SearchText (1 = más relevante).',
+    )
+    google_search_query = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text='Consulta de SearchText utilizada para descubrir el POI.',
+    )
+    google_last_seen_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Última fecha en la que el POI apareció en SearchText.',
+    )
+
 
     class Meta:
         verbose_name      = 'POI (Allowlist)'
@@ -74,6 +97,7 @@ class POI(models.Model):
         ordering = ['nombre']
         indexes = [
             models.Index(fields=['ciudad', 'categoria']),
+            models.Index(fields=['ciudad', 'google_rank_position']),
         ]
 
     def __str__(self):
@@ -86,3 +110,22 @@ class POI(models.Model):
     @property
     def lon(self) -> float:
         return self.coordenadas.x
+
+
+class CityBoundary(models.Model):
+    """
+    Polígono oficial de una ciudad para filtrar POIs dentro de su límite urbano.
+    """
+
+    city_name = models.CharField(max_length=120, unique=True)
+    polygon = gis_models.MultiPolygonField(srid=4326)
+    active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Límite oficial de ciudad'
+        verbose_name_plural = 'Límites oficiales de ciudades'
+        ordering = ['city_name']
+
+    def __str__(self):
+        return self.city_name
