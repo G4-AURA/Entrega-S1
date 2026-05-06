@@ -121,10 +121,25 @@
     background: var(--brand-light);
 }
 
+.parada-item.touch-dragging {
+    opacity: 0.6;
+}
+
 .drag-handle {
     cursor: grab;
     color: #9ca3af;
     font-size: 0.85rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.375rem;
+    user-select: none;
+}
+
+.reorder-active .drag-handle {
+    touch-action: none;
 }
 
 .parada-coords-preview {

@@ -305,6 +305,17 @@ function updateVisualOrderLabels() {
         });
 }
 
+function getCurrentStopOrder() {
+    return Array.from(listaParadas?.querySelectorAll('.parada-item[data-parada-id]') || [])
+        .map(item => item.dataset.paradaId)
+        .filter(Boolean)
+        .join(',');
+}
+
+function updateStopOrderInput() {
+    if (stopOrderInput) stopOrderInput.value = getCurrentStopOrder();
+}
+
 function setReorderMode(enabled) {
     if (!listaParadas || !formReordenarParadas) return;
     reorderMode = enabled;
@@ -313,6 +324,7 @@ function setReorderMode(enabled) {
         formAgregarParada?.classList.add('d-none');
         formReordenarParadas.classList.remove('d-none');
         listaParadas.classList.add('reorder-active');
+        updateStopOrderInput();
         if (btnReordenarParadas) btnReordenarParadas.textContent = 'Reordenando...';
     } else {
         formReordenarParadas.classList.add('d-none');
@@ -333,25 +345,74 @@ if (btnCancelarReorden)  btnCancelarReorden.addEventListener('click',  () => set
 // ── Drag & Drop ────────────────────────────────────────────────────────────
 if (listaParadas) {
     const items = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'));
+    let touchDraggedItem = null;
+
+    function clearDragState() {
+        items.forEach(i => i.classList.remove('drag-over', 'touch-dragging'));
+    }
+
+    function moveDraggedItem(clientY, targetItem) {
+        if (!targetItem || !draggedItem || targetItem === draggedItem) return;
+        clearDragState();
+        targetItem.classList.add('drag-over');
+        const rect = targetItem.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        listaParadas.insertBefore(draggedItem, clientY < mid ? targetItem : targetItem.nextSibling);
+        updateVisualOrderLabels();
+        updateStopOrderInput();
+    }
+
     items.forEach(item => {
         item.addEventListener('dragstart', () => { draggedItem = item; item.style.opacity = '0.5'; });
         item.addEventListener('dragend',   () => {
             item.style.opacity = '';
             draggedItem = null;
-            items.forEach(i => i.classList.remove('drag-over'));
+            clearDragState();
             updateVisualOrderLabels();
-            const ordered = Array.from(listaParadas.querySelectorAll('.parada-item[data-parada-id]'))
-                .map(i => i.dataset.paradaId).filter(Boolean);
-            if (stopOrderInput) stopOrderInput.value = ordered.join(',');
+            updateStopOrderInput();
         });
         item.addEventListener('dragover', e => {
             e.preventDefault();
-            if (!draggedItem || draggedItem === item) return;
-            items.forEach(i => i.classList.remove('drag-over'));
-            item.classList.add('drag-over');
-            const mid = item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
-            listaParadas.insertBefore(draggedItem, e.clientY < mid ? item : item.nextSibling);
+            moveDraggedItem(e.clientY, item);
         });
         item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+
+        const handle = item.querySelector('.drag-handle');
+        handle?.addEventListener('touchstart', e => {
+            if (!reorderMode) return;
+            touchDraggedItem = item;
+            draggedItem = item;
+            item.classList.add('touch-dragging');
+            updateStopOrderInput();
+            e.preventDefault();
+        }, { passive: false });
+
+        handle?.addEventListener('touchmove', e => {
+            if (!touchDraggedItem || !draggedItem) return;
+            const touch = e.touches[0];
+            if (!touch) return;
+            const targetItem = document
+                .elementFromPoint(touch.clientX, touch.clientY)
+                ?.closest?.('.parada-item[data-parada-id]');
+            moveDraggedItem(touch.clientY, targetItem);
+            e.preventDefault();
+        }, { passive: false });
+
+        handle?.addEventListener('touchend', () => {
+            if (!touchDraggedItem) return;
+            touchDraggedItem = null;
+            draggedItem = null;
+            clearDragState();
+            updateVisualOrderLabels();
+            updateStopOrderInput();
+        });
+
+        handle?.addEventListener('touchcancel', () => {
+            touchDraggedItem = null;
+            draggedItem = null;
+            clearDragState();
+            updateVisualOrderLabels();
+            updateStopOrderInput();
+        });
     });
 }
