@@ -23,7 +23,8 @@ POST /generacion/generar_ruta_ia/
                  ├─ _obtener_pois_allowlist(ciudad, moods)
                  │
                  ├─ CASO 1: len(allowlist) >= objetivo_paradas
-                 │    └─ Selecciona objetivo_paradas POIs al azar de allowlist
+                 │    └─ Toma los objetivo_paradas POIs mejor priorizados por selector
+                 │       (1-3 anclas top + variedad ponderada)
                  │    └─ *** OMITE Gemini completamente ***
                  │
                  ├─ CASO 2: 0 < len(allowlist) < objetivo_paradas  [MIXTO]
@@ -32,9 +33,10 @@ POST /generacion/generar_ruta_ia/
                  │         └─ Prompt excluye por nombre los ya seleccionados
                  │
                  └─ CASO 3: len(allowlist) == 0
-                      └─ Llama Gemini para todos los stops (comportamiento original)
+                      └─ Cancela antes de llamar a Gemini
+                      └─ Devuelve: "Esta ciudad no está contemplada en esta version de la aplicacion"
                  │
-                 └─ pois_crudos (mezcla o solo allowlist o solo Gemini)
+                 └─ pois_crudos (mezcla o solo allowlist)
             ├─ nodo_validacion  (sin cambios; allowlist POIs pasan coordinadas fiables)
             ├─ nodo_scoring
             └─ nodo_optimizacion

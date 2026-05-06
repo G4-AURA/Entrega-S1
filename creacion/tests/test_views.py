@@ -128,6 +128,27 @@ class GenerarRutaIAViewTests(TestCase):
         self.assertIn('Error en los datos', response.json()['mensaje'])
 
     @patch('creacion.views._obtener_guia_para_usuario')
+    @patch(
+        'creacion.views.consultar_langgraph',
+        side_effect=services.ErrorValidacionRuta(
+            'Esta ciudad no está contemplada en esta version de la aplicacion'
+        ),
+    )
+    def test_ciudad_no_contemplada_retorna_mensaje_de_producto(self, mock_consultar, mock_get_guia):
+        user = User.objects.create_user(username='guia_ciudad_no_contemplada', password='1234')
+        self.client.force_login(user)
+        mock_get_guia.return_value = _crear_guia_para_usuario(user)
+
+        response = self.client.post(self.url, data=json.dumps(self.payload), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()['mensaje'],
+            'Esta ciudad no está contemplada en esta version de la aplicacion',
+        )
+        mock_consultar.assert_called_once()
+
+    @patch('creacion.views._obtener_guia_para_usuario')
     @patch('creacion.views.consultar_langgraph', side_effect=services.ErrorIntegracionIA('fallo mapbox/osm'))
     def test_error_integracion_ia_retorna_502(self, _mock_consultar, mock_get_guia):
         user = User.objects.create_user(username='guia_ia_fail', password='1234')

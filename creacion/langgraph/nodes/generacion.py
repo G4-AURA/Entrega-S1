@@ -6,9 +6,8 @@ usuario.
 
 Prioridad de fuentes:
   1. AllowList (POIs curados en BD) — se usa directamente si hay suficientes.
-  2. Gemini — solo se invoca cuando la allowlist no tiene POIs suficientes para
-     la ciudad y temáticas pedidas (caso mixto: completa los que faltan;
-     caso vacío: genera todos).
+  2. Gemini — solo se invoca cuando la allowlist tiene al menos un POI local,
+     pero no suficientes para la ciudad y temáticas pedidas.
 
 Responsabilidad única: obtener candidatos de paradas.
 No valida coordenadas ni filtra duplicados; eso es tarea del nodo de
@@ -19,11 +18,10 @@ importación circular.
 """
 
 import logging
-import random
 
 from django.db import DatabaseError
 
-from creacion.exceptions import ErrorIntegracionIA
+from creacion.exceptions import ErrorIntegracionIA, ErrorValidacionRuta
 from creacion.langgraph.state import State
 from creacion.langgraph.utils import (
     calcular_objetivo_paradas_ia,
@@ -42,16 +40,6 @@ def _obtener_pois_allowlist(ciudad: str, moods: list) -> list:
         return _svc(ciudad=ciudad, moods=moods)
     except (ImportError, AttributeError, DatabaseError) as exc:
         logger.warning('No se pudo obtener allowlist: %s', exc)
-        return []
-
-
-def _construir_pois_fallback_allowlist(ciudad: str, moods: list, cantidad_objetivo: int) -> list:
-    """Importación diferida para evitar dependencias circulares con services."""
-    try:
-        from creacion.services import _construir_pois_fallback_allowlist as _svc
-        return _svc(ciudad=ciudad, moods=moods, cantidad_objetivo=cantidad_objetivo)
-    except (ImportError, AttributeError, DatabaseError) as exc:
-        logger.warning('No se pudo construir fallback allowlist: %s', exc)
         return []
 
 
@@ -120,7 +108,7 @@ def nodo_generacion(state: State) -> dict:
     Fuentes en orden de prioridad:
       1. AllowList ≥ objetivo → solo allowlist, sin llamar a Gemini.
       2. 0 < allowlist < objetivo → allowlist + Gemini completa los que faltan.
-      3. AllowList vacía → Gemini genera todos (comportamiento original).
+      3. AllowList vacía → se rechaza antes de llamar a Gemini.
     """
     logger.debug("--- NODO 1: GENERACIÓN DE POIs ---")
 
@@ -139,7 +127,7 @@ def nodo_generacion(state: State) -> dict:
 
     # ── CASO 1: allowlist tiene suficientes POIs ──────────────────────────────
     if n_disponibles >= objetivo_paradas:
-        seleccionados = random.sample(pois_allowlist, objetivo_paradas)
+        seleccionados = pois_allowlist[:objetivo_paradas]
         pois_crudos = _normalizar_pois_allowlist_para_pipeline(seleccionados)
         logger.info(
             "Ruta generada desde allowlist (%d POIs, Gemini omitido), ciudad='%s'",
@@ -170,48 +158,9 @@ def nodo_generacion(state: State) -> dict:
         pois_crudos = pois_base + pois_gemini
         return {"pois_crudos": pois_crudos}
 
-    # ── CASO 3: allowlist vacía → Gemini genera todos ────────────────────────
-    bloque_metadata = construir_bloque_metadata(datos.get("metadata") or {})
-    bloque_deseos = construir_bloque_deseos(datos.get("deseos") or [])
-
-    prompt = f"""
-        Eres un guía turístico experto. Tu tarea es seleccionar los mejores Puntos de Interés (POIs) para
-        una ruta en {datos.get('ciudad')}.
-
-        ## Parámetros de la ruta
-        - Duración total: {datos.get('duracion')} horas
-        - Número de personas: {datos.get('personas')}
-        - Nivel de exigencia física: {datos.get('exigencia')}
-        - Temática(s): {', '.join(moods)}
-        {bloque_metadata}
-        {bloque_deseos}
-
-        ## Instrucción
-        Genera una lista de EXACTAMENTE {objetivo_paradas} POIs adecuados para estos parámetros basándote en tu conocimiento experto de la ciudad.
-        Ten en cuenta el contexto del solicitante y sus preferencias específicas si las hay.
-
-        Responde ÚNICAMENTE con un JSON válido (sin texto extra) con esta estructura:
-        [
-            {{"nombre": "Nombre del sitio", "coords": [lat, lon], "desc": "Breve descripción del lugar", "categoria": "Categoría"}}
-        ]
-    """
-
-    logger.info("AllowList vacía para ciudad='%s'; delegando generación completa a Gemini.", ciudad)
-
-    try:
-        pois_crudos = llamar_gemini(prompt)
-        if not isinstance(pois_crudos, list):
-            raise ErrorIntegracionIA("Gemini devolvió un formato inválido.")
-    except ErrorIntegracionIA as exc:
-        logger.warning("Gemini no disponible; usando fallback de allowlist. Detalle: %s", exc)
-        pois_crudos = _construir_pois_fallback_allowlist(
-            ciudad=ciudad,
-            moods=moods,
-            cantidad_objetivo=objetivo_paradas,
-        )
-        if len(pois_crudos) < objetivo_paradas:
-            raise ErrorIntegracionIA(
-                "Gemini no respondió y no hay suficientes POIs en la allowlist para completar la ruta."
-            ) from exc
-
-    return {"pois_crudos": pois_crudos}
+    # ── CASO 3: allowlist vacía → ciudad no cubierta ─────────────────────────
+    logger.info(
+        "AllowList vacía para ciudad='%s'; generación IA cancelada antes de llamar a Gemini.",
+        ciudad,
+    )
+    raise ErrorValidacionRuta("Esta ciudad no está contemplada en esta version de la aplicacion")
