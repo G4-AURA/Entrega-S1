@@ -99,6 +99,7 @@ MAX_DURACION_HORAS_MANUAL = 24.0
 MIN_PERSONAS_MANUAL = 1
 MAX_PERSONAS_MANUAL = 50
 MIN_PARADAS_MANUAL = 2
+MAX_NOMBRE_PARADA_MANUAL = 50
 MAX_REINTENTOS_PARADA_INVALIDA = 3
 MAX_ALTERNATIVAS_RUTA = 5
 UMBRAL_DISTANCIA_MAXIMA_PARADA_KM = 35.0
@@ -1253,9 +1254,16 @@ def mapear_payload_manual(payload):
         )
         if not coords:
             continue
+        nombre = str(parada.get('nombre') or '').strip()
+        if not nombre:
+            raise ValueError(f'El nombre de la parada {idx} es obligatorio.')
+        if len(nombre) > MAX_NOMBRE_PARADA_MANUAL:
+            raise ValueError(
+                f'El nombre de la parada {idx} no puede superar los {MAX_NOMBRE_PARADA_MANUAL} caracteres.'
+            )
         paradas_normalizadas.append({
             'orden': int(parada.get('orden') or idx),
-            'nombre': parada.get('nombre') or f'Parada {idx}',
+            'nombre': nombre,
             'descripcion': parada.get('descripcion') or parada.get('desc') or '',
             'coordenadas': coords,
         })
@@ -1488,9 +1496,16 @@ def guardar_ruta_manual(guia, payload):
 
                 nombre_parada = str(parada_data.get('nombre') or '').strip()
                 if not nombre_parada:
-                    raise ErrorValidacionRuta(f'El nombre de la parada {idx} es obligatorio.')
-                if len(nombre_parada) > 255:
-                    raise ErrorValidacionRuta(f'El nombre de la parada {idx} no puede superar los 255 caracteres.')
+                    raise ErrorValidacionRuta({
+                        f'parada_{idx}': f'El nombre de la parada {idx} es obligatorio.'
+                    })
+                if len(nombre_parada) > MAX_NOMBRE_PARADA_MANUAL:
+                    raise ErrorValidacionRuta({
+                        f'parada_{idx}': (
+                            f'El nombre de la parada {idx} no puede superar los '
+                            f'{MAX_NOMBRE_PARADA_MANUAL} caracteres.'
+                        )
+                    })
 
                 lat_raw = parada_data.get('lat')
                 lon_raw = parada_data.get('lon')
