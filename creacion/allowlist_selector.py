@@ -12,7 +12,8 @@ Objetivos:
 
 from __future__ import annotations
 
-import random
+import hashlib
+import secrets
 import unicodedata
 from dataclasses import dataclass
 
@@ -97,15 +98,15 @@ def _resolve_city_boundary(ciudad: str):
 def _weighted_sample_without_replacement(
     scored_items: list[_CandidateScore],
     sample_size: int,
-    rng: random.Random,
+    seed: int | None = None,
 ) -> list[int]:
     pool = list(scored_items)
     selected_ids: list[int] = []
     remaining = min(sample_size, len(pool))
 
-    for _ in range(remaining):
+    for step in range(remaining):
         total = sum(max(item.final_score, 1e-6) for item in pool)
-        threshold = rng.random() * total
+        threshold = _random_unit_interval(seed, step, pool) * total
         acumulado = 0.0
 
         for idx, item in enumerate(pool):
@@ -116,6 +117,16 @@ def _weighted_sample_without_replacement(
                 break
 
     return selected_ids
+
+
+def _random_unit_interval(seed: int | None, step: int, pool: list[_CandidateScore]) -> float:
+    if seed is None:
+        return secrets.randbelow(2**53) / float(2**53)
+
+    pool_signature = ','.join(str(item.poi_id) for item in pool)
+    payload = f'{seed}:{step}:{pool_signature}'.encode('utf-8')
+    digest = hashlib.sha256(payload).digest()
+    return int.from_bytes(digest[:8], 'big') / float(2**64)
 
 
 def _calcular_num_anclas_top(limite: int, disponibles: int) -> int:
@@ -205,7 +216,6 @@ def seleccionar_pois_allowlist(
         return []
 
     weights = ALLOWLIST_SCORE_WEIGHTS
-    rng = random.Random(seed)
 
     scored: list[_CandidateScore] = []
     for poi in candidates:
@@ -243,7 +253,7 @@ def seleccionar_pois_allowlist(
     random_ids = _weighted_sample_without_replacement(
         random_pool,
         limite - len(anchor_ids),
-        rng,
+        seed,
     )
     chosen_ids = anchor_ids + random_ids
 
