@@ -163,7 +163,11 @@ def _normalize_curiosity_history(raw_ids) -> list[int]:
 def get_curiosity_state(sesion_id: int) -> dict:
     state = _cache_get_safe(curiosity_state_cache_key(sesion_id))
     if not isinstance(state, dict):
-        return {"visible_parada_id": None, "history_parada_ids": []}
+        return {
+            "visible_parada_id": None,
+            "history_parada_ids": [],
+            "visible_version": 0,
+        }
 
     visible_raw = state.get("visible_parada_id")
     try:
@@ -176,25 +180,41 @@ def get_curiosity_state(sesion_id: int) -> dict:
     history_ids = _normalize_curiosity_history(state.get("history_parada_ids"))
     if visible_id is not None and visible_id not in history_ids:
         history_ids.append(visible_id)
+    try:
+        visible_version = int(state.get("visible_version") or 0)
+    except (TypeError, ValueError):
+        visible_version = 0
+    if visible_version < 0:
+        visible_version = 0
 
     return {
         "visible_parada_id": visible_id,
         "history_parada_ids": history_ids,
+        "visible_version": visible_version,
     }
 
 
 def set_curiosity_visible_parada(sesion_id: int, parada_id: int | None) -> dict:
     current = get_curiosity_state(sesion_id)
     history_ids = list(current.get("history_parada_ids") or [])
+    try:
+        visible_version = int(current.get("visible_version") or 0)
+    except (TypeError, ValueError):
+        visible_version = 0
 
     visible_id: int | None = None
     if parada_id is not None:
         visible_id = int(parada_id)
         if visible_id > 0 and visible_id not in history_ids:
             history_ids.append(visible_id)
+        if visible_id > 0:
+            # Cada acción explícita de "mostrar" del guía genera una nueva versión
+            # para que los turistas distingan una reapertura manual tras cerrar.
+            visible_version += 1
     payload = {
         "visible_parada_id": visible_id if visible_id and visible_id > 0 else None,
         "history_parada_ids": history_ids,
+        "visible_version": visible_version,
     }
     _cache_set_safe(
         curiosity_state_cache_key(sesion_id),

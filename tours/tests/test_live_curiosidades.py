@@ -77,6 +77,11 @@ class LiveCuriosidadesEndpointTests(TestCase):
         session.save()
         return client
 
+    def _client_guia(self):
+        client = Client()
+        client.force_login(self.guia_user)
+        return client
+
     def test_turista_participante_obtiene_curiosidad(self):
         client = self._client_turista()
         response = client.get(
@@ -178,3 +183,36 @@ class LiveCuriosidadesEndpointTests(TestCase):
         self.assertEqual(payload["curiosidad"]["tipo"], Curiosidad.TipoCuriosidad.HISTORIA)
         self.assertEqual(payload["curiosidad"]["ciudad"], "Sevilla")
         mock_generar_curiosidad.assert_called_once()
+
+    def test_visibilidad_curiosidad_incrementa_version_en_reapertura(self):
+        client_guia = self._client_guia()
+
+        estado_inicial = self._client_turista().get(
+            reverse("tours:estado_curiosidades_sesion", args=[self.sesion.id])
+        )
+        self.assertEqual(estado_inicial.status_code, 200)
+        self.assertEqual(estado_inicial.json().get("curiosidad_visible_version"), 0)
+
+        mostrar_1 = client_guia.post(
+            reverse("tours:actualizar_visibilidad_curiosidad", args=[self.sesion.id, self.parada_1.id]),
+            data='{"visible": true}',
+            content_type="application/json",
+        )
+        self.assertEqual(mostrar_1.status_code, 200)
+        self.assertEqual(mostrar_1.json().get("curiosidad_visible_version"), 1)
+
+        ocultar = client_guia.post(
+            reverse("tours:actualizar_visibilidad_curiosidad", args=[self.sesion.id, self.parada_1.id]),
+            data='{"visible": false}',
+            content_type="application/json",
+        )
+        self.assertEqual(ocultar.status_code, 200)
+        self.assertEqual(ocultar.json().get("curiosidad_visible_version"), 1)
+
+        mostrar_2 = client_guia.post(
+            reverse("tours:actualizar_visibilidad_curiosidad", args=[self.sesion.id, self.parada_1.id]),
+            data='{"visible": true}',
+            content_type="application/json",
+        )
+        self.assertEqual(mostrar_2.status_code, 200)
+        self.assertEqual(mostrar_2.json().get("curiosidad_visible_version"), 2)
