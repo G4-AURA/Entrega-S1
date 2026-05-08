@@ -1,0 +1,75 @@
+name: Deploy Landing to GitHub Pages
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate APP_BASE_URL
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+        run: |
+          if [ -z "$APP_BASE_URL" ]; then
+            echo "APP_BASE_URL repository variable is required."
+            exit 1
+          fi
+
+          case "$APP_BASE_URL" in
+            http://*|https://*)
+              ;;
+            *)
+              echo "APP_BASE_URL must start with http:// or https://."
+              exit 1
+              ;;
+          esac
+
+      - name: Inject APP_BASE_URL into landing
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("docs/index.html")
+          placeholder = "__APP_BASE_URL__"
+          app_base_url = os.environ["APP_BASE_URL"].rstrip("/")
+          content = path.read_text(encoding="utf-8")
+
+          if placeholder not in content:
+            raise SystemExit("Missing __APP_BASE_URL__ placeholder in docs/index.html")
+
+          path.write_text(content.replace(placeholder, app_base_url), encoding="utf-8")
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
