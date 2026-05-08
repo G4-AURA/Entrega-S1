@@ -41,10 +41,16 @@ def _etiqueta_duracion(duracion_horas) -> str:
     return "larga duración"
 
 
-def _descripcion_ruta(datos: dict) -> str:
+def _descripcion_ruta(datos: dict, *, optimizada: bool = True) -> str:
     ciudad = str(datos.get("ciudad") or "la ciudad seleccionada").strip() or "la ciudad seleccionada"
     exigencia = str(datos.get("exigencia") or "media").strip().lower()
-    return f"Ruta optimizada por {ciudad} de exigencia {exigencia} y {_etiqueta_duracion(datos.get('duracion'))}."
+    duracion = _etiqueta_duracion(datos.get("duracion"))
+    if not optimizada:
+        return (
+            f"Ruta por {ciudad} de exigencia {exigencia} de {duracion}, "
+            "sin optimización de recorrido porque no hay suficientes paradas."
+        )
+    return f"Ruta optimizada por {ciudad} de exigencia {exigencia} de {duracion}."
 
 
 def nodo_optimizacion(state: State) -> dict:
@@ -66,7 +72,7 @@ def nodo_optimizacion(state: State) -> dict:
         return {
             "ruta_final": {
                 "titulo": f"Ruta {_formatear_titulo_mood(datos.get('mood'))}",
-                "descripcion": _descripcion_ruta(datos),
+                "descripcion": _descripcion_ruta(datos, optimizada=False),
                 "duracion_estimada": datos.get("duracion"),
                 "nivel_exigencia": datos.get("exigencia"),
                 "mood": datos.get("mood"),
