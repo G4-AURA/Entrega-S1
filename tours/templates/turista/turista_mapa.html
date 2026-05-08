@@ -63,9 +63,15 @@
     <div class="session-panel-toolbar">
         <h3 id="session-panel-title" class="session-panel-title">Itinerario</h3>
         <div id="session-chat-switch" class="session-chat-switch" style="display:none;">
-            <button type="button" class="session-chat-switch-btn active" data-chat-tab="chat">Grupal</button>
+            <button type="button" class="session-chat-switch-btn active" data-chat-tab="chat">
+                Grupal
+                <span class="session-chat-channel-badge" id="session-chat-switch-group-badge" style="display:none;"></span>
+            </button>
             {% if private_chat_enabled %}
-            <button type="button" class="session-chat-switch-btn" data-chat-tab="chat-privado">Privado</button>
+            <button type="button" class="session-chat-switch-btn" data-chat-tab="chat-privado">
+                Privado
+                <span class="session-chat-channel-badge" id="session-chat-switch-private-badge" style="display:none;"></span>
+            </button>
             {% endif %}
         </div>
     </div>
@@ -317,6 +323,7 @@
     <button type="button" class="session-nav-btn" data-open-tab="chat">
         <span class="material-icons-round">chat</span>
         Chats
+        <span class="session-nav-badge" id="session-chat-badge" style="display:none;"></span>
     </button>
 </nav>
 {% endblock %}
@@ -356,6 +363,7 @@
   const turistaIdRaw         = '{% if turista %}{{ turista.id }}{% else %}null{% endif %}';
   const turistaId            = turistaIdRaw === 'null' ? null : Number(turistaIdRaw);
 </script>
+<script src="{% static 'js/chat_indicators.js' %}?v={% now 'U' %}"></script>
 <script src="{% static 'js/chat_privado.js' %}?v={% now 'U' %}"></script>
 <script src="{% static 'js/mapa_turista.js' %}?v={% now 'U' %}"></script>
 

@@ -30,6 +30,10 @@
   let privateTabVisible  = false;
   let selectedPrivateFile = null;
   let privatePreviewObjUrl = null;
+  let bandejaInitialized = false;
+  const lastInboxMessageByTurista = new Map();
+  const readPrivateMessageIds = new Set();
+  const notifiedPrivateMessageIds = new Set();
   const MAX_PRIVATE_IMAGE_SIZE = 5 * 1024 * 1024;
   const ALLOWED_PRIVATE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -96,17 +100,62 @@
     return payload?.error || payload?.mensaje || payload?.detail || fallback;
   }
 
-  function incrementBadge() {
-    unreadPrivate += 1;
+  function getPrivateMessageKey(msg) {
+    if (msg?.id != null) return String(msg.id);
+    return `${msg?.momento || ''}:${msg?.nombre_remitente || ''}:${msg?.texto || ''}`;
+  }
+
+  function isIncomingPrivateMessage(msg) {
+    const myName = typeof currentUserName !== 'undefined' ? currentUserName : '';
+    return msg && msg.nombre_remitente !== myName;
+  }
+
+  function incrementBadge(amount = 1) {
+    const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 1;
+    unreadPrivate += safeAmount;
     if (privateBadge) {
       privateBadge.textContent = unreadPrivate > 99 ? '99+' : unreadPrivate;
-      privateBadge.style.display = 'block';
+      privateBadge.style.display = 'inline-flex';
     }
+    window.AuraChatIndicators?.increment('private', safeAmount);
   }
 
   function clearBadge() {
     unreadPrivate = 0;
     if (privateBadge) privateBadge.style.display = 'none';
+    window.AuraChatIndicators?.clear('private');
+  }
+
+  function markPrivateMessagesAsRead() {
+    privateChatMessages?.querySelectorAll('[data-message-id]').forEach(messageEl => {
+      const messageId = messageEl.getAttribute('data-message-id');
+      if (!messageId) return;
+      readPrivateMessageIds.add(String(messageId));
+      notifiedPrivateMessageIds.delete(String(messageId));
+    });
+    clearBadge();
+  }
+
+  function registerUnreadPrivateMessages(msgs) {
+    if (privateTabVisible) {
+      markPrivateMessagesAsRead();
+      return;
+    }
+
+    let newUnreadCount = 0;
+    msgs.forEach(msg => {
+      if (!isIncomingPrivateMessage(msg)) return;
+
+      const key = getPrivateMessageKey(msg);
+      if (readPrivateMessageIds.has(key) || notifiedPrivateMessageIds.has(key)) return;
+
+      notifiedPrivateMessageIds.add(key);
+      newUnreadCount += 1;
+    });
+
+    if (newUnreadCount > 0) {
+      incrementBadge(newUnreadCount);
+    }
   }
 
   // ── Renderizado de mensajes privados ─────────────────────────────────────
@@ -119,9 +168,8 @@
     const myName = typeof currentUserName !== 'undefined' ? currentUserName : '';
 
     mensajes.forEach(msg => {
-      if (containerEl.querySelector(`[data-message-id="${msg.id}"]`)) return;
-
       lastPrivateMsgTime = msg.momento;
+      if (containerEl.querySelector(`[data-message-id="${msg.id}"]`)) return;
 
       const isMine = msg.nombre_remitente === myName;
       const isGuide = Boolean(msg.es_guia);
@@ -182,14 +230,7 @@
         if (!msgs.length) return;
 
         renderPrivateMessages(msgs, privateChatMessages);
-
-        // Badge si la pestaña no está visible
-        if (!privateTabVisible) {
-          msgs.forEach(m => {
-            const myName = typeof currentUserName !== 'undefined' ? currentUserName : '';
-            if (m.nombre_remitente !== myName) incrementBadge();
-          });
-        }
+        registerUnreadPrivateMessages(msgs);
       })
       .catch(() => {});
   }
@@ -217,12 +258,7 @@
         const msgs = data.mensajes || [];
         if (!msgs.length) return;
         renderPrivateMessages(msgs, privateChatMessages);
-        if (!privateTabVisible) {
-          const myName = typeof currentUserName !== 'undefined' ? currentUserName : '';
-          msgs.forEach(m => {
-            if (m.nombre_remitente !== myName) incrementBadge();
-          });
-        }
+        registerUnreadPrivateMessages(msgs);
       })
       .catch(() => {});
   }
@@ -237,6 +273,8 @@
           <span class="material-icons-round">people_outline</span>
           <p>Aún no hay turistas activos en la sesión.</p>
         </div>`;
+      lastInboxMessageByTurista.clear();
+      bandejaInitialized = true;
       return;
     }
 
@@ -288,13 +326,35 @@
       // Marcar como activo si es el hilo abierto
       el.classList.toggle('active', activeTuristaId === item.turista_id);
 
+      const currentLastMessageId = item.ultimo_mensaje_id || item.ultimo_momento || null;
+      const previousLastMessageId = lastInboxMessageByTurista.get(idStr);
+      const isActiveThreadVisible = privateTabVisible && activeTuristaId === item.turista_id;
+      const newIncomingFromTurista = bandejaInitialized
+        && currentLastMessageId
+        && currentLastMessageId !== previousLastMessageId
+        && !item.ultimo_remitente_es_guia
+        && !isActiveThreadVisible;
+
+      if (newIncomingFromTurista) {
+        incrementBadge();
+      }
+
+      if (currentLastMessageId) {
+        lastInboxMessageByTurista.set(idStr, currentLastMessageId);
+      } else {
+        lastInboxMessageByTurista.delete(idStr);
+      }
+
       existingIds.delete(idStr);
     });
 
     // Eliminar items que ya no están (turistas inactivos)
     existingIds.forEach(id => {
       privateInbox.querySelector(`.private-inbox-item[data-turista-id="${id}"]`)?.remove();
+      lastInboxMessageByTurista.delete(id);
     });
+
+    bandejaInitialized = true;
   }
 
   function fetchBandeja() {
@@ -351,6 +411,7 @@
     activeTuristaId    = null;
     activeTuristaAlias = null;
     lastPrivateMsgTime = null;
+    clearBadge();
 
     if (privateChatView)  privateChatView.style.display  = 'none';
     if (privateInboxView) privateInboxView.style.display = 'block';
@@ -449,7 +510,7 @@
 
       if (target === 'chat-privado') {
         privateTabVisible = true;
-        clearBadge();
+        markPrivateMessagesAsRead();
         if (esGuia) {
           // Actualizar bandeja al abrir
           fetchBandeja();
@@ -462,12 +523,17 @@
         }
       } else {
         privateTabVisible = false;
-        stopPrivatePolling();
+        if (esGuia) {
+          stopPrivatePolling();
+        } else {
+          startPrivatePollingTurista();
+        }
       }
 
       if (target === 'chat') {
         const badge = document.getElementById('chat-badge');
         if (badge) badge.style.display = 'none';
+        window.AuraChatIndicators?.clear('chat');
         document.dispatchEvent(new CustomEvent('chatOpened'));
       }
     });
@@ -521,8 +587,9 @@
   document.addEventListener('DOMContentLoaded', function () {
     if (esGuia) {
       startBandejaPolling();
+    } else {
+      startPrivatePollingTurista();
     }
-    // El turista inicia polling solo cuando abre la pestaña privada (ahorra requests)
   });
 
 })();
