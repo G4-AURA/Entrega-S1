@@ -25,9 +25,19 @@ from django.views.generic import TemplateView
 from django.views.static import serve
 from .views import registro
 
+
+def favicon_redirect(request):
+    static_url = str(settings.STATIC_URL or '/static/')
+    if not static_url.endswith('/'):
+        static_url = f'{static_url}/'
+    if not static_url.startswith(('http://', 'https://', '/')):
+        static_url = f'/{static_url}'
+    return redirect(f'{static_url}img/logo_aura.png', permanent=True)
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('favicon.ico', lambda request: redirect('static', path='img/logo_aura.png', permanent=True)),
+    path('favicon.ico', favicon_redirect),
 
     # Ruta temporal para probar el mapa en la página de inicio
     # path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
