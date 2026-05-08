@@ -116,6 +116,21 @@ document.addEventListener('DOMContentLoaded', function () {
         ubicacionPollId = setInterval(_obtenerUbicacionesTuristas, 5000);
     }
 
+    document.addEventListener('sessionStateChanged', () => {
+        if (!_sesionEnCurso() || !ultimaPosicionTurista) return;
+
+        _compartirUbicacionLocalSiProcede(
+            ultimaPosicionTurista.lat,
+            ultimaPosicionTurista.lng,
+        );
+
+        if (esGuia) {
+            _obtenerUbicacionesTuristas();
+        } else {
+            _obtenerUbicacionGuia();
+        }
+    });
+
     // ── Overlay de sesión + navegación inferior ────────────────────────────
     const tourPanel = document.querySelector('.tour-panel');
     const sessionPanelTitle = document.getElementById('session-panel-title');
@@ -366,56 +381,9 @@ async function _iniciarRastreoLocal() {
                 primeraUbicacionTuristaCentrada = true;
             }
 
-            // El guía envía su posición al servidor para que los turistas la vean
-            if (esGuia) {
-                if (_shouldSendLocationUpdate('guia', lat, lng)) {
-                    _setLocationUpdateInFlight('guia', true);
-                    fetch('/tours/ubicacion/', {
-                        method:  'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-                        body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
-                    })
-                        .then((r) => {
-                            if (!r.ok) throw new Error('No se pudo registrar ubicación del guía.');
-                            _markLocationUpdateSent('guia', lat, lng);
-                        })
-                        .catch(() => {})
-                        .finally(() => {
-                            _setLocationUpdateInFlight('guia', false);
-                        });
-                }
-            } else {
-                if (_shouldSendLocationUpdate('turista', lat, lng)) {
-                    _setLocationUpdateInFlight('turista', true);
-                    fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
-                        method:  'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
-                        body:    JSON.stringify({ latitud: lat, longitud: lng }),
-                    })
-                        .then(r => {
-                            if (!r.ok) throw new Error('No se pudo registrar ubicación del turista.');
-                            _markLocationUpdateSent('turista', lat, lng);
-                            return r.json();
-                        })
-                        .then(data => {
-                            if (!PROXIMITY_CURIOSITY_ENABLED) return;
-                            const curiosidadCercana = data?.curiosidad_cercana;
-                            const parada = curiosidadCercana?.parada;
-                            const curiosidad = curiosidadCercana?.curiosidad;
-                            if (!parada?.id || !curiosidad) return;
+            _compartirUbicacionLocalSiProcede(lat, lng);
 
-                            const paradaId = String(parada.id);
-                            if (curiosidadesMostradas.has(paradaId)) return;
-
-                            curiosidadesMostradas.add(paradaId);
-                            _mostrarCuriosidadAutomatica(parada, curiosidad);
-                        })
-                        .catch(() => {})
-                        .finally(() => {
-                            _setLocationUpdateInFlight('turista', false);
-                        });
-                }
-
+            if (!esGuia) {
                 _detectarParadaYSolicitarCuriosidad(lat, lng);
             }
         },
@@ -438,6 +406,63 @@ async function _iniciarRastreoLocal() {
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 },
     );
+}
+
+
+function _compartirUbicacionLocalSiProcede(lat, lng) {
+    if (!_sesionEnCurso() || tourFinalizado) return;
+
+    // El guía envía su posición al servidor para que los turistas la vean.
+    if (esGuia) {
+        if (!_shouldSendLocationUpdate('guia', lat, lng)) return;
+
+        _setLocationUpdateInFlight('guia', true);
+        fetch('/tours/ubicacion/', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+            body:    JSON.stringify({ latitud: lat, longitud: lng, sesion_id: sesionId }),
+        })
+            .then((r) => {
+                if (!r.ok) throw new Error('No se pudo registrar ubicación del guía.');
+                _markLocationUpdateSent('guia', lat, lng);
+            })
+            .catch(() => {})
+            .finally(() => {
+                _setLocationUpdateInFlight('guia', false);
+            });
+        return;
+    }
+
+    if (!_shouldSendLocationUpdate('turista', lat, lng)) return;
+
+    _setLocationUpdateInFlight('turista', true);
+    fetch(`/tours/sesiones/${sesionId}/ubicacion_turista/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+        body:    JSON.stringify({ latitud: lat, longitud: lng }),
+    })
+        .then(r => {
+            if (!r.ok) throw new Error('No se pudo registrar ubicación del turista.');
+            _markLocationUpdateSent('turista', lat, lng);
+            return r.json();
+        })
+        .then(data => {
+            if (!PROXIMITY_CURIOSITY_ENABLED) return;
+            const curiosidadCercana = data?.curiosidad_cercana;
+            const parada = curiosidadCercana?.parada;
+            const curiosidad = curiosidadCercana?.curiosidad;
+            if (!parada?.id || !curiosidad) return;
+
+            const paradaId = String(parada.id);
+            if (curiosidadesMostradas.has(paradaId)) return;
+
+            curiosidadesMostradas.add(paradaId);
+            _mostrarCuriosidadAutomatica(parada, curiosidad);
+        })
+        .catch(() => {})
+        .finally(() => {
+            _setLocationUpdateInFlight('turista', false);
+        });
 }
 
 
@@ -487,6 +512,7 @@ function _markLocationUpdateSent(role, lat, lng) {
 
 function _obtenerUbicacionGuia() {
     if (!map || tourFinalizado) return;
+    if (!_sesionEnCurso()) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicacion_guia/`)
         .then(r => { 
@@ -1817,6 +1843,7 @@ function _initRecordatorios() {
 
 function _obtenerUbicacionesTuristas() {
     if (!map || !esGuia || tourFinalizado) return;
+    if (!_sesionEnCurso()) return;
 
     fetch(`/tours/sesiones/${sesionId}/ubicaciones_turistas/`)
         .then(r => { 
