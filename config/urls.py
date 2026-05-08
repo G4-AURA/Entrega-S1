@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
+from django.shortcuts import redirect
 from django.urls import include, path, re_path
 from config import views
 from tours import views as tours_views
@@ -26,6 +27,7 @@ from .views import registro
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('favicon.ico', lambda request: redirect('static', path='img/logo_aura.png', permanent=True)),
 
     # Ruta temporal para probar el mapa en la página de inicio
     # path('', TemplateView.as_view(template_name='mapa.html'), name='home'),
