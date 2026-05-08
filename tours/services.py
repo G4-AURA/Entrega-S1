@@ -477,6 +477,12 @@ def obtener_bandeja_privada_guia(sesion: SesionTour) -> list[dict]:
         .select_related("turista")
         .order_by("turista__alias")
     )
+
+    guia_user_id = None
+    try:
+        guia_user_id = sesion.ruta.guia.user.user_id
+    except AttributeError:
+        pass
  
     bandeja = []
     for ts in turistas_activos:
@@ -492,8 +498,11 @@ def obtener_bandeja_privada_guia(sesion: SesionTour) -> list[dict]:
         bandeja.append({
             "turista_id": turista.id,
             "alias": turista.alias,
+            "ultimo_mensaje_id": (ultimo.id if ultimo else None),
             "ultimo_mensaje": (ultimo.texto[:60] if ultimo and ultimo.texto else None),
             "ultimo_momento": (ultimo.momento.isoformat() if ultimo else None),
+            "ultimo_remitente_es_guia": bool(ultimo and guia_user_id and ultimo.remitente_id == guia_user_id),
+            "ultimo_remitente_nombre": (ultimo.nombre_remitente if ultimo else None),
             "no_leidos": 0,
         })
  
