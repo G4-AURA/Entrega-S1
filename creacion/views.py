@@ -387,9 +387,14 @@ def confirmar_ruta_ia(request):
     }
 
     ruta_base = (contexto_generacion.get('ruta_generada_base') or {})
+    descripcion_ruta = services.construir_descripcion_ruta_ia(
+        ciudad=payload_guardado['ciudad'],
+        exigencia=ruta_base.get('nivel_exigencia') or payload_guardado['exigencia'],
+        duracion_horas=ruta_base.get('duracion_horas') or payload_guardado['duracion'],
+    )
     ruta_generada_final = {
         'titulo': ruta_base.get('titulo') or f"Ruta {payload_guardado['ciudad']}",
-        'descripcion': ruta_base.get('descripcion') or 'Ruta creada desde selección guiada por IA.',
+        'descripcion': descripcion_ruta,
         'duracion_horas': ruta_base.get('duracion_horas') or payload_guardado['duracion'],
         'num_personas': ruta_base.get('num_personas') or payload_guardado['personas'],
         'nivel_exigencia': ruta_base.get('nivel_exigencia') or payload_guardado['exigencia'],

@@ -28,6 +28,25 @@ def _formatear_titulo_mood(mood) -> str:
     return str(mood).strip().capitalize() if mood else "Turística"
 
 
+def _etiqueta_duracion(duracion_horas) -> str:
+    try:
+        horas = float(duracion_horas)
+    except (TypeError, ValueError):
+        horas = 2.0
+
+    if horas <= 2:
+        return "corta duración"
+    if horas <= 4:
+        return "duración media"
+    return "larga duración"
+
+
+def _descripcion_ruta(datos: dict) -> str:
+    ciudad = str(datos.get("ciudad") or "la ciudad seleccionada").strip() or "la ciudad seleccionada"
+    exigencia = str(datos.get("exigencia") or "media").strip().lower()
+    return f"Ruta optimizada por {ciudad} de exigencia {exigencia} y {_etiqueta_duracion(datos.get('duracion'))}."
+
+
 def nodo_optimizacion(state: State) -> dict:
     """
     Ordena los POIs validados con el algoritmo TSP de OR-Tools.
@@ -47,7 +66,7 @@ def nodo_optimizacion(state: State) -> dict:
         return {
             "ruta_final": {
                 "titulo": f"Ruta {_formatear_titulo_mood(datos.get('mood'))}",
-                "descripcion": "Ruta generada sin optimización necesaria.",
+                "descripcion": _descripcion_ruta(datos),
                 "duracion_estimada": datos.get("duracion"),
                 "nivel_exigencia": datos.get("exigencia"),
                 "mood": datos.get("mood"),
@@ -94,7 +113,7 @@ def nodo_optimizacion(state: State) -> dict:
     return {
         "ruta_final": {
             "titulo": f"Ruta {_formatear_titulo_mood(datos.get('mood'))} Inteligente",
-            "descripcion": "Ruta optimizada con algoritmo TSP (Traveling Salesperson Problem).",
+            "descripcion": _descripcion_ruta(datos),
             "duracion_estimada": datos.get("duracion"),
             "nivel_exigencia": datos.get("exigencia"),
             "mood": datos.get("mood"),

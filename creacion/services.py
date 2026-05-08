@@ -399,6 +399,26 @@ def normalizar_moods(moods_sin_normalizar):
     return [m for m in moods_normalizados if m in dict(Ruta.Mood.choices)]
 
 
+def _etiqueta_duracion_ruta_ia(duracion_horas) -> str:
+    try:
+        horas = float(duracion_horas)
+    except (TypeError, ValueError):
+        horas = 2.0
+
+    if horas <= 2:
+        return 'corta duración'
+    if horas <= 4:
+        return 'duración media'
+    return 'larga duración'
+
+
+def construir_descripcion_ruta_ia(ciudad, exigencia, duracion_horas) -> str:
+    ciudad_limpia = str(ciudad or 'la ciudad seleccionada').strip() or 'la ciudad seleccionada'
+    exigencia_limpia = str(exigencia or Ruta.Exigencia.MEDIA).strip().lower()
+    duracion_limpia = _etiqueta_duracion_ruta_ia(duracion_horas)
+    return f'Ruta optimizada por {ciudad_limpia} de exigencia {exigencia_limpia} y {duracion_limpia}.'
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Validación de ciudad
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1297,11 +1317,21 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
     ciudad = str(payload.get('ciudad') or 'AURA').strip()
     fecha_creacion = timezone.localtime().strftime('%Y-%m-%d')
     try:
+        duracion_horas = float(ruta_generada.get('duracion_horas') or payload.get('duracion') or 1)
+    except (TypeError, ValueError) as exc:
+        raise ErrorPersistenciaRuta('La duración de la ruta generada no es válida.') from exc
+
+    descripcion_ruta = construir_descripcion_ruta_ia(
+        ciudad=ciudad,
+        exigencia=exigencia_normalizada,
+        duracion_horas=duracion_horas,
+    )
+    try:
         with transaction.atomic():
             ruta = Ruta.objects.create(
                 titulo=f'{ciudad} {fecha_creacion}',
-                descripcion=ruta_generada.get('descripcion', ''),
-                duracion_horas=float(ruta_generada.get('duracion_horas') or payload.get('duracion') or 1),
+                descripcion=descripcion_ruta,
+                duracion_horas=duracion_horas,
                 num_personas=int(ruta_generada.get('num_personas') or payload.get('personas') or 1),
                 nivel_exigencia=exigencia_normalizada,
                 mood=moods_normalizados,
@@ -1353,6 +1383,7 @@ def guardar_ruta_ia(guia, payload, ruta_generada):
     except (DatabaseError, IntegrityError, TypeError, ValueError, AttributeError) as exc:
         raise ErrorPersistenciaRuta('No se pudo guardar la ruta generada en la base de datos.') from exc
     ruta_generada['id'] = ruta.id
+    ruta_generada['descripcion'] = descripcion_ruta
     ruta_generada['nivel_exigencia'] = exigencia_normalizada
     ruta_generada['mood'] = moods_normalizados
     ruta_generada['es_generada_ia'] = True
