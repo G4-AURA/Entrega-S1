@@ -3,6 +3,7 @@ name: Deploy Landing to GitHub Pages
 on:
   push:
     branches:
+      - main
       - develop
 
 permissions:
