@@ -291,16 +291,17 @@ def _llamar_gemini_bypass_con_clave(prompt, api_key):
     for intento in range(max_reintentos + 1):
         try:
             response = requests.post(url, headers=headers, json=data, timeout=timeout_s)
-            if is_quota_or_rate_limit_error(
-                status_code=response.status_code,
+            status_code = getattr(response, 'status_code', None)
+            if status_code in {403, 429} and is_quota_or_rate_limit_error(
+                status_code=status_code,
                 detail=getattr(response, 'text', ''),
             ):
                 raise _GeminiQuotaError(f'Gemini devolvió status={response.status_code}.')
 
-            if response.status_code in http_reintentable and intento < max_reintentos:
+            if status_code in http_reintentable and intento < max_reintentos:
                 logger.warning(
                     'Gemini devolvió status=%s (reintento %s/%s).',
-                    response.status_code, intento + 1, max_reintentos,
+                    status_code, intento + 1, max_reintentos,
                 )
                 continue
 

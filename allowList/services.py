@@ -143,7 +143,6 @@ def _construir_overpass_query(area_nombre: str, categorias: list[str], pais: str
         f');\n'
         f'out center {MAX_RESULTADOS_OSM};'
     )
-    print(query)
     return query
 
 
