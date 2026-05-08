@@ -237,6 +237,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (target === 'chat') {
                 const badge = document.getElementById('chat-badge');
                 if (badge) badge.style.display = 'none';
+                window.AuraChatIndicators?.clear('chat');
                 document.dispatchEvent(new CustomEvent('chatOpened'));
             } else {
                 document.dispatchEvent(new CustomEvent('chatClosed'));
@@ -245,6 +246,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (target === 'chat-privado') {
                 const privBadge = document.getElementById('chat-privado-badge');
                 if (privBadge) privBadge.style.display = 'none';
+                window.AuraChatIndicators?.clear('private');
                 document.dispatchEvent(new CustomEvent('privateChatOpened'));
             } else {
                 document.dispatchEvent(new CustomEvent('privateChatClosed'));
@@ -1307,7 +1309,11 @@ function _initChat() {
         console.warn('[AURA chat]', message);
     };
 
-    document.addEventListener('chatOpened', () => { chatVisible = true; unread = 0; });
+    document.addEventListener('chatOpened', () => {
+        chatVisible = true;
+        unread = 0;
+        window.AuraChatIndicators?.clear('chat');
+    });
 
     document.addEventListener('chatClosed', () => { chatVisible = false; });
 
@@ -1451,7 +1457,8 @@ function _initChat() {
             if (msg.nombre_remitente !== me && !chatVisible) {
                 unread++;
                 const badge = document.getElementById('chat-badge');
-                if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = 'block'; }
+                if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = 'inline-flex'; }
+                window.AuraChatIndicators?.increment('chat');
             }
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
