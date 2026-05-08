@@ -62,6 +62,32 @@
         if (loadingStatusDetail) loadingStatusDetail.textContent = step.detail;
     }
 
+    function formatearCheckpointIA(checkpoint) {
+        const checkpointKey = String(checkpoint || '').trim();
+        const labels = {
+            payload_normalizado: 'Preparando tus preferencias',
+            ruta_generada: 'Propuesta lista para revisar',
+            validacion_paradas: 'Revisando la calidad de las paradas',
+            paradas_adicionales_generadas: 'Nuevas paradas listas',
+            seleccion_paradas_guia: 'Selección aplicada',
+            sugerencias_generadas: 'Sugerencias preparadas',
+            feedback_usuario: 'Cambios recibidos',
+            ruta_guardada: 'Ruta guardada',
+        };
+        return labels[checkpointKey] || 'Avanzando con tu ruta';
+    }
+
+    function mostrarMensajeConCheckpoint(mensaje, checkpoint) {
+        estado.className = 'alert alert-success mt-3';
+        estado.textContent = mensaje || 'La IA ha actualizado la propuesta.';
+
+        const checkpointBadge = document.createElement('span');
+        checkpointBadge.className = 'badge bg-warning text-dark ms-2';
+        checkpointBadge.textContent = `Estado: ${formatearCheckpointIA(checkpoint)}`;
+        estado.appendChild(checkpointBadge);
+        estado.classList.remove('d-none');
+    }
+
     function iniciarMensajesProgreso(tipo = 'generar') {
         detenerMensajesProgreso();
         const steps = tipo === 'adicionales' ? PROGRESS_STEPS_ADICIONALES : PROGRESS_STEPS_GENERAR;
@@ -645,12 +671,7 @@
             renderizarRutaPropuesta(data.datos_ruta || {});
             await mostrarAvisoRevisionCoordenadasIA();
 
-            estado.className = 'alert alert-success mt-3';
-            estado.innerHTML = `
-                ${data.mensaje}
-                <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${data.checkpoint_actual || 'ruta_generada'}</span>
-            `;
-            estado.classList.remove('d-none');
+            mostrarMensajeConCheckpoint(data.mensaje, data.checkpoint_actual || 'ruta_generada');
         } catch (error) {
             console.error(error);
             renderizarErrores(error.message, error.fieldErrors || null);
@@ -711,12 +732,7 @@
 
                 if (inputSugerenciasAdicionales) inputSugerenciasAdicionales.value = '';
 
-                estado.className = 'alert alert-success mt-3';
-                estado.innerHTML = `
-                    ${resultado.mensaje}
-                    <span class="badge bg-warning text-dark ms-2">Checkpoint IA: ${checkpoint}</span>
-                `;
-                estado.classList.remove('d-none');
+                mostrarMensajeConCheckpoint(resultado.mensaje, checkpoint);
             } catch (error) {
                 console.error(error);
                 renderizarErrores(error.message);
