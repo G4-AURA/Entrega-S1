@@ -255,16 +255,6 @@
     const footer = document.createElement('div');
     footer.className = 'ruta-card-footer';
 
-    if (ruta.guia && ruta.guia.username) {
-        const guiaDiv = document.createElement('div');
-        guiaDiv.className = 'guia-info';
-        const strong = document.createElement('strong');
-        strong.textContent = 'Guía: ';
-        guiaDiv.appendChild(strong);
-        guiaDiv.appendChild(document.createTextNode(ruta.guia.username));
-        footer.appendChild(guiaDiv);
-    }
-
     const btnDiv = document.createElement('div');
     btnDiv.className = 'mt-2';
     const sesionLink = document.createElement('a');
