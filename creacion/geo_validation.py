@@ -1,8 +1,14 @@
 import math
 import re
 import logging
+import unicodedata
 from collections.abc import Callable
 from typing import Any
+
+from django.contrib.gis.geos import Point
+from django.core.exceptions import ImproperlyConfigured
+from django.apps import apps
+from django.db import DatabaseError
 
 from creacion.geo_clients import MapboxGeocodingClient, OSMGeocodingClient
 
@@ -174,6 +180,54 @@ def _esta_en_contexto_geografico(coordenadas: list[float], contexto_geo: dict[st
     return dist_m <= float(radio_km) * 1000.0
 
 
+def _normalizar_texto_ciudad(valor: str) -> str:
+    base = str(valor or '').strip().lower()
+    if not base:
+        return ''
+    normalized = unicodedata.normalize('NFD', base)
+    normalized = ''.join(ch for ch in normalized if unicodedata.category(ch) != 'Mn')
+    return ' '.join(normalized.split())
+
+
+def _resolve_city_boundary(ciudad: str):
+    ciudad_norm = _normalizar_texto_ciudad(ciudad)
+    if not ciudad_norm:
+        return None
+
+    try:
+        if not apps.ready:
+            return None
+        from allowList.models import CityBoundary
+
+        for boundary in CityBoundary.objects.filter(active=True).only('id', 'city_name', 'polygon'):
+            if _normalizar_texto_ciudad(boundary.city_name) == ciudad_norm:
+                return boundary.polygon
+    except (DatabaseError, ImproperlyConfigured) as exc:
+        logger.debug('No se pudo consultar el límite de ciudad "%s": %s', ciudad, exc)
+    return None
+
+
+def _coordenadas_en_boundary(coordenadas: list[float], boundary) -> bool:
+    if boundary is None:
+        return True
+    if not isinstance(coordenadas, list) or len(coordenadas) < 2:
+        return False
+
+    point = Point(float(coordenadas[1]), float(coordenadas[0]), srid=4326)
+    try:
+        return bool(boundary.covers(point))
+    except AttributeError:
+        return bool(point.within(boundary) or point.touches(boundary))
+
+
+def coordenadas_en_limite_ciudad(coordenadas: list[float], ciudad: str) -> bool:
+    """
+    Comprueba que unas coordenadas [lat, lon] caen dentro del CityBoundary activo.
+    Si la ciudad aún no tiene límite importado, no bloquea por compatibilidad.
+    """
+    return _coordenadas_en_boundary(coordenadas, _resolve_city_boundary(ciudad))
+
+
 def _variantes_nombre(nombre: str) -> list[str]:
     base = str(nombre or '').strip()
     if not base:
@@ -304,6 +358,7 @@ def validar_y_corregir_parada(
     coordenadas_originales = [float(coordenadas[0]), float(coordenadas[1])]
     categoria = str(parada.get('categoria') or '').strip()
     centro = contexto_geo.get('centro') if isinstance(contexto_geo, dict) else None
+    city_boundary = _resolve_city_boundary(ciudad)
 
     variantes = _variantes_nombre(nombre)
     if not variantes:
@@ -327,12 +382,16 @@ def validar_y_corregir_parada(
                 continue
             if not _esta_en_contexto_geografico(coord_ref, contexto_geo):
                 continue
+            if not _coordenadas_en_boundary(coord_ref, city_boundary):
+                continue
 
             coordenadas_corregidas, error_m, tipo_geometria, corregida = _corregir_segun_geometria(
                 coordenadas_originales=coordenadas_originales,
                 geometria_ref=geometria,
             )
             if not _esta_en_contexto_geografico(coordenadas_corregidas, contexto_geo):
+                continue
+            if not _coordenadas_en_boundary(coordenadas_corregidas, city_boundary):
                 continue
 
             parada_validada = dict(parada)

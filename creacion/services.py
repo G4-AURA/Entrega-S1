@@ -15,6 +15,7 @@ from creacion.geo_clients import MapboxGeocodingClient, OSMGeocodingClient
 from creacion.geo_validation import (
     NoConvergenciaCoordenadasError,
     completar_lista_paradas_validadas,
+    coordenadas_en_limite_ciudad,
 )
 from creacion.langgraph.graph import construir_grafo
 from creacion.models import Historial_ia
@@ -874,6 +875,7 @@ def _seleccionar_candidatos_relajados(
     cantidad_objetivo: int,
     paradas_existentes: list[dict],
     contexto_geo: dict,
+    ciudad: str = '',
     id_offset: int = 0,
     nombres_bloqueados: set[str] | None = None,
     coords_bloqueadas: set[tuple[float, float]] | None = None,
@@ -907,6 +909,8 @@ def _seleccionar_candidatos_relajados(
         if not isinstance(coords, list) or len(coords) < 2:
             continue
         if not _esta_en_contexto_geografico(coords, contexto_geo):
+            continue
+        if not coordenadas_en_limite_ciudad(coords, ciudad):
             continue
 
         nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
@@ -1668,6 +1672,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
             cantidad_objetivo=cantidad,
             paradas_existentes=paradas_existentes,
             contexto_geo=contexto_geo,
+            ciudad=ciudad_contexto,
             id_offset=0,
         )
         candidatos.extend(candidatos_lote)
@@ -1688,6 +1693,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
                 cantidad_objetivo=restantes,
                 paradas_existentes=[],
                 contexto_geo=contexto_geo,
+                ciudad=ciudad_contexto,
                 id_offset=len(candidatos),
                 nombres_bloqueados=nombres_bloqueados,
                 coords_bloqueadas=coords_bloqueadas,
@@ -1807,6 +1813,8 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
         if not normalizado:
             continue
         if not _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
+            continue
+        if not coordenadas_en_limite_ciudad(normalizado['coordenadas'], ciudad):
             continue
         nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
         coords_key = _clave_coordenadas_para_dedupe(normalizado.get('coordenadas'))
