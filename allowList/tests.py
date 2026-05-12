@@ -15,11 +15,12 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from allowList.models import CategoriaOSM, POI
 from allowList import services
+from allowList.management.commands.import_city_boundary import Command as ImportCityBoundaryCommand
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +54,63 @@ def _superuser():
 
 def _user_normal():
     return User.objects.create_user(username="normal_test", password="normal123")
+
+
+class ImportCityBoundaryCommandUnitTest(SimpleTestCase):
+    def test_extrae_varias_ciudades_desde_feature_collection(self):
+        raw = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"nombre": "Málaga"},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[-4.5, 36.7], [-4.4, 36.7], [-4.4, 36.8], [-4.5, 36.7]]],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "properties": {"nombre": "Sevilla"},
+                    "geometry": {
+                        "type": "MultiPolygon",
+                        "coordinates": [[[[-6.0, 37.3], [-5.9, 37.3], [-5.9, 37.4], [-6.0, 37.3]]]],
+                    },
+                },
+            ],
+        }
+
+        boundaries = ImportCityBoundaryCommand._extract_boundaries(raw)
+
+        self.assertEqual([city for city, _geometry in boundaries], ["Málaga", "Sevilla"])
+
+    def test_filtra_ciudad_con_acentos_en_feature_collection(self):
+        raw = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"nombre": "Málaga"},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[-4.5, 36.7], [-4.4, 36.7], [-4.4, 36.8], [-4.5, 36.7]]],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "properties": {"nombre": "Sevilla"},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[-6.0, 37.3], [-5.9, 37.3], [-5.9, 37.4], [-6.0, 37.3]]],
+                    },
+                },
+            ],
+        }
+
+        boundaries = ImportCityBoundaryCommand._extract_boundaries(raw, ciudad="Malaga")
+
+        self.assertEqual(len(boundaries), 1)
+        self.assertEqual(boundaries[0][0], "Málaga")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import math
 import re
 import logging
 import requests
+import unicodedata
 import uuid
 from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
@@ -436,6 +437,53 @@ def validar_ciudad_existe(ciudad: str) -> bool:
         return True
     except requests.RequestException:
         return True
+
+
+def _normalizar_texto_ciudad(valor: str) -> str:
+    base = str(valor or '').strip().lower()
+    if not base:
+        return ''
+    normalized = unicodedata.normalize('NFD', base)
+    normalized = ''.join(ch for ch in normalized if unicodedata.category(ch) != 'Mn')
+    return ' '.join(normalized.split())
+
+
+def listar_ciudades_contempladas() -> list[str]:
+    """
+    Devuelve las ciudades activas importadas como límites oficiales.
+    Si la tabla aún no existe o la BD no está disponible, la UI puede seguir cargando.
+    """
+    try:
+        from allowList.models import CityBoundary
+
+        return list(
+            CityBoundary.objects.filter(active=True)
+            .order_by('city_name')
+            .values_list('city_name', flat=True)
+        )
+    except DatabaseError as exc:
+        logger.warning('No se pudieron consultar las ciudades contempladas: %s', exc)
+        return []
+
+
+def resolver_ciudad_contemplada(ciudad: str) -> str:
+    """
+    Canonicaliza la ciudad contra CityBoundary cuando hay límites importados.
+    En entornos sin límites cargados se mantiene la validación histórica por Nominatim.
+    """
+    ciudad_limpia = str(ciudad or '').strip()
+    ciudades = listar_ciudades_contempladas()
+    if not ciudades:
+        if not validar_ciudad_existe(ciudad_limpia):
+            raise ErrorValidacionRuta('La ciudad ingresada no se encuentra en nuestros registros o no existe.')
+        return ciudad_limpia
+
+    ciudad_norm = _normalizar_texto_ciudad(ciudad_limpia)
+    for ciudad_disponible in ciudades:
+        if _normalizar_texto_ciudad(ciudad_disponible) == ciudad_norm:
+            return ciudad_disponible
+
+    raise ErrorValidacionRuta('La ciudad seleccionada no está contemplada en esta versión de la aplicación.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1156,8 +1204,7 @@ def normalizar_payload_ia(datos):
     ciudad = str(datos.get('ciudad') or '').strip()
     if not ciudad:
         raise ErrorValidacionRuta('El nombre de la ciudad es obligatorio.')
-    if not validar_ciudad_existe(ciudad):
-        raise ErrorValidacionRuta('La ciudad ingresada no se encuentra en nuestros registros o no existe.')
+    ciudad = resolver_ciudad_contemplada(ciudad)
     duracion = datos.get('duracion')
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
