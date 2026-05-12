@@ -1,0 +1,1 @@
+from allowList.management.commands.import_city_boundary import Command

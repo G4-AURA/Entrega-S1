@@ -24,7 +24,14 @@
             <form id="form-personalizacion-ruta" class="row g-3 g-md-4" data-csrf-token="{{ csrf_token }}" data-mapbox-token="{{ MAPBOX_ACCESS_TOKEN }}">
                 <div class="col-12">
                     <label for="ciudad" class="form-label">¿Qué ciudad quieres recorrer?</label>
-                    <input type="text" id="ciudad" name="ciudad" class="form-control form-control-lg" required>
+                    <select id="ciudad" name="ciudad" class="form-select form-select-lg" required>
+                        <option value="" selected disabled>Selecciona una ciudad</option>
+                        {% for ciudad in ciudades_disponibles %}
+                        <option value="{{ ciudad }}">{{ ciudad }}</option>
+                        {% empty %}
+                        <option value="" disabled>No hay ciudades disponibles</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="col-12 col-md-6">
                     <label for="duracion" class="form-label">Duración (horas)</label>

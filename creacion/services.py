@@ -4,6 +4,7 @@ import math
 import re
 import logging
 import requests
+import unicodedata
 import uuid
 from django.contrib.gis.geos import Point
 from django.db import DatabaseError, IntegrityError, transaction
@@ -14,6 +15,7 @@ from creacion.geo_clients import MapboxGeocodingClient, OSMGeocodingClient
 from creacion.geo_validation import (
     NoConvergenciaCoordenadasError,
     completar_lista_paradas_validadas,
+    coordenadas_en_limite_ciudad,
 )
 from creacion.langgraph.graph import construir_grafo
 from creacion.models import Historial_ia
@@ -438,6 +440,53 @@ def validar_ciudad_existe(ciudad: str) -> bool:
         return True
 
 
+def _normalizar_texto_ciudad(valor: str) -> str:
+    base = str(valor or '').strip().lower()
+    if not base:
+        return ''
+    normalized = unicodedata.normalize('NFD', base)
+    normalized = ''.join(ch for ch in normalized if unicodedata.category(ch) != 'Mn')
+    return ' '.join(normalized.split())
+
+
+def listar_ciudades_contempladas() -> list[str]:
+    """
+    Devuelve las ciudades activas importadas como límites oficiales.
+    Si la tabla aún no existe o la BD no está disponible, la UI puede seguir cargando.
+    """
+    try:
+        from allowList.models import CityBoundary
+
+        return list(
+            CityBoundary.objects.filter(active=True)
+            .order_by('city_name')
+            .values_list('city_name', flat=True)
+        )
+    except DatabaseError as exc:
+        logger.warning('No se pudieron consultar las ciudades contempladas: %s', exc)
+        return []
+
+
+def resolver_ciudad_contemplada(ciudad: str) -> str:
+    """
+    Canonicaliza la ciudad contra CityBoundary cuando hay límites importados.
+    En entornos sin límites cargados se mantiene la validación histórica por Nominatim.
+    """
+    ciudad_limpia = str(ciudad or '').strip()
+    ciudades = listar_ciudades_contempladas()
+    if not ciudades:
+        if not validar_ciudad_existe(ciudad_limpia):
+            raise ErrorValidacionRuta('La ciudad ingresada no se encuentra en nuestros registros o no existe.')
+        return ciudad_limpia
+
+    ciudad_norm = _normalizar_texto_ciudad(ciudad_limpia)
+    for ciudad_disponible in ciudades:
+        if _normalizar_texto_ciudad(ciudad_disponible) == ciudad_norm:
+            return ciudad_disponible
+
+    raise ErrorValidacionRuta('La ciudad seleccionada no está contemplada en esta versión de la aplicación.')
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Allowlist
 # ─────────────────────────────────────────────────────────────────────────────
@@ -826,6 +875,7 @@ def _seleccionar_candidatos_relajados(
     cantidad_objetivo: int,
     paradas_existentes: list[dict],
     contexto_geo: dict,
+    ciudad: str = '',
     id_offset: int = 0,
     nombres_bloqueados: set[str] | None = None,
     coords_bloqueadas: set[tuple[float, float]] | None = None,
@@ -859,6 +909,8 @@ def _seleccionar_candidatos_relajados(
         if not isinstance(coords, list) or len(coords) < 2:
             continue
         if not _esta_en_contexto_geografico(coords, contexto_geo):
+            continue
+        if not coordenadas_en_limite_ciudad(coords, ciudad):
             continue
 
         nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
@@ -1156,8 +1208,7 @@ def normalizar_payload_ia(datos):
     ciudad = str(datos.get('ciudad') or '').strip()
     if not ciudad:
         raise ErrorValidacionRuta('El nombre de la ciudad es obligatorio.')
-    if not validar_ciudad_existe(ciudad):
-        raise ErrorValidacionRuta('La ciudad ingresada no se encuentra en nuestros registros o no existe.')
+    ciudad = resolver_ciudad_contemplada(ciudad)
     duracion = datos.get('duracion')
     personas = datos.get('personas')
     exigencia = str(datos.get('exigencia') or '').strip().lower()
@@ -1621,6 +1672,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
             cantidad_objetivo=cantidad,
             paradas_existentes=paradas_existentes,
             contexto_geo=contexto_geo,
+            ciudad=ciudad_contexto,
             id_offset=0,
         )
         candidatos.extend(candidatos_lote)
@@ -1641,6 +1693,7 @@ def generar_candidatos_paradas_ia(*, ruta: Ruta, cantidad: int = 3):
                 cantidad_objetivo=restantes,
                 paradas_existentes=[],
                 contexto_geo=contexto_geo,
+                ciudad=ciudad_contexto,
                 id_offset=len(candidatos),
                 nombres_bloqueados=nombres_bloqueados,
                 coords_bloqueadas=coords_bloqueadas,
@@ -1760,6 +1813,8 @@ def generar_paradas_adicionales_sesion(*, estado_sesion: dict, cantidad: int = 3
         if not normalizado:
             continue
         if not _esta_en_contexto_geografico(normalizado['coordenadas'], contexto_geo):
+            continue
+        if not coordenadas_en_limite_ciudad(normalizado['coordenadas'], ciudad):
             continue
         nombre_key = _normalizar_nombre_para_dedupe(normalizado.get('nombre'))
         coords_key = _clave_coordenadas_para_dedupe(normalizado.get('coordenadas'))

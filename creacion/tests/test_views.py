@@ -3,9 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from allowList.models import CityBoundary
 from creacion import services
 from rutas.models import AuthUser, Guia, Ruta
 from tours.models import TURISTA
@@ -21,6 +23,28 @@ def _crear_guia_para_usuario(user, tipo_suscripcion=Guia.Suscripcion.FREEMIUM):
         guia.tipo_suscripcion = tipo_suscripcion
         guia.save(update_fields=['tipo_suscripcion'])
     return guia
+
+
+def _multipolygon_test():
+    return MultiPolygon(
+        Polygon(((-6.0, 37.3), (-5.9, 37.3), (-5.9, 37.4), (-6.0, 37.3)), srid=4326),
+        srid=4326,
+    )
+
+
+class GenerarRutaPageTests(TestCase):
+    def test_muestra_ciudades_contempladas_en_desplegable(self):
+        CityBoundary.objects.create(city_name='Sevilla', polygon=_multipolygon_test(), active=True)
+        CityBoundary.objects.create(city_name='Granada', polygon=_multipolygon_test(), active=True)
+        CityBoundary.objects.create(city_name='Ciudad inactiva', polygon=_multipolygon_test(), active=False)
+
+        response = self.client.get(reverse('creacion:generar_ruta'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<select id="ciudad"', html=False)
+        self.assertContains(response, '<option value="Granada">Granada</option>', html=True)
+        self.assertContains(response, '<option value="Sevilla">Sevilla</option>', html=True)
+        self.assertNotContains(response, 'Ciudad inactiva')
 
 
 class GenerarRutaIAViewTests(TestCase):

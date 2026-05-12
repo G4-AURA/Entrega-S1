@@ -1,5 +1,10 @@
 import unittest
+from unittest.mock import patch
 
+from django.contrib.gis.geos import MultiPolygon, Polygon
+from django.test import TestCase
+
+from allowList.models import CityBoundary
 from creacion.geo_validation import (
     NoConvergenciaCoordenadasError,
     completar_lista_paradas_validadas,
@@ -48,6 +53,22 @@ def _normalizador_simple(raw, idx):
         'nivel_confianza': 1.0,
         'justificacion': str(raw.get('justificacion') or ''),
     }
+
+
+def _boundary_sevilla_test():
+    return MultiPolygon(
+        Polygon(
+            (
+                (-6.00, 37.30),
+                (-5.90, 37.30),
+                (-5.90, 37.40),
+                (-6.00, 37.40),
+                (-6.00, 37.30),
+            ),
+            srid=4326,
+        ),
+        srid=4326,
+    )
 
 
 class GeoValidationUnitTests(unittest.TestCase):
@@ -210,6 +231,37 @@ class GeoValidationUnitTests(unittest.TestCase):
         self.assertIsNotNone(resultado)
         self.assertGreaterEqual(osm.nominatim_calls, 2)
 
+    def test_rechaza_parada_fuera_del_boundary_resuelto(self):
+        parada = {
+            'nombre': 'Lugar Exterior',
+            'coordenadas': [37.55, -5.95],
+            'categoria': 'general',
+        }
+        osm = FakeOSMClient(
+            nominatim_responses={
+                'lugar exterior': [
+                    {
+                        'nombre': 'Lugar Exterior',
+                        'coordenadas': [37.55, -5.95],
+                        'tipo_geometria': 'point',
+                        'fuente_validacion': 'osm_nominatim',
+                        'score': 4.0,
+                    }
+                ]
+            }
+        )
+
+        with patch('creacion.geo_validation._resolve_city_boundary', return_value=_boundary_sevilla_test()):
+            resultado = validar_y_corregir_parada(
+                parada,
+                ciudad='Sevilla',
+                contexto_geo={'centro': [37.35, -5.95], 'radio_km': 50.0},
+                mapbox_client=FakeMapboxClient(),
+                osm_client=osm,
+            )
+
+        self.assertIsNone(resultado)
+
 
 class GeoCompletionOrchestratorTests(unittest.TestCase):
     def setUp(self):
@@ -317,6 +369,76 @@ class GeoCompletionOrchestratorTests(unittest.TestCase):
         # Solo la primera "Duplicada" debería intentar validación real; la segunda se filtra por dedupe de descartadas.
         self.assertEqual(osm.nominatim_calls, 1)
         self.assertEqual(mapbox.calls, 1)
+
+
+class GeoValidationCityBoundaryTests(TestCase):
+    def setUp(self):
+        self.contexto = {'centro': [37.35, -5.95], 'radio_km': 50.0}
+        CityBoundary.objects.create(
+            city_name='Sevilla',
+            polygon=_boundary_sevilla_test(),
+            active=True,
+        )
+
+    def test_acepta_parada_dentro_del_limite_importado(self):
+        parada = {
+            'nombre': 'Lugar Interior',
+            'coordenadas': [37.35, -5.95],
+            'categoria': 'general',
+        }
+        osm = FakeOSMClient(
+            nominatim_responses={
+                'lugar interior': [
+                    {
+                        'nombre': 'Lugar Interior',
+                        'coordenadas': [37.35, -5.95],
+                        'tipo_geometria': 'point',
+                        'fuente_validacion': 'osm_nominatim',
+                        'score': 4.0,
+                    }
+                ]
+            }
+        )
+
+        resultado = validar_y_corregir_parada(
+            parada,
+            ciudad='Sevilla',
+            contexto_geo=self.contexto,
+            mapbox_client=FakeMapboxClient(),
+            osm_client=osm,
+        )
+
+        self.assertIsNotNone(resultado)
+
+    def test_rechaza_parada_fuera_del_limite_importado(self):
+        parada = {
+            'nombre': 'Lugar Exterior',
+            'coordenadas': [37.55, -5.95],
+            'categoria': 'general',
+        }
+        osm = FakeOSMClient(
+            nominatim_responses={
+                'lugar exterior': [
+                    {
+                        'nombre': 'Lugar Exterior',
+                        'coordenadas': [37.55, -5.95],
+                        'tipo_geometria': 'point',
+                        'fuente_validacion': 'osm_nominatim',
+                        'score': 4.0,
+                    }
+                ]
+            }
+        )
+
+        resultado = validar_y_corregir_parada(
+            parada,
+            ciudad='Sevilla',
+            contexto_geo=self.contexto,
+            mapbox_client=FakeMapboxClient(),
+            osm_client=osm,
+        )
+
+        self.assertIsNone(resultado)
 
 
 if __name__ == '__main__':
