@@ -73,6 +73,7 @@ def _build_tier_ui_context(guia):
         'mood_choices_disponibles': mood_choices_disponibles,
         'ai_route_generation_enabled': ai_route_generation_enabled,
         'payload_wishes_enabled': payload_wishes_enabled,
+        'ciudades_disponibles': services.listar_ciudades_contempladas(),
     }
 
 
