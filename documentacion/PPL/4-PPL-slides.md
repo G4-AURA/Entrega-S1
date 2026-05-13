@@ -33,6 +33,11 @@ Este archivo recoge de manera estructurada los aspectos clave del proyecto que h
 
 Hay algunas diapositivas que no se visualizan correctamente en la vista previa de GitHub. Es recomendable descargarse el documento de la presentación para verla de manera adecuada.
 
-## 2. Enlace al documento que contiene las transparencias
+## 2. Enlace al documento que contiene las transparencia de la presentacion principal
+
+[Enlace a las slides Sprint 3](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-S3-slides.pdf)
+
+
+## 2. Enlace al documento que contiene las transparencia de la presentacion adicional
 
 [Enlace a las slides Sprint 3](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-S3-slides.pdf)
