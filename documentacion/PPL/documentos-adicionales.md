@@ -29,29 +29,29 @@ Este documento, aunque **no es necesario para la entrega**, contiene una extensa
 ## 2. Anuncios
 Documento que contiene el enlace a YouTube de los anuncios de AURA. Tanto la versión de clientes como la de inversores.
 
-[Enlace carpeta Usuarios piloto](https://github.com/G4-AURA/Entrega-S1/tree/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/usuarios-piloto)
+[Enlace Anuncios](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/Anuncios.md)
 
-## 3. Coste de acciones de marketing
+## 3. Coste de Acciones de Marketing
 Documento que tiene como objetivo estimar el coste asociado a la ejecución del plan de marketing definido para el lanzamiento de la aplicación.
 
-[Enlace Analisis de presupuesto](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/An%C3%A1lisis-de-presupuesto.md)
+[Enlace Coste de Acciones de Marketing](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/Coste-de-acciones-de-marketing.md)
 
-## 4. Estimaciones de costes
+## 4. Estimaciones de Costes
 Documento que contiene la estimación de coste del proyecto durante la etapa de PPL.
 
-[Enlace Commitment Agreement rev](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/Commitment-Agreement-rev.md)
+[Enlace Estimaciones de costes](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/estimaciones-de-costes.md)
 
-## 5. Plan de lanzamiento y contingencia
+## 5. Plan de Lanzamiento y Contingencia
 Documento que recoge la estrategia integral para el lanzamiento de **AURA** al mercado.
 
-[Enlace Plan de lanzamiento y contingencia](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/plan-de-lanzamiento-y-contingencia.md)
+[Enlace Plan de Lanzamiento y Contingencia](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/plan-de-lanzamiento-y-contingencia.md)
 
-## 6. Plan de negocio y escalabilidad
+## 6. Plan de Negocio y Escalabilidad
 Documento que contiene la información referida a la diferencia de funcionalidades existente entre el modelo Freemium y Premium, y el posible escalado que presenta la aplicación.
 
-[Enlace Términos y condiciones](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/Te%CC%81rminos-y-condiciones.md)
+[Enlace Plan de Negocio y Escalabilidad](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/Plan-de-negocio-y-escalabilidad.md)
 
 ## 7. Posicionamiento
 Documento que contiene la información referida al plan de posicionamiento que el equipo tiene pensado para hacer de **AURA** un referente en su nicho. 
 
-[Enlace Términos y condiciones](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20Sprint%203/Te%CC%81rminos-y-condiciones.md)
+[Enlace Posicionamiento](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/posicionamiento.md)
