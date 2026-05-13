@@ -32,4 +32,4 @@ Este documento recoge el enlace a la landing page de **AURA** y el banner con el
 
 ## 3. Banner del evento
 
-[Enlace al banner]()
+[Enlace al banner](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/recursos/documentos%20adicionales%20PPL/imgs/Banner%20AURA.png)
