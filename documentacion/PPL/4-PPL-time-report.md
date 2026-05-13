@@ -1,4 +1,5 @@
-## **Informe de Tiempo-Esfuerzo** <div align="center">  
+## **Informe de Tiempo-Esfuerzo** 
+<div align="center">  
     <p align="center">
         <img src="../recursos/logo.png" alt="AURA Logo" width="230"/>
     </p>
