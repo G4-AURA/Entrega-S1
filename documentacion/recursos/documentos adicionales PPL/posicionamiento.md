@@ -24,7 +24,7 @@
 ---
 
 ## 1. Contenido
-Este documento contiene la información referida al plan de posicionamiento que el equipo tiene pensado para hacer de AURA un referente en su nicho. 
+Este documento contiene la información referida al plan de posicionamiento que el equipo tiene pensado para hacer de **AURA** un referente en su nicho. 
 
 Además se declaran las diferentes palabras clave que nos define a la hora de ser referenciados en diferentes portales de búsqueda.
 
