@@ -504,6 +504,63 @@ Este contenido se **actualiza de forma semanal** a partir del feedback recibido 
 
 ---
 
+### Semana 9 (16/04), Evaluación S3
+
+Dos presentaciones:
+
+1ª presentación: 
+- Duración 10 mínutos similar a cómo será la última
+- Idea clara bien killer opener y que enlace con anuncio de cliente máx 1 min.
+- ¿Qué hace exactamente? --> Demo de casos uso core, con hilo conductor realista y con datos reales
+- ¿Y esto por qué no se ha hecho antes? --> competidores y diferenciacion
+- ¿Quién hay detrás de este proyecto? --> Presentar equipo de forma simple
+- ¿Esto es rentable? --> Modelo negocio explícito y modelo de precios propuesto a clientes, plan negocio de alto nivel y opciones de inversión planteamos
+- ¿Donde veo más info? --> URL, QR, enlace al sistema que esté funcionando ya en producción
+- Enlace no a entregable si no al de producción (para estos días si puede ser al entregable, para el día final no)
+
+2ª Presentación:
+- Esta debe durar 5 min 
+- 1 diapo como usar Ia en desarrollo,  metodología para Ia hemos usado
+- Qué herramientas
+- Plan de marketing
+- Nuestro modelo de segmentación: usar modelo de persona* (Mínimo debe haber 2 personas)
+- Como abordamos posicionamiento
+- Qué campaña de lanzamiento vamos a hacer debe incluir al menos un evento / acción previa a work proyect launch
+- Estimaciones costes en base a una gráfica que se vea en la misma escenario pesimista crecimiento (riesgos pasan todos) y otro escenario optimista (donde riesgos no pasan) 
+- Community manager responsable y responsabilidades más su plan de acción
+- Cual es el coste que va a tener basado en q tamaño de alcance de campaña costes de community mánagers
+- Preparar 2 anunciós uno inversores otro usuario
+
+ ---
+ 
+### Semana 10 (30/04), PPL
+
+***A tener en cuenta en todas las presentaciones***
+- Presentación limpia y autocontenida.
+- Ensayar mejor la presentación, las transiciones tienen que estar perfectas.
+- Presentación con mucho texto.
+- Se eliminan las preguntas textuales de la presentación, decirla mejor hablada.
+- El anuncio de los inversores pasa a ser el anuncio de los clientes.
+- Preparar el escenario: plan de contingencia
+- ⁠No poner tanta información en las diapositivas (ej: tabla de competidores)
+- ⁠No ser tan específico con las funcionalidades 
+- ⁠Justificar por qué querrían invertir en la aplicación
+
+***Para la Semana 7/05 - Retrospectiva Global***
+- Presentacion privada de cada grupo con los profesores, somos los cuartos. 
+- En la presentación se discutirá el rendimiento individual de cada miembro del grupo, tanto en trabajo realizado como cumplimiento del CA, posibles problemas, etc. - Max 15 minutos, luego los profesores nos harán preguntas.
+
+***Para la Semana 14/05 - Evaluación del PPL***
+- WPL (presentación larga): en la parte de inversores incluir análisis objetivo y/o cuántitativo del mercado y oportunidades de inversión (3 como mucho), condiciones y retorno de inversión. Última slide con enlace a la landin page( de que va el proyecto, inversiones, anuncios) en qr y enlace. Enlace a producción.
+- ⁠presentacion corta: igual
+
+***Incorporaciones nuevas***
+- Tener una landing page donde se vea el evento y que se pueda acceder a los diferentes proyectos .
+- ⁠Cada equipo tiene que tener un banner póster para ponerlo por la etsii: 16:9 y 1920X108. Contenidos mínimos: código qr con la landing del proyecto. Poner “Proyecto de ISPP 25/26”. Poner apartado con “más información”, este producto se lanzará el … En EV hay ejemplos.
+- ⁠Los ponentes tenemos que autorizar que el WPL se retransmita por streaming (antes del 7/5)
+
+---
+
 ## 3. Acciones de Consolidación
 
 Durante las primeras sesiones, los distintos grupos acordaron crear una **base de conocimiento común en OneDrive**, cuya dinámica inicial consistía en que cada grupo realizara un volcado del feedback recibido en clase dentro de documentos independientes.
@@ -571,57 +628,3 @@ Tras implementar esta nueva estructura, el feedback recibido ha sido **positivo*
 - Mayor utilidad práctica de la base de conocimiento  
 
 Además, el sistema se mantiene en **evolución continua**, incorporando nuevas categorías según las necesidades que van surgiendo a lo largo del proyecto.
-
-### Semana 9 (16/04), Evaluación S3
-
-Dos presentaciones:
-
-1ª presentación: 
-- Duración 10 mínutos similar a cómo será la última
-- Idea clara bien killer opener y que enlace con anuncio de cliente máx 1 min.
-- ¿Qué hace exactamente? --> Demo de casos uso core, con hilo conductor realista y con datos reales
-- ¿Y esto por qué no se ha hecho antes? --> competidores y diferenciacion
-- ¿Quién hay detrás de este proyecto? --> Presentar equipo de forma simple
-- ¿Esto es rentable? --> Modelo negocio explícito y modelo de precios propuesto a clientes, plan negocio de alto nivel y opciones de inversión planteamos
-- ¿Donde veo más info? --> URL, QR, enlace al sistema que esté funcionando ya en producción
-- Enlace no a entregable si no al de producción (para estos días si puede ser al entregable, para el día final no)
-
-2ª Presentación:
-- Esta debe durar 5 min 
-- 1 diapo como usar Ia en desarrollo,  metodología para Ia hemos usado
-- Qué herramientas
-- Plan de marketing
-- Nuestro modelo de segmentación: usar modelo de persona* (Mínimo debe haber 2 personas)
-- Como abordamos posicionamiento
-- Qué campaña de lanzamiento vamos a hacer debe incluir al menos un evento / acción previa a work proyect launch
-- Estimaciones costes en base a una gráfica que se vea en la misma escenario pesimista crecimiento (riesgos pasan todos) y otro escenario optimista (donde riesgos no pasan) 
-- Community manager responsable y responsabilidades más su plan de acción
-- Cual es el coste que va a tener basado en q tamaño de alcance de campaña costes de community mánagers
-- Preparar 2 anunciós uno inversores otro usuario
-
-  
-### Semana 10 (30/04), PPL
-
-***A tener en cuenta en todas las presentaciones***
-- Presentación limpia y autocontenida.
-- Ensayar mejor la presentación, las transiciones tienen que estar perfectas.
-- Presentación con mucho texto.
-- Se eliminan las preguntas textuales de la presentación, decirla mejor hablada.
-- El anuncio de los inversores pasa a ser el anuncio de los clientes.
-- Preparar el escenario: plan de contingencia
-- ⁠No poner tanta información en las diapositivas (ej: tabla de competidores)
-- ⁠No ser tan específico con las funcionalidades 
-- ⁠Justificar por qué querrían invertir en la aplicación
-
-***Para la Semana 7/05 - Retrospectiva Global***
-- Presentacion privada de cada grupo con los profesores, somos los cuartos. 
-- En la presentación se discutirá el rendimiento individual de cada miembro del grupo, tanto en trabajo realizado como cumplimiento del CA, posibles problemas, etc. - Max 15 minutos, luego los profesores nos harán preguntas.
-
-***Para la Semana 14/05 - Evaluación del PPL***
-- WPL (presentación larga): en la parte de inversores incluir análisis objetivo y/o cuántitativo del mercado y oportunidades de inversión (3 como mucho), condiciones y retorno de inversión. Última slide con enlace a la landin page( de que va el proyecto, inversiones, anuncios) en qr y enlace. Enlace a producción.
-- ⁠presentacion corta: igual
-
-***Incorporaciones nuevas***
-- Tener una landing page donde se vea el evento y que se pueda acceder a los diferentes proyectos .
-- ⁠Cada equipo tiene que tener un banner póster para ponerlo por la etsii: 16:9 y 1920X108. Contenidos mínimos: código qr con la landing del proyecto. Poner “Proyecto de ISPP 25/26”. Poner apartado con “más información”, este producto se lanzará el … En EV hay ejemplos.
-- ⁠Los ponentes tenemos que autorizar que el WPL se retransmita por streaming (antes del 7/5)
