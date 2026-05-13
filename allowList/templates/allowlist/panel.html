@@ -111,6 +111,47 @@
     align-self: flex-end;
 }
 
+/* ── Map ── */
+.al-map-panel {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+}
+.al-map-header {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.al-map-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+.al-map-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+#allowlist-map {
+    height: 420px;
+    width: 100%;
+    background: var(--bg-surface);
+}
+.al-map-popup-title {
+    font-weight: 800;
+    margin-bottom: 0.2rem;
+}
+.al-map-popup-meta {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
 /* ── Table ── */
 .al-table-wrap { background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
 .al-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
@@ -190,6 +231,7 @@
 
 @media (max-width: 768px) {
     .al-stats { grid-template-columns: 1fr 1fr; }
+    #allowlist-map { height: 340px; }
     .al-table th:nth-child(4),
     .al-table td:nth-child(4),
     .al-table th:nth-child(5),
@@ -234,6 +276,15 @@
             <span class="al-stat-label">Creados manualmente</span>
         </div>
     </div>
+
+    <!-- Map -->
+    <section class="al-map-panel" aria-label="Mapa de POIs en allowlist">
+        <div class="al-map-header">
+            <div class="al-map-title">Mapa de POIs en allowlist</div>
+            <div class="al-map-meta" id="map-info">Cargando mapa...</div>
+        </div>
+        <div id="allowlist-map"></div>
+    </section>
 
     <!-- Filters -->
     <div class="al-filters">
@@ -302,6 +353,8 @@
 const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
 let currentPage = 1;
 let totalPages  = 1;
+let allowlistMap = null;
+let allowlistMarkers = null;
 
 function getCsrf() {
     return document.querySelector('[name=csrfmiddlewaretoken]')?.value
@@ -315,20 +368,109 @@ function showToast(msg, tipo = 'ok') {
     setTimeout(() => t.classList.remove('show'), 3500);
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    }[char]));
+}
+
+function getFiltroParams() {
+    const params = new URLSearchParams();
+    const ciudad = document.getElementById('f-ciudad').value.trim();
+    const categoria = document.getElementById('f-categoria').value;
+    const fuente = document.getElementById('f-fuente').value;
+
+    if (ciudad) params.set('ciudad', ciudad);
+    if (categoria) params.set('categoria', categoria);
+    if (fuente) params.set('fuente', fuente);
+
+    return params;
+}
+
+function inicializarMapaAllowlist() {
+    if (allowlistMap || typeof L === 'undefined') return;
+
+    allowlistMap = L.map('allowlist-map').setView([37.3886, -5.9823], 6);
+    window.AuraMapTiles.createTileLayer({ style: 'streets' }).addTo(allowlistMap);
+    allowlistMarkers = L.layerGroup().addTo(allowlistMap);
+}
+
+function renderMapaPOIs(pois) {
+    inicializarMapaAllowlist();
+    const info = document.getElementById('map-info');
+    if (!allowlistMap || !allowlistMarkers) {
+        info.textContent = 'No se pudo inicializar el mapa.';
+        return;
+    }
+
+    allowlistMarkers.clearLayers();
+    const bounds = [];
+
+    pois.forEach(poi => {
+        const lat = Number(poi.lat);
+        const lon = Number(poi.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+        const color = poi.fuente === 'osm' ? '#3d6e29' : (poi.fuente === 'google' ? '#b45309' : '#4338ca');
+        const marker = L.circleMarker([lat, lon], {
+            radius: 7,
+            color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.75,
+        }).addTo(allowlistMarkers);
+
+        marker.bindPopup(`
+            <div class="al-map-popup-title">${escapeHtml(poi.nombre)}</div>
+            <div class="al-map-popup-meta">${escapeHtml(poi.categoria_label)} · ${escapeHtml(poi.ciudad || 'Sin ciudad')}</div>
+            <div class="al-map-popup-meta">${escapeHtml(poi.fuente || 'manual')}</div>
+        `);
+        bounds.push([lat, lon]);
+    });
+
+    info.textContent = `${pois.length} POI${pois.length === 1 ? '' : 's'} en el mapa`;
+
+    if (bounds.length === 1) {
+        allowlistMap.setView(bounds[0], 15);
+    } else if (bounds.length > 1) {
+        allowlistMap.fitBounds(bounds, { padding: [34, 34] });
+    } else {
+        allowlistMap.setView([37.3886, -5.9823], 6);
+    }
+
+    setTimeout(() => allowlistMap.invalidateSize(), 100);
+}
+
+async function cargarMapaPOIs() {
+    const info = document.getElementById('map-info');
+    info.textContent = 'Cargando mapa...';
+
+    const params = getFiltroParams();
+
+    try {
+        const resp = await fetch(`{% url 'allowlist:api_mapa' %}?${params}`);
+        const data = await resp.json();
+        renderMapaPOIs(data.results || []);
+    } catch (err) {
+        info.textContent = 'Error al cargar el mapa.';
+    }
+}
+
 async function cargarPOIs(page = 1) {
     currentPage = page;
-    const ciudad   = document.getElementById('f-ciudad').value;
-    const categoria= document.getElementById('f-categoria').value;
-    const fuente   = document.getElementById('f-fuente').value;
 
     document.getElementById('tabla-loading').style.display = '';
     document.getElementById('tabla-pois').style.display = 'none';
     document.getElementById('tabla-empty').style.display = 'none';
 
-    const params = new URLSearchParams({ page, limit: 20 });
-    if (ciudad)    params.set('ciudad', ciudad);
-    if (categoria) params.set('categoria', categoria);
-    if (fuente)    params.set('fuente', fuente);
+    cargarMapaPOIs();
+    const params = getFiltroParams();
+    params.set('page', page);
+    params.set('limit', 20);
 
     try {
         const resp = await fetch(`{% url 'allowlist:api_listar' %}?${params}`);
@@ -366,11 +508,14 @@ function renderTabla(pois) {
             : '<span class="badge-manual">Manual</span>';
 
         const tr = document.createElement('tr');
+        const nombre = escapeHtml(poi.nombre);
+        const categoria = escapeHtml(poi.categoria_label);
+        const ciudad = escapeHtml(poi.ciudad || '—');
         tr.innerHTML = `
             <td style="font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                title="${poi.nombre}">${poi.nombre}</td>
-            <td style="font-size:0.8rem;color:var(--text-muted);">${poi.categoria_label}</td>
-            <td>${poi.ciudad || '—'}</td>
+                title="${nombre}">${nombre}</td>
+            <td style="font-size:0.8rem;color:var(--text-muted);">${categoria}</td>
+            <td>${ciudad}</td>
             <td>${fuenteBadge}</td>
             <td style="text-align:right;">
                 <button class="al-btn-action al-btn-delete" onclick="eliminarPOI(${poi.id}, this)">Eliminar</button>
@@ -407,6 +552,9 @@ function cambiarPagina(delta) {
 }
 
 // Cargar al inicio
-document.addEventListener('DOMContentLoaded', () => cargarPOIs(1));
+document.addEventListener('DOMContentLoaded', () => {
+    inicializarMapaAllowlist();
+    cargarPOIs(1);
+});
 </script>
 {% endblock %}

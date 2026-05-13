@@ -381,6 +381,36 @@ def crear_poi_manual(
 # Módulo 3 – Consulta y listado
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _filtrar_pois(ciudad: str = '', categoria: str = '', fuente: str = ''):
+    """Construye el queryset base de POIs aplicando los filtros del panel."""
+    qs = POI.objects.order_by('nombre')
+
+    if ciudad:
+        qs = qs.filter(ciudad__icontains=ciudad.strip())
+    if categoria:
+        qs = qs.filter(categoria=categoria)
+    if fuente:
+        qs = qs.filter(fuente=fuente)
+
+    return qs
+
+
+def _serializar_poi_admin(poi: POI) -> dict:
+    """Serialización común para las APIs del panel de administración."""
+    return {
+        'id':        poi.id,
+        'nombre':    poi.nombre,
+        'categoria': poi.categoria,
+        'categoria_label': poi.get_categoria_display(),
+        'lat':       poi.lat,
+        'lon':       poi.lon,
+        'ciudad':    poi.ciudad,
+        'direccion': poi.direccion,
+        'fuente':    poi.fuente,
+        'osm_id':    poi.osm_id,
+    }
+
+
 def listar_pois(
     ciudad: str = '',
     categoria: str = '',
@@ -391,41 +421,30 @@ def listar_pois(
     """
     Devuelve un listado paginado de POIs para el panel de administración.
     """
-    qs = POI.objects.order_by('nombre')
-
-    if ciudad:
-        qs = qs.filter(ciudad__icontains=ciudad.strip())
-    if categoria:
-        qs = qs.filter(categoria=categoria)
-    if fuente:
-        qs = qs.filter(fuente=fuente)
+    qs = _filtrar_pois(ciudad=ciudad, categoria=categoria, fuente=fuente)
 
     total = qs.count()
     offset = (page - 1) * limit
     pois_paginados = qs[offset: offset + limit]
 
-    resultados = []
-    for poi in pois_paginados:
-        resultados.append({
-            'id':        poi.id,
-            'nombre':    poi.nombre,
-            'categoria': poi.categoria,
-            'categoria_label': poi.get_categoria_display(),
-            'lat':       poi.lat,
-            'lon':       poi.lon,
-            'ciudad':    poi.ciudad,
-            'direccion': poi.direccion,
-            'fuente':    poi.fuente,
-            'osm_id':    poi.osm_id,
-        })
-
     return {
-        'results':      resultados,
+        'results':      [_serializar_poi_admin(poi) for poi in pois_paginados],
         'total':        total,
         'page':         page,
         'total_pages':  math.ceil(total / limit) if total else 1,
         'limit':        limit,
     }
+
+
+def listar_pois_para_mapa(ciudad: str = '', categoria: str = '', fuente: str = '') -> list[dict]:
+    """
+    Devuelve todos los POIs que debe pintar el mapa del panel de administración.
+
+    Respeta los mismos filtros que la tabla, pero no pagina los resultados para
+    que el mapa represente toda la allowlist visible con esos filtros.
+    """
+    qs = _filtrar_pois(ciudad=ciudad, categoria=categoria, fuente=fuente)
+    return [_serializar_poi_admin(poi) for poi in qs]
 
 
 def eliminar_poi(poi_id: int) -> None:

@@ -13,6 +13,7 @@ Endpoints:
   POST /allowlist/api/crear-manual/       → crea POI manual
   POST /allowlist/api/eliminar/<id>/      → elimina POI
   GET  /allowlist/api/listar/             → listado JSON paginado
+  GET  /allowlist/api/mapa/               → listado JSON completo para mapa
 """
 import json
 import logging
@@ -247,6 +248,30 @@ def api_listar_pois(request):
         limit=limit,
     )
     return JsonResponse({'status': 'OK', **datos})
+
+
+@require_GET
+@superuser_required
+def api_mapa_pois(request):
+    """
+    GET /allowlist/api/mapa/
+    Params: ciudad, categoria, fuente
+    Response: { status, results, total }
+    """
+    ciudad = request.GET.get('ciudad', '')
+    categoria = request.GET.get('categoria', '')
+    fuente = request.GET.get('fuente', '')
+
+    resultados = services.listar_pois_para_mapa(
+        ciudad=ciudad,
+        categoria=categoria,
+        fuente=fuente,
+    )
+    return JsonResponse({
+        'status': 'OK',
+        'results': resultados,
+        'total': len(resultados),
+    })
 
 
 @csrf_exempt

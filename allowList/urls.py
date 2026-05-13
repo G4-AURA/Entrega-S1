@@ -14,5 +14,6 @@ urlpatterns = [
     path('api/importar-osm/',          views.api_importar_osm, name='api_importar_osm'),
     path('api/crear-manual/',          views.api_crear_manual, name='api_crear_manual'),
     path('api/listar/',                views.api_listar_pois,  name='api_listar'),
+    path('api/mapa/',                  views.api_mapa_pois,    name='api_mapa'),
     path('api/eliminar/<int:poi_id>/', views.api_eliminar_poi, name='api_eliminar'),
 ]
