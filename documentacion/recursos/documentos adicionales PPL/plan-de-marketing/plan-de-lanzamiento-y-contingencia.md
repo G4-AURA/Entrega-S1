@@ -2,7 +2,7 @@
 
 <div align="center">  
     <p align="center">
-        <img src="../logo.png" alt="AURA Logo" width="230"/>
+        <img src="../../logo.png" alt="AURA Logo" width="230"/>
     </p>
 </div>
 
