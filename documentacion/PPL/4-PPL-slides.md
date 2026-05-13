@@ -35,9 +35,9 @@ Hay algunas diapositivas que no se visualizan correctamente en la vista previa d
 
 ## 2. Enlace al documento que contiene las transparencia de la presentacion principal
 
-[Enlace a las slides Sprint 3](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-S3-slides.pdf)
+[Enlace a las slides principales](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-PPL-slides-1.pdf)
 
 
 ## 2. Enlace al documento que contiene las transparencia de la presentacion adicional
 
-[Enlace a las slides Sprint 3](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-S3-slides.pdf)
+[Enlace a las slides adicionales](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-PPL-slides-2.pdf)
