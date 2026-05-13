@@ -387,6 +387,12 @@ class ListarPOIsServiceTest(TestCase):
         resultado = services.listar_pois(ciudad="Madrid", categoria=CategoriaOSM.MUSEO)
         self.assertEqual(resultado["total"], 2)
 
+    def test_listar_pois_para_mapa_no_pagina(self):
+        """El mapa recibe todos los POIs filtrados, no solo una página."""
+        resultado = services.listar_pois_para_mapa(ciudad="Madrid")
+        self.assertEqual(len(resultado), 3)
+        self.assertTrue(all("lat" in item and "lon" in item for item in resultado))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tests de services.eliminar_poi
@@ -712,6 +718,12 @@ class AllowlistPermisosTest(TestCase):
         response = self.client.get(reverse("allowlist:api_listar"))
         self.assertEqual(response.status_code, 403)
 
+    def test_api_mapa_requiere_superuser(self):
+        """API del mapa requiere superusuario."""
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("allowlist:api_mapa"))
+        self.assertEqual(response.status_code, 403)
+
     def test_api_crear_manual_requiere_superuser(self):
         """API de creación manual requiere superusuario."""
         self.client.force_login(self.user)
@@ -800,6 +812,47 @@ class ApiListarPOIsViewTest(TestCase):
     def test_solo_acepta_get(self):
         """El endpoint solo acepta GET."""
         response = self.client.post(reverse("allowlist:api_listar"))
+        self.assertEqual(response.status_code, 405)
+
+
+class ApiMapaPOIsViewTest(TestCase):
+    """Tests del endpoint GET /allowList/api/mapa/"""
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(_superuser())
+        for idx in range(55):
+            _crear_poi(
+                nombre=f"POI Sevilla {idx:02d}",
+                ciudad="Sevilla",
+                categoria=CategoriaOSM.MUSEO if idx % 2 == 0 else CategoriaOSM.PARQUE,
+                lat=37.38 + idx * 0.0001,
+                lon=-5.99 - idx * 0.0001,
+            )
+        _crear_poi(nombre="POI Madrid", ciudad="Madrid", categoria=CategoriaOSM.MUSEO)
+
+    def test_devuelve_todos_los_pois_sin_paginacion(self):
+        """El mapa recibe todos los POIs que cumplen los filtros."""
+        response = self.client.get(reverse("allowlist:api_mapa"), {"ciudad": "Sevilla"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "OK")
+        self.assertEqual(data["total"], 55)
+        self.assertEqual(len(data["results"]), 55)
+
+    def test_respeta_filtros_del_panel(self):
+        """El endpoint del mapa usa los mismos filtros que la tabla."""
+        response = self.client.get(
+            reverse("allowlist:api_mapa"),
+            {"ciudad": "Sevilla", "categoria": CategoriaOSM.PARQUE},
+        )
+        data = response.json()
+        self.assertEqual(data["total"], 27)
+        self.assertTrue(all(item["categoria"] == CategoriaOSM.PARQUE for item in data["results"]))
+
+    def test_solo_acepta_get(self):
+        """El endpoint del mapa solo acepta GET."""
+        response = self.client.post(reverse("allowlist:api_mapa"))
         self.assertEqual(response.status_code, 405)
 
 
