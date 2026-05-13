@@ -40,13 +40,13 @@ Se han detectado incidencias técnicas y errores de visualización que afectan l
 
 ---
 
-##2. Opciones de Mejora
+## 2. Opciones de Mejora
 
-###Mejora Funcional
+### Mejora Funcional
 **Optimización del Cálculo de Rutas:** Se sugiere que el cálculo automático incluya un tiempo extra estimado para la visita de cada parada, ya que actualmente parece calcularse únicamente el desplazamiento entre ellas.
 **Automatización de Entrada al Tour:** Mejorar el flujo de inicio para que el turista pase directamente al mapa del tour cuando el guía lo inicie, eliminando la necesidad de pulsar un botón de entrada adicional.
 
-###Mejora Visual (UI/UX)
+### Mejora Visual (UI/UX)
 **Limpieza del Catálogo de Rutas:** En el listado de rutas, se recomienda eliminar el campo que indica el guía creador.Dado que el usuario solo visualiza sus propias rutas en esa sección, mostrar su nombre carece de utilidad.
 **Indicadores de Comunicación:** En el chat de sesión, se propone añadir un símbolo o notificación visual que indique claramente cuándo hay un mensaje nuevo pendiente de leer.
 **Refinamiento de Textos IA:** Eliminar mensajes técnicos como "paradas_adicionales_generadas" para ofrecer una experiencia más limpia y profesional.
