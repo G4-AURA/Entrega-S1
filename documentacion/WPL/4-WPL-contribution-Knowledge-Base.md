@@ -561,6 +561,19 @@ Dos presentaciones:
 
 ---
 
+### Semana 11 (14/05), PPL EVALUACIÓN
+
+- Menos anglicismos en plan fremium y premium. 
+- Para los inversores mejorar el plan a inmediato y corto plazo. 
+- ¿No poner títulos? 
+- Análisis competidores más alto nivel, y explicar luego las diferencias que se dice para que sirve Aura 
+- Revisar anuncio de inversores (acrónimos), pero le ha gustado. 
+- Cambiar la voz de la demo a una voz neutra
+- Revisar las diapositivas de equipo, algo más profesional 
+- Creo que se refiere al primer anuncio cuando dice que no se veían bien algunas pantallas, ¿se podría poner por encima capturas?
+
+---
+
 ## 3. Acciones de Consolidación
 
 Durante las primeras sesiones, los distintos grupos acordaron crear una **base de conocimiento común en OneDrive**, cuya dinámica inicial consistía en que cada grupo realizara un volcado del feedback recibido en clase dentro de documentos independientes.
