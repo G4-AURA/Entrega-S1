@@ -42,7 +42,7 @@ Este documento permite visualizar de forma clara:
 
 ---
 ## 3. Enlace al informe de tiempo y esfuerzo 
-[Enlace time-report Sprint PPL](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-WPL-time-report.pdf)
+[Enlace time-report Sprint WPL](https://github.com/G4-AURA/Entrega-S1/blob/doc/documentacion/clockify/4-WPL-time-report.pdf)
 
 ---
 ## 4. Análisis de los resultados
