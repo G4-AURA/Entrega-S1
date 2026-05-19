@@ -33,8 +33,8 @@ Además, en las demos se reflejan los **distintos roles implicados en el sistema
 
 ## 2. Enlace al video demostrativo de la presentación
 
-[Enlace demo presentacion PPL](https://www.youtube.com/watch?v=t1a4rUuc62Y)
+[Enlace demo presentacion](https://youtu.be/-i1rydhkOBs?si=__OkEyLaIA1CjTaF)
 
 ## 3. Enlace al video demostrativo completo 
 
-[Enlace demo completa y comentada PPL](https://www.youtube.com/watch?v=UnFtKpyUPFo)
+[Enlace demo completa y comentada](https://www.youtube.com/watch?v=UnFtKpyUPFo)
