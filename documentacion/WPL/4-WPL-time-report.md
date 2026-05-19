@@ -24,32 +24,32 @@
 ---
 ## 1. Contenido
 
-El informe incluye un enlace al documento que recoge el registro de tiempo y esfuerzo dedicado por cada miembro del grupo a las distintas tareas del proyecto durante el periodo de preparación y ejecución del PPL.
+El informe incluye un enlace al documento que recoge el registro de tiempo y esfuerzo dedicado por cada miembro del grupo a las distintas tareas del proyecto durante el periodo de preparación y ejecución del WPL.
 
-Para la medición y seguimiento de estas horas se ha utilizado **Clockify** , una herramienta que permite contabilizar de forma individual la dedicación real de cada integrante y generar un reporte detallado y verificable del trabajo realizado durante el periodo correspondiente a la entrega.
+Para la medición y seguimiento de estas horas se ha utilizado **Clockify**, una herramienta que permite contabilizar de forma individual la dedicación real de cada integrante y generar un reporte detallado y verificable del trabajo realizado durante el periodo correspondiente a la entrega.
 
 ---
 
 ## 2. Informe oficial de Clockify
 
-Se ha generado un informe a partir de la herramienta Clockify en el que se recogen todas las tareas realizadas durante el desarrollo de la entrega PPL, junto con el tiempo dedicado a cada una de ellas por parte de los distintos miembros del equipo.
+Se ha generado un informe a partir de la herramienta Clockify en el que se recogen todas las tareas realizadas durante el desarrollo de la entrega WPL, junto con el tiempo dedicado a cada una de ellas por parte de los distintos miembros del equipo.
 
 Este documento permite visualizar de forma clara:
 
 - La distribución del trabajo entre tareas específicas y clases.
-- El esfuerzo individual acumulado durante las 3 semanas de actividad real.
-- La implicación de cada integrante en el hito del PPL.
+- El esfuerzo individual acumulado durante la semana de actividad real.
+- La implicación de cada integrante en el hito del WPL.
 
 ---
 ## 3. Enlace al informe de tiempo y esfuerzo 
-[Enlace time-report Sprint PPL](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-PPL-time-report.pdf)
+[Enlace time-report Sprint PPL](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/clockify/4-WPL-time-report.pdf)
 
 ---
 ## 4. Análisis de los resultados
 Para el Sprint PPL se ha establecido como referencia una dedicación de:
 - **10 horas por semana por persona**
-- **Duración del sprint: 3 semanas útiles** (excluyendo la semana festiva)
-- **Objetivo total por miembro: 30 horas**
+- **Duración del sprint: 1 semana**
+- **Objetivo total por miembro: 10 horas**
 
 A continuación, se muestra el análisis de desviaciones respecto a este objetivo:
 
@@ -59,33 +59,33 @@ A continuación, se muestra el análisis de desviaciones respecto a este objetiv
 
 | Miembro | Horas reales | Objetivo | Desviación | % sobre objetivo |
 | :--- | :--- | :--- | :--- | :--- |
-| Alberto José Paleteiro López | 34:16 | 30h | +4,27h | 114% |
-| maxcor | 32:40 | 30h | +2,67h | 109% |
-| fraayadia | 31:29 | 30h | +1,48h | 105% |
-| Marruivaz1 | 30:17 | 30h | +0,28h | 101% |
-| Javier Manrique Riquelme | 26:38 | 30h | -3,37h | 89% |
-| Felipepn_13 | 26:19  | 30h | -3,68h | 88% |
-| Mario Reyes Apresa | 25:46 | 30h | -4,23h | 86% |
-| emiespeli | 22:45 | 30h | -7,25h | 76% |
-| Javier Ramirez Núñez | 20:54 | 30h | -9,10h | 70% |
-| Alexis Molins | 19:50 | 30h | -10,17h | 66% |
-| Javluqrui | 19:29 | 30h | -10,51h | 65% |
-| nicpargen | 19:25 | 30h | -10,58h | 65% |
-| Rafa Bermudo Álvarez | 17:01 | 30h | -12,98h | 57% |
+| Alberto José Paleteiro López | 00:00 | 10h | -10,00h | 0% |
+| maxcor | 04:00 | 10h | -6,00h | 40% |
+| fraayadia | 03:30 | 10h | -6,50h | 35% |
+| Marruivaz1 | 07:51 | 10h | -2,22h | 79% |
+| Javier Manrique Riquelme | 07:56 | 10h | -2,05h | 80% |
+| Felipepn_13 | 07:24  | 10h | -2,59h | 74% |
+| Mario Reyes Apresa | 01:28 | 10h | -8,53h | 15% |
+| emiespeli | 02:00 | 10h | -8,00h | 20% |
+| Javier Ramirez Núñez | 05:02 | 10h | -4,97h | 50% |
+| Alexis Molins | 03:16 | 10h | -6,72h | 33% |
+| Javluqrui | 01.10 | 10h | -8,82h | 12% |
+| nicpargen | 04:00 | 10h | -6,00h | 40% |
+| Rafa Bermudo Álvarez | 01:06 | 10h | -8.90h | 11% |
 
 ---
 
 ## 4.2. Interpretación de resultados
 
 ### 4.2.1. Cumplimiento del objetivo
-- Aproximadamente el **31% del equipo** (4 de 13 miembros) ha alcanzado o superado el objetivo de 30 horas.
-- Se observa una tendencia generalizada a situarse por debajo del umbral de las 30h, con un grupo significativo concentrado entre las 19h y 26h.
+Ningún miembro ha alcanzado el objetivo teórico de 10 horas de trabajo debido a que, al ser la última semana, hay muchas menos tareas y son de menor duración. Se considera, en este contexto excepcional, que esto no supone un incumplimiento del Commitment Agreement (CA), siempre que las tareas se cumplan con éxito.
+
 
 ### 4.2.2. Justificación de las desviaciones
 Debido a que el proyecto se encuentra en su fase de entrega final y todos los objetivos técnicos han sido completados, las desviaciones se explican de la siguiente manera:
 
 - **Reducción de la carga de trabajo:** Al estar el software finalizado, ya no existen tareas de desarrollo masivo. El tiempo registrado en este periodo se ha dedicado exclusivamente al pulido final y a la gestión de la documentación.
-- **Concentración de tareas de cierre:** Los miembros que presentan un mayor número de horas han asumido las labores de revisión de calidad y la integración final necesaria para el hito del PPL.
+- **Concentración de tareas de cierre:** Los miembros que presentan un mayor número de horas han asumido las labores de revisión de calidad y la integración final necesaria para el hito del WPL.
 - **Finalización de responsabilidades:** La mayoría de los miembros completaron sus asignaciones antes de agotar el tiempo previsto. En esta etapa de cierre, no ha sido necesario asignar tareas adicionales, ya que el producto está terminado y listo para su entrega.
 
 ### 4.2.3. Conclusiones finales de gestión
