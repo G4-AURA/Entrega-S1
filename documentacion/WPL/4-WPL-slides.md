@@ -33,11 +33,8 @@ Este archivo recoge de manera estructurada los aspectos clave del proyecto que h
 
 Hay algunas diapositivas que no se visualizan correctamente en la vista previa de GitHub. Es recomendable descargarse el documento de la presentación para verla de manera adecuada.
 
-## 2. Enlace al documento que contiene las transparencia de la presentacion principal
+## 2. Enlace al documento que contiene las transparencia de la presentacion 
 
-[Enlace a las slides principales](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-PPL-slides-1.pdf)
+[Enlace a las slides](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-WPL-slides.pdf)
 
 
-## 2. Enlace al documento que contiene las transparencia de la presentacion adicional
-
-[Enlace a las slides adicionales](https://github.com/G4-AURA/Entrega-S1/blob/main/documentacion/slides/4-PPL-slides-2.pdf)
